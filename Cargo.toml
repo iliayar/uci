@@ -1,5 +1,5 @@
 [workspace]
 members = [
-    "runner",
-    "common_lib",
+    "common",
+    "worker",
 ]
