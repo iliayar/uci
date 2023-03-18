@@ -1,22 +1,22 @@
+use thiserror::Error;
+use warp::Filter;
+
+use super::{docker, filters};
+
 pub struct App {
-    docker: handlers::docker::Docker,
+    docker: docker::Docker,
 }
 
-use warp::Filter;
-use thiserror::Error;
-
-use super::{filters, handlers};
-
 #[derive(Error, Debug)]
-pub enum RunnerError {
+pub enum WorkerError {
     #[error("Failed to initilize docker connection")]
-    DockerError(#[from] handlers::docker::DockerError)
+    DockerError(#[from] bollard::errors::Error),
 }
 
 impl App {
-    pub async fn init() -> Result<App, RunnerError> {
+    pub async fn init() -> Result<App, WorkerError> {
         let app = App {
-            docker: handlers::docker::Docker::init()?,
+            docker: docker::Docker::init()?,
         };
 
         pretty_env_logger::init();
@@ -28,6 +28,6 @@ impl App {
         let api = filters::runner(self.docker);
         let routes = api.with(warp::log("worker"));
 
-        warp::serve(routes).run(([127, 0, 0, 1], 8080)).await;
+        warp::serve(routes).run(([127, 0, 0, 1], 3001)).await;
     }
 }

@@ -1,0 +1,15 @@
+POST http://localhost:3001/run
+{
+  "steps": [
+    {
+      "BuildImage": {
+          "source": {
+	    "Path": {
+	      "path": "/home/iliayar/Envs/docker/ubuntu-with-nc",
+	      "tag": "microci-test-1:v0.2"
+	    }
+	  }
+       }
+    }
+  ]
+}

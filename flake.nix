@@ -27,6 +27,7 @@
               rustfmt
 
               pkgconfig
+              openssl
 
               # Other packages
             ];
