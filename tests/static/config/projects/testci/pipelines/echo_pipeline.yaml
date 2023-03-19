@@ -1,0 +1,6 @@
+steps:
+  - type: script
+    script: |
+      set -e
+      cat $repo_test/test
+      echo "LUL"

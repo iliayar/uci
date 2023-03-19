@@ -1,0 +1,3 @@
+pipelines:
+  - id: echo
+    path: pipelines/echo_pipeline.yaml

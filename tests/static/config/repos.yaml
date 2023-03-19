@@ -1,6 +1,7 @@
 repos:
   - id: test
     source: ssh://git@gitlab.com:iliayar/testci.git
+    branch: main
   # - id: itmo
   #   source: ssh://git@github.com:iliayar/itmo.git
   # - id: site-main
