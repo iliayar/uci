@@ -1,10 +1,18 @@
-use super::{config::{Config, ConfigError}, utils::expand_home, git};
+use std::{borrow::BorrowMut, path::PathBuf, sync::Arc};
+
+use super::{
+    config::{self, Config, ConfigError},
+    git,
+    utils::expand_home,
+};
 
 use log::*;
 use thiserror::Error;
+use tokio::sync::Mutex;
 
 pub struct Context {
-    config: Config,
+    config_path: PathBuf,
+    config: Arc<Mutex<Config>>,
 }
 
 #[derive(Debug, Error)]
@@ -17,15 +25,22 @@ pub enum ContextError {
 }
 
 impl Context {
-    pub fn new(config: Config) -> Context {
-        Context { config: config }
+    pub async fn new(config_path: PathBuf) -> Result<Context, ContextError> {
+        let config = Config::load(config_path.clone()).await?;
+        info!("Loaded config: {:#?}", config);
+
+        Ok(Context {
+            config_path,
+            config: Arc::new(Mutex::new(config)),
+        })
     }
 
     pub async fn clone_missing_repos(&self) -> Result<(), ContextError> {
         let mut git_tasks = Vec::new();
+	let config = self.config.lock().await;
 
-        for (id, repo) in self.config.repos.iter() {
-            let path = expand_home("~/.microci/repos").join(id);
+        for (id, repo) in config.repos.iter() {
+	    let path = config.service_config.repos_path.join(id);
 
             if !git::check_exists(path.clone()).await? {
                 info!("Cloning repo {}", id);
@@ -61,6 +76,15 @@ impl Context {
         for task in git_tasks.into_iter() {
             task.await?;
         }
+
+        Ok(())
+    }
+
+    pub async fn reload_config(&self) -> Result<(), ContextError> {
+        let config = Config::load(self.config_path.clone()).await?;
+        info!("Config reloaded {:#?}", config);
+
+        *self.config.lock().await = config;
 
         Ok(())
     }

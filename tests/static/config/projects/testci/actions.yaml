@@ -1,2 +1,11 @@
-triggers:
+actions:
   - id: main
+    update_repos:
+      - test
+    conditions:
+    #   - type: on_changes
+    #     repo: test
+    #     path: .*
+      - type: always
+    run_pipelines:
+      - echo

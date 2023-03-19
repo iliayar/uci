@@ -1,4 +1,4 @@
-use std::{path::PathBuf, pin::Pin};
+use std::{path::PathBuf, pin::Pin, sync::Arc};
 
 use thiserror::Error;
 use warp::{Filter, Future};
@@ -30,20 +30,16 @@ impl App {
     pub async fn init() -> Result<App, RunnerError> {
         pretty_env_logger::init();
 
-	let config = Config::load("../tests/static/config".into()).await?;
-        info!("Loaded config: {:?}", config);
+	let config_path: PathBuf = "../tests/static/config".into();
 
         let app = App {
-            context: Context::new(config),
+            context: Context::new(config_path).await?,
         };
 
         Ok(app)
     }
 
     pub async fn run(self) {
-        let api = filters::runner();
-        let routes = api.with(warp::log("runner"));
-
         match self.clone_missing_repos().await {
             Ok(_) => {}
             Err(err) => {
@@ -52,6 +48,8 @@ impl App {
             }
         }
 
+        let api = filters::runner(self.context);
+        let routes = api.with(warp::log("runner"));
         warp::serve(routes).run(([127, 0, 0, 1], 3002)).await;
     }
 
