@@ -12,7 +12,7 @@ use tokio::sync::Mutex;
 
 pub struct Context {
     config_path: PathBuf,
-    config: Arc<Mutex<Config>>,
+    config: Mutex<Arc<Config>>,
 }
 
 #[derive(Debug, Error)]
@@ -31,16 +31,16 @@ impl Context {
 
         Ok(Context {
             config_path,
-            config: Arc::new(Mutex::new(config)),
+            config: Mutex::new(Arc::new(config)),
         })
     }
 
     pub async fn clone_missing_repos(&self) -> Result<(), ContextError> {
         let mut git_tasks = Vec::new();
-	let config = self.config.lock().await;
+        let config = self.config.lock().await;
 
         for (id, repo) in config.repos.iter() {
-	    let path = config.service_config.repos_path.join(id);
+            let path = config.service_config.repos_path.join(id);
 
             if !git::check_exists(path.clone()).await? {
                 info!("Cloning repo {}", id);
@@ -80,11 +80,15 @@ impl Context {
         Ok(())
     }
 
+    pub async fn config(&self) -> Arc<Config> {
+        return self.config.lock().await.clone();
+    }
+
     pub async fn reload_config(&self) -> Result<(), ContextError> {
         let config = Config::load(self.config_path.clone()).await?;
         info!("Config reloaded {:#?}", config);
 
-        *self.config.lock().await = config;
+        *self.config.lock().await = Arc::new(config);
 
         Ok(())
     }

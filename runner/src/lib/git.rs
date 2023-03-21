@@ -103,7 +103,7 @@ fn push_ssh_impl(path: PathBuf, branch: String) -> Result<(), GitError> {
 }
 
 fn commit_all_impl(path: PathBuf, msg: String) -> Result<(), git2::Error> {
-    // FIXME: Seems working, but hell this is ugly
+    // FIXME: Seems working, but the hell this is ugly
     let repo = Repository::open(path)?;
     let mut index = repo.index()?;
 

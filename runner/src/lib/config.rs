@@ -1,5 +1,7 @@
 use std::{collections::HashMap, path::PathBuf};
 
+use anyhow::anyhow;
+use futures::future::try_join_all;
 use log::*;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
@@ -10,7 +12,7 @@ use tokio::{
     io::{AsyncBufReadExt, BufReader},
 };
 
-use crate::lib::utils::try_expand_home;
+use crate::lib::{git, utils::try_expand_home};
 
 pub type Repos = HashMap<String, Repo>;
 pub type Projects = HashMap<String, Project>;
@@ -38,9 +40,14 @@ pub struct Project {
     pub pipelines: Pipelines,
 }
 
+impl Project {
+    pub async fn run_action(&self, action_id: &str) {}
+}
+
 #[derive(Debug)]
 pub struct ServiceConfig {
     pub repos_path: PathBuf,
+    pub worker_url: String,
 }
 
 #[derive(Debug)]
@@ -55,6 +62,14 @@ pub enum Condition {
     Always,
 }
 
+impl Condition {
+    async fn check_matched(&self, repo_id: &str, diffs: &[String]) -> bool {
+        match self {
+            Condition::Always => true,
+        }
+    }
+}
+
 #[derive(Debug, Error)]
 pub enum ConfigError {
     #[error("IO Error: {0}")]
@@ -62,9 +77,96 @@ pub enum ConfigError {
 
     #[error("Yaml parsing error: {0}")]
     YamlParseError(#[from] serde_yaml::Error),
+
+    #[error("Git error: {0}")]
+    GitError(#[from] git::GitError),
+
+    #[error("Request failed: {0}")]
+    RequestError(#[from] reqwest::Error),
+
+    #[error(transparent)]
+    Other(#[from] anyhow::Error),
 }
 
 impl Config {
+    pub async fn has_project_action(&self, project_id: &str, action_id: &str) -> bool {
+        self.projects
+            .get(project_id)
+            .map(|p| p.actions.contains_key(action_id))
+            .unwrap_or(false)
+    }
+
+    pub async fn run_project_action(
+        &self,
+        project_id: &str,
+        action_id: &str,
+    ) -> Result<(), ConfigError> {
+        let project = self
+            .projects
+            .get(project_id)
+            .ok_or(anyhow!("Should only be called for existing project"))?;
+        let action = project
+            .actions
+            .get(action_id)
+            .ok_or(anyhow!("Should only be called for existing action"))?;
+        info!("Running action {} on project {}", action_id, project_id);
+
+        info!("Pulling repos");
+        let mut condition_matched = false;
+        for repo_id in action.update_repos.iter() {
+            let repo = self
+                .repos
+                .get(repo_id)
+                .ok_or(anyhow!("No such repo: {}", repo_id))?;
+            let repo_path = self.service_config.repos_path.join(repo_id);
+            // TODO: Get rid of this clone?
+            let diffs = git::pull_ssh(repo_path, repo.branch.clone()).await?;
+
+            for (i, condition) in action.conditions.iter().enumerate() {
+                if condition.check_matched(repo_id, &diffs).await {
+                    info!("Match condition {}", i);
+                    condition_matched = true;
+                }
+            }
+        }
+
+        if condition_matched {
+            let mut tasks = Vec::new();
+            for pipeline_id in action.run_pipelines.iter() {
+                let config = project
+                    .pipelines
+                    .get(pipeline_id)
+                    .ok_or(anyhow!("Now such pipeline to run {}", pipeline_id))?;
+                tasks.push(self.run_pipeline(pipeline_id, &config));
+            }
+            try_join_all(tasks).await?;
+        }
+
+        Ok(())
+    }
+
+    async fn run_pipeline(
+        &self,
+        pipeline_id: &str,
+        config: &common::Config,
+    ) -> Result<(), ConfigError> {
+        info!("Running pipeline {}", pipeline_id);
+        let status = reqwest::Client::new()
+            .post(&format!("{}/run", self.service_config.worker_url))
+            .json(config)
+            .send()
+            .await?
+            .status();
+
+        if !status.is_success() {
+            return Err(anyhow!("Request fail for pipeline {}", pipeline_id).into());
+        }
+
+	info!("Pipeline {} runned", pipeline_id);
+
+        Ok(())
+    }
+
     pub async fn load(configs_root: PathBuf) -> Result<Config, ConfigError> {
         info!("Loading config");
 
@@ -80,10 +182,13 @@ impl Config {
         })
     }
 
+    // TODO: Put all of these in appropriate structs impls
+
     async fn load_service_config(conf_path: PathBuf) -> Result<ServiceConfig, ConfigError> {
         #[derive(Deserialize)]
         struct RawServiceConfig {
             repos_path: String,
+            worker_url: String,
         }
 
         let conf_raw = fs::read_to_string(conf_path).await?;
@@ -91,6 +196,7 @@ impl Config {
 
         Ok(ServiceConfig {
             repos_path: try_expand_home(data.repos_path),
+            worker_url: data.worker_url,
         })
     }
 
@@ -203,7 +309,44 @@ impl Config {
     }
 
     async fn load_pipeline_config(path: PathBuf) -> Result<common::Config, ConfigError> {
-        todo!()
+        #[derive(Deserialize)]
+        struct StepsRaw {
+            steps: Vec<StepRaw>,
+        }
+
+        #[derive(Deserialize)]
+        struct StepRaw {
+            #[serde(rename = "type")]
+            t: TypeRaw,
+            script: Option<String>,
+        }
+
+        #[derive(Deserialize)]
+        enum TypeRaw {
+            #[serde(rename = "script")]
+            Script,
+        }
+
+        let pipeline_raw = fs::read_to_string(path).await?;
+        let data: StepsRaw = serde_yaml::from_str(&pipeline_raw)?;
+
+        let mut steps = Vec::<common::Step>::new();
+
+        for step_raw in data.steps.into_iter() {
+            match step_raw.t {
+                TypeRaw::Script => {
+                    let config = common::RunShellConfig {
+                        script: step_raw
+                            .script
+                            .ok_or(anyhow!("'script' step requires 'scipt' field"))?,
+                        docker_image: None,
+                    };
+                    steps.push(common::Step::RunShell(config));
+                }
+            }
+        }
+
+        Ok(common::Config { steps })
     }
 
     async fn load_actions(actions_path: PathBuf) -> Result<Actions, ConfigError> {
