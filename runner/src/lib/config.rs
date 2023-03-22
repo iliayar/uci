@@ -53,7 +53,12 @@ pub struct ServiceConfig {
 #[derive(Debug)]
 pub struct Action {
     update_repos: Vec<String>,
-    conditions: Vec<Condition>,
+    cases: Vec<Case>,
+}
+
+#[derive(Debug)]
+pub struct Case {
+    condition: Condition,
     run_pipelines: Vec<String>,
 }
 
@@ -112,7 +117,7 @@ impl Config {
         info!("Running action {} on project {}", action_id, project_id);
 
         info!("Pulling repos");
-        let mut condition_matched = false;
+        let mut run_pipelines = Vec::new();
         for repo_id in action.update_repos.iter() {
             let repo = self
                 .repos
@@ -122,25 +127,23 @@ impl Config {
             // TODO: Get rid of this clone?
             let diffs = git::pull_ssh(repo_path, repo.branch.clone()).await?;
 
-            for (i, condition) in action.conditions.iter().enumerate() {
-                if condition.check_matched(repo_id, &diffs).await {
+            for (i, case) in action.cases.iter().enumerate() {
+                if case.condition.check_matched(repo_id, &diffs).await {
                     info!("Match condition {}", i);
-                    condition_matched = true;
+                    run_pipelines.append(&mut case.run_pipelines.clone());
                 }
             }
         }
 
-        if condition_matched {
-            let mut tasks = Vec::new();
-            for pipeline_id in action.run_pipelines.iter() {
-                let config = project
-                    .pipelines
-                    .get(pipeline_id)
-                    .ok_or(anyhow!("Now such pipeline to run {}", pipeline_id))?;
-                tasks.push(self.run_pipeline(pipeline_id, &config));
-            }
-            try_join_all(tasks).await?;
+        let mut tasks = Vec::new();
+        for pipeline_id in run_pipelines.iter() {
+            let config = project
+                .pipelines
+                .get(pipeline_id)
+                .ok_or(anyhow!("Now such pipeline to run {}", pipeline_id))?;
+            tasks.push(self.run_pipeline(pipeline_id, &config));
         }
+        try_join_all(tasks).await?;
 
         Ok(())
     }
@@ -151,18 +154,16 @@ impl Config {
         config: &common::Config,
     ) -> Result<(), ConfigError> {
         info!("Running pipeline {}", pipeline_id);
-        let status = reqwest::Client::new()
+        let response = reqwest::Client::new()
             .post(&format!("{}/run", self.service_config.worker_url))
             .json(config)
             .send()
-            .await?
-            .status();
+            .await?;
 
-        if !status.is_success() {
-            return Err(anyhow!("Request fail for pipeline {}", pipeline_id).into());
-        }
+	
+	response.error_for_status()?;
 
-	info!("Pipeline {} runned", pipeline_id);
+        info!("Pipeline {} started", pipeline_id);
 
         Ok(())
     }
@@ -360,7 +361,6 @@ impl Config {
             id: String,
             update_repos: Vec<String>,
             conditions: Vec<ConditionRaw>,
-            run_pipelines: Vec<String>,
         }
 
         #[derive(Deserialize)]
@@ -373,6 +373,7 @@ impl Config {
         struct ConditionRaw {
             #[serde(rename = "type")]
             t: ConditionTypeRaw,
+            run_pipelines: Vec<String>,
         }
 
         let actions_raw = fs::read_to_string(actions_path).await?;
@@ -384,13 +385,19 @@ impl Config {
             id,
             update_repos,
             conditions,
-            run_pipelines,
         } in actions_data.actions.into_iter()
         {
-            let conditions = conditions
+            let cases = conditions
                 .into_iter()
-                .map(|ConditionRaw { t }| match t {
-                    ConditionTypeRaw::Always => Condition::Always,
+                .map(|ConditionRaw { t, run_pipelines }| {
+                    let condition = match t {
+                        ConditionTypeRaw::Always => Condition::Always,
+                    };
+
+                    Case {
+                        condition,
+                        run_pipelines,
+                    }
                 })
                 .collect();
 
@@ -398,8 +405,7 @@ impl Config {
                 id,
                 Action {
                     update_repos,
-                    conditions,
-                    run_pipelines,
+                    cases,
                 },
             );
         }

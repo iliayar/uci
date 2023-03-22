@@ -5,6 +5,7 @@ pub enum Step {
     RunContainer(RunContainerConfig),
     BuildImage(BuildImageConfig),
     RunShell(RunShellConfig),
+    Request(RequestConfig),
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -54,4 +55,16 @@ pub struct BuildImageConfig {
 pub struct RunShellConfig {
     pub script: String,
     pub docker_image: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct RequestConfig {
+    pub url: String,
+    pub method: RequestMethod,
+    pub body: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub enum RequestMethod {
+    Post, Get,
 }

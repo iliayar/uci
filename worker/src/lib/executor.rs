@@ -37,6 +37,7 @@ impl Executor {
         Ok(())
     }
 
+    // TODO: Make step a trait?
     pub async fn run_step(&self, step: Step) -> Result<(), tasks::error::TaskError> {
         match step {
             Step::RunContainer(config) => {

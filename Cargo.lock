@@ -2467,6 +2467,7 @@ dependencies = [
 name = "worker"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "bollard",
  "clap",
  "common",
@@ -2474,6 +2475,7 @@ dependencies = [
  "log 0.4.17",
  "logger",
  "pretty_env_logger",
+ "reqwest",
  "serde",
  "tar",
  "thiserror",
