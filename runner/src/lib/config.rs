@@ -68,7 +68,7 @@ pub enum Condition {
 }
 
 impl Condition {
-    async fn check_matched(&self, repo_id: &str, diffs: &[String]) -> bool {
+    async fn check_matched(&self, diffs: &HashMap<String, Vec<String>>) -> bool {
         match self {
             Condition::Always => true,
         }
@@ -128,17 +128,15 @@ impl Config {
             // TODO: Get rid of this clone?
             let diffs = git::pull_ssh(repo_path, repo.branch.clone()).await?;
 
-            repo_diffs.insert(repo_id, diffs);
+            repo_diffs.insert(repo_id.clone(), diffs);
         }
 
-        for (i, case) in action.cases.iter().enumerate() {
-            for (repo_id, diffs) in repo_diffs.iter() {
-                if case.condition.check_matched(repo_id, diffs).await {
-                    info!("Match condition {}", i);
-                    run_pipelines.append(&mut case.run_pipelines.clone());
-                }
-            }
-        }
+	for (i, case) in action.cases.iter().enumerate() {
+	    if case.condition.check_matched(&repo_diffs).await {
+		info!("Match condition {}", i);
+		run_pipelines.append(&mut case.run_pipelines.clone());
+	    }
+	}
 
         let mut tasks = Vec::new();
         for pipeline_id in run_pipelines.iter() {
