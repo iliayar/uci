@@ -118,6 +118,7 @@ impl Config {
 
         info!("Pulling repos");
         let mut run_pipelines = Vec::new();
+        let mut repo_diffs = HashMap::new();
         for repo_id in action.update_repos.iter() {
             let repo = self
                 .repos
@@ -127,8 +128,12 @@ impl Config {
             // TODO: Get rid of this clone?
             let diffs = git::pull_ssh(repo_path, repo.branch.clone()).await?;
 
-            for (i, case) in action.cases.iter().enumerate() {
-                if case.condition.check_matched(repo_id, &diffs).await {
+            repo_diffs.insert(repo_id, diffs);
+        }
+
+        for (i, case) in action.cases.iter().enumerate() {
+            for (repo_id, diffs) in repo_diffs.iter() {
+                if case.condition.check_matched(repo_id, diffs).await {
                     info!("Match condition {}", i);
                     run_pipelines.append(&mut case.run_pipelines.clone());
                 }
@@ -160,8 +165,7 @@ impl Config {
             .send()
             .await?;
 
-	
-	response.error_for_status()?;
+        response.error_for_status()?;
 
         info!("Pipeline {} started", pipeline_id);
 

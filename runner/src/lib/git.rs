@@ -12,6 +12,9 @@ use super::utils::expand_home;
 
 use log::*;
 
+
+// TODO: All of these quite hell. Use `gix` crate instead?
+
 #[derive(Debug, Error)]
 pub struct GitError(#[from] git2::Error);
 
