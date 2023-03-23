@@ -59,6 +59,12 @@ impl Executor {
 
                 tasks::run_shell_command(&self.docker, config).await?;
 	    },
+	    Step::Request(config) => {
+		info!("Running step Request");
+		debug!("With config: {:?}", config);
+
+		tasks::run_request(&config).await?;
+	    }
         }
 
         Ok(())
