@@ -4,11 +4,12 @@ use warp::hyper::StatusCode;
 
 use super::docker;
 use super::executor::{Executor, ExecutorError};
+use super::context::Context;
 use common::Config;
 use log::*;
 
-pub async fn run(docker: docker::Docker, config: Config) -> Result<impl warp::Reply, Infallible> {
-    match run_impl(docker, config).await {
+pub async fn run(context: Context, config: Config) -> Result<impl warp::Reply, Infallible> {
+    match run_impl(context, config).await {
         Ok(_) => Ok(StatusCode::OK),
         Err(err) => {
             error!("Executor error: {}", err);
@@ -17,10 +18,10 @@ pub async fn run(docker: docker::Docker, config: Config) -> Result<impl warp::Re
     }
 }
 
-pub async fn run_impl(docker: docker::Docker, config: Config) -> Result<(), ExecutorError> {
+pub async fn run_impl(context: Context, config: Config) -> Result<(), ExecutorError> {
     debug!("Running with config {:?}", config);
 
-    let executor = Executor::new(docker)?;
+    let executor = Executor::new(context)?;
     tokio::spawn(executor.run(config));
 
     info!("Executor started");

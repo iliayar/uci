@@ -36,25 +36,32 @@ pub struct BuildImagePathConfig {
 pub struct BuildImageArchiveConfig {
     pub tar_path: String,
     pub dockerfile: Option<String>,
-    pub tag: String,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub enum BuildImageSource {
-    Path(BuildImagePathConfig),
-    Archive(BuildImageArchiveConfig),
-    Pull(BuildImagePullConfig),
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct BuildImageConfig {
-    pub source: BuildImageSource,
+    pub image: String,
+    pub tag: Option<String>,
+    pub source: Option<BuildImageConfigSource>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct BuildImageConfigSource {
+    pub dockerfile: Option<String>,
+    pub path: BuildImageConfigSourcePath,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub enum BuildImageConfigSourcePath {
+    Directory(String),
+    Tar(String),
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct RunShellConfig {
     pub script: String,
     pub docker_image: Option<String>,
+    pub interpreter: Option<Vec<String>>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]

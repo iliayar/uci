@@ -1,147 +1,74 @@
-use std::io::{Stderr, Stdout};
-use std::process::Stdio;
-use std::time::Duration;
-use std::{fs::Permissions, os::unix::prelude::PermissionsExt};
+use std::collections::HashMap;
 
-use super::error::TaskError;
-use crate::lib::docker::Docker;
-use crate::lib::utils::tempfile::TempFile;
-use bollard::container::{AttachContainerOptions, Config, CreateContainerOptions, LogOutput};
-use common::RunShellConfig;
-use log::*;
-use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
-use tokio_stream::wrappers::LinesStream;
-use tokio_stream::StreamExt;
+use crate::lib::{
+    docker,
+    utils::{
+        shell::{self, run_command_with_output},
+        tempfile,
+    },
+};
 
-pub async fn run_shell_command(docker: &Docker, config: RunShellConfig) -> Result<(), TaskError> {
-    if let Some(image) = config.docker_image {
-        info!("Executing script in cotainer of image {}", image);
-        run_shell_command_docker(docker, config.script, image).await?;
+use super::task;
+
+use anyhow::anyhow;
+
+const DEFAULT_INTERPRETER: &str = "/usr/bin/env";
+const DEFAULT_ARGS: [&str; 1] = ["bash"];
+
+#[async_trait::async_trait]
+impl task::Task for common::RunShellConfig {
+    async fn run(self, context: &crate::lib::context::Context) -> Result<(), task::TaskError> {
+        let (interpreter, mut args) = get_interpreter_args(self.interpreter)?;
+        let script_file = tempfile::TempFile::new_executable(&self.script).await?;
+
+        if let Some(image) = self.docker_image {
+            let container_script_file = String::from("/script");
+
+            let mut run_command_builder = docker::RunCommandParamsBuilder::default();
+            run_command_builder.image(image);
+
+            let mut command = vec![interpreter];
+            command.append(&mut args);
+            command.push(container_script_file.clone());
+            run_command_builder.command(command);
+
+            let mut mounts = HashMap::new();
+            mounts.insert(script_file.path.clone(), container_script_file.clone());
+            run_command_builder.mounts(mounts);
+
+            context
+                .docker()
+                .run_command(
+                    run_command_builder
+                        .build()
+                        .map_err(|e| anyhow!("Invalid run commands params: {}", e))?,
+                )
+                .await?;
+        } else {
+            let mut command = tokio::process::Command::new(interpreter);
+            command.args(args);
+            command.arg(&script_file.path);
+
+            shell::run_command_with_output(command).await?;
+        };
+
+        Ok(())
+    }
+}
+
+fn get_interpreter_args(
+    interpreter: Option<Vec<String>>,
+) -> Result<(String, Vec<String>), anyhow::Error> {
+    if let Some(command) = interpreter {
+        let mut it = command.into_iter();
+        let interpreter = it.next().ok_or(anyhow!("Intepreter is not specified"))?;
+        let args = it.collect();
+
+        Ok((interpreter, args))
     } else {
-        info!("Executing native script");
-        run_shell_command_native(config.script).await?;
+        Ok((
+            String::from(DEFAULT_INTERPRETER),
+            DEFAULT_ARGS.iter().map(|s| String::from(*s)).collect(),
+        ))
     }
-
-    Ok(())
-}
-
-pub async fn run_shell_command_native(script: String) -> Result<(), TaskError> {
-    // TODO: Get interpreter from config
-    let mut command = tokio::process::Command::new("bash");
-    command.stdout(Stdio::piped());
-    command.stderr(Stdio::piped());
-    command.stdin(Stdio::piped());
-
-    info!("Spawning process with native script",);
-
-    let child = command.spawn()?;
-    let stdout = LinesStream::new(BufReader::new(child.stdout.unwrap()).lines());
-    let stderr = LinesStream::new(BufReader::new(child.stderr.unwrap()).lines());
-    let mut stdin = child.stdin.unwrap();
-    stdin.write_all(script.as_bytes()).await?;
-    stdin.write_all("\n".as_bytes()).await?; // FIXME?: Execute last command
-
-    let mut child_out = stdout
-        .map(|e| OutputLine::Out(e))
-        .merge(stderr.map(|e| OutputLine::Err(e)));
-
-    while let Some(line) = child_out.next().await {
-        match line {
-            OutputLine::Out(line) => {
-                info!("Script out: {}", line?);
-            }
-            OutputLine::Err(line) => {
-                error!("Script err: {}", line?);
-            }
-        }
-    }
-
-    info!("Script done");
-
-    Ok(())
-}
-
-pub async fn run_shell_command_docker(
-    docker: &Docker,
-    script: String,
-    image: String,
-) -> Result<(), TaskError> {
-    // FIXME: Copied from docker_run
-
-    let name = docker
-        .con
-        .create_container::<&str, &str>(
-            Some(CreateContainerOptions {
-                ..Default::default()
-            }),
-            Config {
-                image: Some(&image),
-                cmd: Some(vec!["bash"]),
-		open_stdin: Some(true),
-                ..Default::default()
-            },
-        )
-        .await?
-        .id;
-    info!("Created container '{}'", name);
-
-    docker.con.start_container::<&str>(&name, None).await?;
-    info!("Container started '{}'", name);
-
-    let mut attach = docker
-        .con
-        .attach_container::<&str>(
-            &name,
-            Some(AttachContainerOptions {
-                stdin: Some(true),
-                stdout: Some(true),
-                stderr: Some(true),
-		stream: Some(true),
-		detach_keys: Some("ctrl-c"),
-                ..Default::default()
-            }),
-        )
-        .await?;
-
-    info!("Seding script to container '{}'", name);
-    attach.input.write_all(script.as_bytes()).await?;
-    attach.input.write_all(b"\nexit\n").await?; // FIXME: Do not use exit
-
-    info!("Script was sent to container '{}'", name);
-    while let Some(line) = attach.output.next().await {
-        match line? {
-            LogOutput::StdErr { message } => {
-                error!(
-                    "Conainer \"{}\" err: {}",
-                    name,
-                    String::from_utf8_lossy(message.as_ref())
-                );
-            }
-            LogOutput::StdOut { message } => {
-                info!(
-                    "Conainer \"{}\" out: {}",
-                    name,
-                    String::from_utf8_lossy(message.as_ref())
-                );
-	    },
-            LogOutput::StdIn { message } => {
-		warn!("Docker script should not produce stdin messages");
-	    },
-            LogOutput::Console { message } => {
-		warn!("Docker script should not produce console messages");
-	    },
-        }
-    }
-
-    info!("Script in container {} done", name);
-
-    docker.con.stop_container(&name, None).await?;
-    docker.con.remove_container(&name, None).await?;
-
-    Ok(())
-}
-
-enum OutputLine<T> {
-    Out(T),
-    Err(T),
 }

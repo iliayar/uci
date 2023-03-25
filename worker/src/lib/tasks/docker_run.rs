@@ -1,40 +1,42 @@
-use super::error::TaskError;
+use super::task;
 use crate::lib::docker;
-use bollard::container::{Config, CreateContainerOptions};
+
 use common::RunContainerConfig;
 use log::*;
 
-pub async fn docker_run(
-    docker: &docker::Docker,
-    config: RunContainerConfig,
-) -> Result<(), TaskError> {
-    if let Ok(_) = docker.con.inspect_container(&config.name, None).await {
-        warn!(
-            "Container with name {} alredy exists. Trying to remove",
-            config.name
-        );
+use anyhow::anyhow;
 
-        docker.con.remove_container(&config.name, None).await?;
+#[async_trait::async_trait]
+impl task::Task for RunContainerConfig {
+    async fn run(self, context: &crate::lib::context::Context) -> Result<(), task::TaskError> {
+        let mut create_params_builder = docker::CreateContainerParamsBuilder::default();
+        create_params_builder
+            .image(self.image)
+            .name(Some(self.name));
+
+        let name = context
+            .docker()
+            .create_container(
+                create_params_builder
+                    .build()
+                    .map_err(|e| anyhow!("Invalid create container params: {}", e))?,
+            )
+            .await?;
+        info!("Created container '{}'", name);
+
+        let mut start_params_builder = docker::StartContainerParamsBuilder::default();
+        start_params_builder.name(name.clone());
+
+        context
+            .docker()
+            .start_container(
+                start_params_builder
+                    .build()
+                    .map_err(|e| anyhow!("Invalid start container params: {}", e))?,
+            )
+            .await?;
+        info!("Container started '{}'", name);
+
+        Ok(())
     }
-
-    let name = docker
-        .con
-        .create_container(
-            Some(CreateContainerOptions {
-                name: config.name,
-                ..CreateContainerOptions::default()
-            }),
-            Config {
-                image: Some(config.image),
-                ..Config::default()
-            },
-        )
-        .await?
-        .id;
-    info!("Created container '{}'", name);
-
-    docker.con.start_container::<&str>(&name, None).await?;
-    info!("Container started '{}'", name);
-
-    Ok(())
 }

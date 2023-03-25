@@ -3,23 +3,26 @@ use common::RequestConfig;
 use anyhow::anyhow;
 use log::*;
 
-use super::error::TaskError;
+use super::task;
 
-pub async fn run_request(config: &RequestConfig) -> Result<(), TaskError> {
-    let mut client = match &config.method {
-        common::RequestMethod::Post => reqwest::Client::new().post(&config.url),
-        common::RequestMethod::Get => reqwest::Client::new().post(&config.url),
-    };
+#[async_trait::async_trait]
+impl task::Task for RequestConfig {
+    async fn run(self, context: &crate::lib::context::Context) -> Result<(), task::TaskError> {
+        let mut client = match &self.method {
+            common::RequestMethod::Post => reqwest::Client::new().post(&self.url),
+            common::RequestMethod::Get => reqwest::Client::new().post(&self.url),
+        };
 
-    if let Some(body) = &config.body {
-        client = client.body(body.clone());
+        if let Some(body) = &self.body {
+            client = client.body(body.clone());
+        }
+
+        let response = client.send().await?;
+
+        info!("Response: {:?}", response);
+
+        response.error_for_status()?;
+
+        Ok(())
     }
-
-    let response = client.send().await?;
-
-    info!("Response: {:?}", response);
-
-    response.error_for_status()?;
-
-    Ok(())
 }

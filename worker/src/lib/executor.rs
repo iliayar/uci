@@ -1,22 +1,24 @@
-use super::docker::Docker;
-use super::tasks;
-use common::{Config, Step};
+use super::context::Context;
+use super::tasks::{self, Task};
+
+use common::Config;
+
 use log::*;
 use thiserror::Error;
 
 pub struct Executor {
-    docker: Docker,
+    context: Context,
 }
 
 #[derive(Debug, Error)]
 pub enum ExecutorError {
     #[error("Task #{1} failed: {0}")]
-    TaskError(tasks::error::TaskError, usize),
+    TaskError(tasks::TaskError, usize),
 }
 
 impl Executor {
-    pub fn new(docker: Docker) -> Result<Executor, ExecutorError> {
-        Ok(Executor { docker })
+    pub fn new(context: Context) -> Result<Executor, ExecutorError> {
+        Ok(Executor { context })
     }
 
     pub async fn run(self, config: Config) {
@@ -29,42 +31,9 @@ impl Executor {
         info!("Running execution");
 
         for (i, step) in config.steps.into_iter().enumerate() {
-            self.run_step(step)
+            step.run(&self.context)
                 .await
                 .map_err(|e| ExecutorError::TaskError(e, i))?;
-        }
-
-        Ok(())
-    }
-
-    // TODO: Make step a trait?
-    pub async fn run_step(&self, step: Step) -> Result<(), tasks::error::TaskError> {
-        match step {
-            Step::RunContainer(config) => {
-                info!("Running step RunContainer");
-                debug!("With config: {:?}", config);
-
-                tasks::docker_run(&self.docker, config).await?;
-            }
-
-            Step::BuildImage(config) => {
-                info!("Running step BuildImage");
-                debug!("With config: {:?}", config);
-
-                tasks::docker_build(&self.docker, config).await?;
-            },
-	    Step::RunShell(config) => {
-                info!("Running step RunShell");
-                debug!("With config: {:?}", config);
-
-                tasks::run_shell_command(&self.docker, config).await?;
-	    },
-	    Step::Request(config) => {
-		info!("Running step Request");
-		debug!("With config: {:?}", config);
-
-		tasks::run_request(&config).await?;
-	    }
         }
 
         Ok(())

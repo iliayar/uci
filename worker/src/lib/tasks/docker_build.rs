@@ -1,114 +1,64 @@
-use super::error::TaskError;
-use crate::lib::{docker, utils};
-use bollard::image::{BuildImageOptions, CreateImageOptions};
-use common::{
-    BuildImageArchiveConfig, BuildImageConfig, BuildImagePathConfig, BuildImagePullConfig,
-    BuildImageSource,
+use common::BuildImageConfig;
+
+use super::task;
+use crate::lib::{
+    docker,
+    utils::{file_utils, tempfile},
 };
-use futures::{AsyncWrite, StreamExt};
+
+use anyhow::anyhow;
 use log::*;
-use tokio_util::codec::{BytesCodec, FramedRead};
-use warp::hyper::Body;
 
-use tar;
+#[async_trait::async_trait]
+impl task::Task for BuildImageConfig {
+    async fn run(self, context: &crate::lib::context::Context) -> Result<(), task::TaskError> {
+        if let Some(source) = self.source {
+            let tar_tempfile = match source.path {
+                common::BuildImageConfigSourcePath::Directory(path) => {
+                    file_utils::create_temp_tar(path.into()).await?
+                }
+                common::BuildImageConfigSourcePath::Tar(path) => {
+                    tempfile::TempFile::dummy(path.into()).await
+                }
+            };
 
-pub async fn docker_build(
-    docker: &docker::Docker,
-    config: BuildImageConfig,
-) -> Result<(), TaskError> {
-    match config.source {
-        BuildImageSource::Path(config) => docker_build_from_path(docker, config).await?,
-        BuildImageSource::Archive(config) => docker_build_from_archive(docker, config).await?,
-        BuildImageSource::Pull(config) => docker_build_pull(docker, config).await?,
+            let mut params_builder = docker::BuildParamsBuilder::default();
+
+            params_builder
+                .tar_path(tar_tempfile.path.clone())
+                .image(self.image);
+
+            if let Some(tag) = self.tag {
+                params_builder.tag(tag);
+            }
+
+            context
+                .docker()
+                .build(
+                    params_builder
+                        .build()
+                        .map_err(|e| anyhow!("Invalid build params: {}", e))?,
+                )
+                .await?;
+        } else {
+            let mut params_builder = docker::PullParamsBuilder::default();
+
+            params_builder.image(self.image);
+
+            if let Some(tag) = self.tag {
+                params_builder.tag(tag);
+            }
+
+            context
+                .docker()
+                .pull(
+                    params_builder
+                        .build()
+                        .map_err(|e| anyhow!("Invalid pull params: {}", e))?,
+                )
+                .await?;
+        }
+
+        Ok(())
     }
-
-    Ok(())
-}
-
-async fn docker_build_from_path(
-    docker: &docker::Docker,
-    config: BuildImagePathConfig,
-) -> Result<(), TaskError> {
-    let filename = utils::tempfile::get_temp_filename().await;
-
-    // TODO: Get rid of this sync
-    info!("Creating temporary tar in {:?}", filename);
-    let file = std::fs::File::create(filename.clone())?;
-
-    info!("Writing tar");
-    let mut tar = tar::Builder::new(file);
-    tar.append_dir_all(".", config.path)?;
-
-    drop(tar);
-
-    docker_build_from_archive(
-        docker,
-        BuildImageArchiveConfig {
-            tar_path: filename.to_str().unwrap().to_string(),
-            dockerfile: config.dockerfile,
-            tag: config.tag,
-        },
-    )
-    .await?;
-
-    info!("Removing tar at {:?}", filename);
-    tokio::fs::remove_file(filename).await?;
-
-    Ok(())
-}
-
-async fn docker_build_from_archive(
-    docker: &docker::Docker,
-    config: BuildImageArchiveConfig,
-) -> Result<(), TaskError> {
-    let archive = tokio::fs::File::open(config.tar_path).await?;
-    let stream = FramedRead::new(archive, BytesCodec::new());
-    let body = Body::wrap_stream(stream);
-
-    // TODO: Remove clone
-    let mut results = docker.con.build_image(
-        BuildImageOptions {
-            dockerfile: config.dockerfile.unwrap_or(String::from("Dockerfile")),
-            t: config.tag.clone(),
-            ..Default::default()
-        },
-        None,
-        Some(body),
-    );
-
-    // TODO: Generalize logging this
-    while let Some(result) = results.next().await {
-        let result = result?;
-        let progress = result.stream.unwrap_or(String::from("<unknown>"));
-        info!("Builing image {}: {}", config.tag, progress);
-    }
-    info!("Building image {} done", config.tag);
-
-    Ok(())
-}
-
-async fn docker_build_pull(
-    docker: &docker::Docker,
-    config: BuildImagePullConfig,
-) -> Result<(), TaskError> {
-    // TODO: Remove clone
-    let mut results = docker.con.create_image(
-        Some(CreateImageOptions {
-            from_image: config.image.clone(),
-            tag: config.tag.unwrap_or(String::from("latest")),
-            ..Default::default()
-        }),
-        None,
-        None,
-    );
-
-    // TODO: Generalize logging this
-    while let Some(result) = results.next().await {
-        let result = result?;
-        let status = result.status.unwrap_or(String::from("<unknown>"));
-        info!("Pulling image {}: {}", config.image, status);
-    }
-    info!("Pulling image {} done", config.image);
-
-    Ok(())
 }
