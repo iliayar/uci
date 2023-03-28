@@ -5,10 +5,10 @@ use warp::hyper::StatusCode;
 use super::docker;
 use super::executor::{Executor, ExecutorError};
 use super::context::Context;
-use common::Config;
+use common::Pipeline;
 use log::*;
 
-pub async fn run(context: Context, config: Config) -> Result<impl warp::Reply, Infallible> {
+pub async fn run(context: Context, config: Pipeline) -> Result<impl warp::Reply, Infallible> {
     match run_impl(context, config).await {
         Ok(_) => Ok(StatusCode::OK),
         Err(err) => {
@@ -18,7 +18,7 @@ pub async fn run(context: Context, config: Config) -> Result<impl warp::Reply, I
     }
 }
 
-pub async fn run_impl(context: Context, config: Config) -> Result<(), ExecutorError> {
+pub async fn run_impl(context: Context, config: Pipeline) -> Result<(), ExecutorError> {
     debug!("Running with config {:?}", config);
 
     let executor = Executor::new(context)?;

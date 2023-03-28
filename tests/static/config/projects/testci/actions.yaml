@@ -2,7 +2,7 @@ actions:
   - id: main
     update_repos:
       - test
-    cases:
+    conditions:
       - type: always
         run_pipelines:
           - echo

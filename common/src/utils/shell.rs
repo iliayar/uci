@@ -1,19 +1,19 @@
-use std::process::Stdio;
+use std::process::{ExitStatus, Stdio};
 
-use tokio::io::{AsyncBufReadExt, BufReader};
+use tokio::io::{AsyncBufReadExt, AsyncReadExt, BufReader};
 use tokio_stream::{wrappers::LinesStream, StreamExt};
 
 use log::*;
 
 pub async fn run_command_with_output(
     mut command: tokio::process::Command,
-) -> Result<(), tokio::io::Error> {
+) -> Result<ExitStatus, tokio::io::Error> {
     command.stdout(Stdio::piped());
     command.stderr(Stdio::piped());
 
-    let child = command.spawn()?;
-    let stdout = LinesStream::new(BufReader::new(child.stdout.unwrap()).lines());
-    let stderr = LinesStream::new(BufReader::new(child.stderr.unwrap()).lines());
+    let mut child = command.spawn()?;
+    let stdout = LinesStream::new(BufReader::new(child.stdout.take().unwrap()).lines());
+    let stderr = LinesStream::new(BufReader::new(child.stderr.take().unwrap()).lines());
 
     let mut child_out = stdout
         .map(|e| OutputLine::Out(e))
@@ -30,9 +30,11 @@ pub async fn run_command_with_output(
         }
     }
 
-    info!("Script done");
+    let status = child.wait().await?;
 
-    Ok(())
+    info!("Script done with exit status {}", status);
+
+    Ok(status)
 }
 
 enum OutputLine<T> {

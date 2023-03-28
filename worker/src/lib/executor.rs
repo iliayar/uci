@@ -1,7 +1,7 @@
 use super::context::Context;
 use super::tasks::{self, Task};
 
-use common::Config;
+use common::Pipeline;
 
 use log::*;
 use thiserror::Error;
@@ -21,13 +21,13 @@ impl Executor {
         Ok(Executor { context })
     }
 
-    pub async fn run(self, config: Config) {
+    pub async fn run(self, config: Pipeline) {
         if let Err(err) = self.run_impl(config).await {
             error!("Executor failed: {}", err);
         }
     }
 
-    pub async fn run_impl(self, config: Config) -> Result<(), ExecutorError> {
+    pub async fn run_impl(self, config: Pipeline) -> Result<(), ExecutorError> {
         info!("Running execution");
 
         for (i, step) in config.steps.into_iter().enumerate() {

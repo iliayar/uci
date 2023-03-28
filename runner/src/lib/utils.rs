@@ -21,3 +21,20 @@ pub fn expand_home_impl<S: AsRef<str>>(path: S) -> Result<PathBuf, anyhow::Error
     ))?;
     Ok(PathBuf::from(format!("{}/{}", home, home_path)))
 }
+
+pub fn abs_or_rel_to_dir<S: AsRef<str>>(path: S, dirpath: PathBuf) -> PathBuf {
+    assert!(dirpath.is_dir(), "Base path must be a directory");
+
+    let path = try_expand_home(path);
+
+    if path.is_absolute() {
+        path
+    } else {
+        dirpath.join(path)
+    }
+}
+
+pub fn abs_or_rel_to_file<S: AsRef<str>>(path: S, filepath: PathBuf) -> PathBuf {
+    assert!(filepath.is_file(), "Base path must be a file");
+    abs_or_rel_to_dir(path, filepath.parent().unwrap().to_path_buf())
+}

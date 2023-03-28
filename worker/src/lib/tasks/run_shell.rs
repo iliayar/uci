@@ -1,12 +1,8 @@
 use std::collections::HashMap;
 
-use crate::lib::{
-    docker,
-    utils::{
-        shell::{self, run_command_with_output},
-        tempfile,
-    },
-};
+use common::utils::run_command_with_output;
+
+use crate::lib::{docker, utils::tempfile};
 
 use super::task;
 
@@ -49,7 +45,7 @@ impl task::Task for common::RunShellConfig {
             command.args(args);
             command.arg(&script_file.path);
 
-            shell::run_command_with_output(command).await?;
+            run_command_with_output(command).await?;
         };
 
         Ok(())

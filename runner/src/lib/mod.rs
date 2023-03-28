@@ -1,9 +1,9 @@
 mod app;
-mod filters;
-mod handlers;
 mod config;
-mod git;
-mod utils;
 mod context;
+mod filters;
+mod git;
+mod handlers;
+mod utils;
 
 pub use app::App;

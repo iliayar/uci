@@ -7,13 +7,7 @@ use log::*;
 
 use clap::Parser;
 
-use crate::lib::{git, utils::expand_home};
-
-use super::{
-    config::{Config, ConfigError},
-    filters,
-    git::GitError, context::{Context, ContextError},
-};
+use super::{config, context, filters, git};
 
 #[derive(Parser, Debug)]
 #[command(about)]
@@ -28,28 +22,28 @@ struct Args {
 }
 
 pub struct App {
-    context: Context,
+    context: context::Context,
     port: u16,
 }
 
 #[derive(Error, Debug)]
 pub enum RunnerError {
     #[error("Failed to load config: {0}")]
-    ConfigLoadError(#[from] ConfigError),
+    ConfigLoadError(#[from] config::LoadConfigError),
 
     #[error("Failed to create context: {0}")]
-    ContextError(#[from] ContextError),
+    ContextError(#[from] context::ContextError),
 }
 
 impl App {
     pub async fn init() -> Result<App, RunnerError> {
         pretty_env_logger::init();
 
-	let args = Args::parse();
+        let args = Args::parse();
 
         let app = App {
-            context: Context::new(args.config).await?,
-	    port: args.port,
+            context: context::Context::new(args.config).await?,
+            port: args.port,
         };
 
         Ok(app)
@@ -70,6 +64,6 @@ impl App {
     }
 
     async fn clone_missing_repos(&self) -> Result<(), RunnerError> {
-	Ok(self.context.clone_missing_repos().await?)
+        Ok(self.context.clone_missing_repos().await?)
     }
 }

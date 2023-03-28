@@ -9,7 +9,7 @@ pub enum Step {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-pub struct Config {
+pub struct Pipeline {
     pub steps: Vec<Step>,
 }
 
