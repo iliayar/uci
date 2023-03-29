@@ -2,9 +2,9 @@ use std::convert::Infallible;
 
 use warp::hyper::StatusCode;
 
-use super::docker;
-use super::executor::{Executor, ExecutorError};
-use super::context::Context;
+use worker_lib::docker;
+use worker_lib::executor::{Executor, ExecutorError};
+use worker_lib::context::Context;
 use common::Pipeline;
 use log::*;
 

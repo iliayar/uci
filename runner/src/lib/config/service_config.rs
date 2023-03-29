@@ -7,7 +7,7 @@ const SERVICE_CONFIG: &str = "repos.yaml";
 #[derive(Debug)]
 pub struct ServiceConfig {
     pub repos_path: PathBuf,
-    pub worker_url: String,
+    pub worker_url: Option<String>,
 }
 
 impl ServiceConfig {
@@ -26,7 +26,7 @@ mod raw {
     #[derive(Serialize, Deserialize)]
     struct ServiceConfig {
         repos_path: String,
-        worker_url: String,
+        worker_url: Option<String>,
     }
 
     impl TryFrom<ServiceConfig> for super::ServiceConfig {

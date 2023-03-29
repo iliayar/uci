@@ -3,4 +3,5 @@ members = [
     "common",
     "runner",
     "worker",
+    "worker_lib"
 ]

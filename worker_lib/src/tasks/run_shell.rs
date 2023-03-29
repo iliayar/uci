@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use common::utils::run_command_with_output;
 
-use crate::lib::{docker, utils::tempfile};
+use crate::{docker, utils::tempfile};
 
 use super::task;
 
@@ -13,7 +13,7 @@ const DEFAULT_ARGS: [&str; 1] = ["bash"];
 
 #[async_trait::async_trait]
 impl task::Task for common::RunShellConfig {
-    async fn run(self, context: &crate::lib::context::Context) -> Result<(), task::TaskError> {
+    async fn run(self, context: &crate::context::Context) -> Result<(), task::TaskError> {
         let (interpreter, mut args) = get_interpreter_args(self.interpreter)?;
         let script_file = tempfile::TempFile::new_executable(&self.script).await?;
 

@@ -47,6 +47,9 @@ pub enum ExecutionError {
     #[error("Request failed: {0}")]
     RequestError(#[from] reqwest::Error),
 
+    #[error("Pipeline failed: {0}")]
+    PipelineError(#[from] worker_lib::executor::ExecutorError),
+
     #[error(transparent)]
     Other(#[from] anyhow::Error),
 }

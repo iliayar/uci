@@ -19,10 +19,15 @@ struct Args {
     /// TCP port to run on
     #[arg(short, long, default_value_t = 3002)]
     port: u16,
+
+    /// Do not use external worker, run pipelines in the same process
+    #[arg(long, default_value_t = false)]
+    worker: bool,
 }
 
 pub struct App {
     context: context::Context,
+    worker_context: Option<worker_lib::context::Context>,
     port: u16,
 }
 
@@ -33,6 +38,9 @@ pub enum RunnerError {
 
     #[error("Failed to create context: {0}")]
     ContextError(#[from] context::ContextError),
+
+    #[error("Failed to init docker: {0}")]
+    DockerError(#[from] worker_lib::docker::DockerError),
 }
 
 impl App {
@@ -41,8 +49,16 @@ impl App {
 
         let args = Args::parse();
 
+        let worker_context = if args.worker {
+            let docker = worker_lib::docker::Docker::init()?;
+            Some(worker_lib::context::Context::new(docker))
+        } else {
+            None
+        };
+
         let app = App {
             context: context::Context::new(args.config).await?,
+	    worker_context,
             port: args.port,
         };
 
@@ -58,7 +74,7 @@ impl App {
             }
         }
 
-        let api = filters::runner(self.context);
+        let api = filters::runner(self.context, self.worker_context);
         let routes = api.with(warp::log("runner"));
         warp::serve(routes).run(([127, 0, 0, 1], self.port)).await;
     }

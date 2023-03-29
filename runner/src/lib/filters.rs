@@ -26,10 +26,11 @@ impl ContextStore {
 
 pub fn runner(
     context: Context,
+    worker_context: Option<worker_lib::context::Context>,
 ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
     let context_store = ContextStore::new(context);
     ping()
-        .or(run(context_store.clone()))
+        .or(run(context_store.clone(), worker_context.clone()))
         .or(reload_config(context_store.clone()))
 }
 
@@ -39,10 +40,12 @@ pub fn ping() -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection
 
 pub fn run(
     context: ContextStore,
+    worker_context: Option<worker_lib::context::Context>,
 ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
     warp::path!("run" / String / String)
         .and(warp::post())
         .and(with_context(context))
+        .and(with_worker_context(worker_context))
         .and_then(handlers::run)
 }
 
@@ -59,4 +62,10 @@ pub fn with_context(
     context: ContextStore,
 ) -> impl Filter<Extract = (ContextStore,), Error = Infallible> + Clone {
     warp::any().map(move || context.clone())
+}
+
+pub fn with_worker_context(
+    worker_context: Option<worker_lib::context::Context>,
+) -> impl Filter<Extract = (Option<worker_lib::context::Context>,), Error = Infallible> + Clone {
+    warp::any().map(move || worker_context.clone())
 }

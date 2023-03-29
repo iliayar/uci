@@ -1,5 +1,5 @@
 use super::task;
-use crate::lib::docker;
+use crate::docker;
 
 use common::RunContainerConfig;
 use log::*;
@@ -8,7 +8,7 @@ use anyhow::anyhow;
 
 #[async_trait::async_trait]
 impl task::Task for RunContainerConfig {
-    async fn run(self, context: &crate::lib::context::Context) -> Result<(), task::TaskError> {
+    async fn run(self, context: &crate::context::Context) -> Result<(), task::TaskError> {
         let mut create_params_builder = docker::CreateContainerParamsBuilder::default();
         create_params_builder
             .image(self.image)

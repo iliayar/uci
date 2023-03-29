@@ -1,4 +1,4 @@
-use crate::lib::context::Context;
+use crate::context::Context;
 
 use thiserror::Error;
 
@@ -7,7 +7,7 @@ use log::*;
 #[derive(Debug, Error)]
 pub enum TaskError {
     #[error("Docker error: {0}")]
-    DockerError(#[from] crate::lib::docker::DockerError),
+    DockerError(#[from] crate::docker::DockerError),
 
     #[error("IO error: {0}")]
     IOError(#[from] std::io::Error),

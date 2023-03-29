@@ -14,6 +14,7 @@ thiserror = "1.0.39"
 tokio = { version = "1.24.2", features = ["macros", "rt", "rt-multi-thread", "process"] }
 warp = "0.3.3"
 common = { path = "../common" }
+worker_lib = { path = "../worker_lib" }
 serde_yaml = "0.9.19"
 anyhow = "1.0.70"
 clap = { version = "4.1.11", features = ["derive"] }

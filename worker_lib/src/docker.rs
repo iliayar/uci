@@ -9,7 +9,7 @@ use log::*;
 
 use futures::StreamExt;
 
-use crate::lib::utils::file_utils;
+use crate::utils::file_utils;
 
 #[derive(Debug, thiserror::Error)]
 pub enum DockerError {

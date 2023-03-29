@@ -9,6 +9,7 @@ pub async fn run(
     project_id: String,
     action_id: String,
     store: ContextStore,
+    worker_context: Option<worker_lib::context::Context>,
 ) -> Result<impl warp::Reply, Infallible> {
     info!("Running hook {} for project {}", action_id, project_id);
     let config = store.context().config().await;
@@ -19,7 +20,7 @@ pub async fn run(
     }
 
     tokio::spawn(async move {
-        if let Err(err) = config.run_project_action(&project_id, &action_id).await {
+        if let Err(err) = config.run_project_action(worker_context, &project_id, &action_id).await {
             error!(
                 "Failed to execute action {} on project {}: {}",
                 action_id, project_id, err

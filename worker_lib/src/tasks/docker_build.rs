@@ -1,7 +1,7 @@
 use common::BuildImageConfig;
 
 use super::task;
-use crate::lib::{
+use crate::{
     docker,
     utils::{file_utils, tempfile},
 };
@@ -11,7 +11,7 @@ use log::*;
 
 #[async_trait::async_trait]
 impl task::Task for BuildImageConfig {
-    async fn run(self, context: &crate::lib::context::Context) -> Result<(), task::TaskError> {
+    async fn run(self, context: &crate::context::Context) -> Result<(), task::TaskError> {
         if let Some(source) = self.source {
             let tar_tempfile = match source.path {
                 common::BuildImageConfigSourcePath::Directory(path) => {

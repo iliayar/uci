@@ -3,6 +3,8 @@ use std::path::PathBuf;
 use anyhow::anyhow;
 use log::*;
 
+use worker_lib;
+
 #[derive(Debug)]
 pub struct Project {
     pub path: PathBuf,
@@ -22,6 +24,7 @@ impl Project {
     pub async fn run_pipeline(
         &self,
         config: &super::ServiceConfig,
+        worker_context: Option<worker_lib::context::Context>,
         pipeline_id: &str,
     ) -> Result<(), super::ExecutionError> {
         let pipeline = self
@@ -30,13 +33,22 @@ impl Project {
             .ok_or(anyhow!("Now such pipeline to run {}", pipeline_id))?;
 
         info!("Running pipeline {}", pipeline_id);
-        let response = reqwest::Client::new()
-            .post(&format!("{}/run", config.worker_url))
-            .json(pipeline)
-            .send()
-            .await?;
+        if let Some(worker_context) = worker_context {
+            let executor = worker_lib::executor::Executor::new(worker_context)?;
+            tokio::spawn(executor.run(pipeline.clone()));
+        } else {
+            let worker_url = config.worker_url.as_ref().ok_or(anyhow!(
+                "Worker url is not specified in config.
+                 Specify it or add '--worker' flag to run pipeline in the same process"
+            ))?;
+            let response = reqwest::Client::new()
+                .post(&format!("{}/run", worker_url))
+                .json(pipeline)
+                .send()
+                .await?;
 
-        response.error_for_status()?;
+            response.error_for_status()?;
+        }
 
         info!("Pipeline {} started", pipeline_id);
 

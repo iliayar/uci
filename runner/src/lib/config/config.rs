@@ -34,6 +34,7 @@ impl Config {
 
     pub async fn run_project_action(
         &self,
+        worker_context: Option<worker_lib::context::Context>,
         project_id: &str,
         action_id: &str,
     ) -> Result<(), super::ExecutionError> {
@@ -53,7 +54,7 @@ impl Config {
 
         let mut tasks = Vec::new();
         for pipeline_id in run_pipelines.iter() {
-            tasks.push(project.run_pipeline(&self.service_config, pipeline_id))
+            tasks.push(project.run_pipeline(&self.service_config, worker_context.clone(), pipeline_id))
         }
         futures::future::try_join_all(tasks).await?;
 

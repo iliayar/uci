@@ -1,9 +1,9 @@
 use std::path::PathBuf;
 
+use hyper::Body;
 use tokio_util::codec::{BytesCodec, FramedRead};
 
 use tokio::fs::File;
-use warp::hyper::Body;
 
 use super::tempfile;
 

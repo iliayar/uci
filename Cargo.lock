@@ -119,7 +119,7 @@ dependencies = [
  "futures-util",
  "hex",
  "http",
- "hyper 0.14.23",
+ "hyper 0.14.25",
  "hyperlocal",
  "log 0.4.17",
  "pin-project-lite",
@@ -780,9 +780,9 @@ dependencies = [
 
 [[package]]
 name = "hyper"
-version = "0.14.23"
+version = "0.14.25"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "034711faac9d2166cb1baf1a2fb0b60b1f277f8492fd72176c17f3515e1abd3c"
+checksum = "cc5e554ff619822309ffd57d8734d77cd5ce6238bc956f037ea06c58238c9899"
 dependencies = [
  "bytes",
  "futures-channel",
@@ -809,7 +809,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d6183ddfa99b85da61a140bea0efc93fdf56ceaa041b37d553518030827f9905"
 dependencies = [
  "bytes",
- "hyper 0.14.23",
+ "hyper 0.14.25",
  "native-tls",
  "tokio",
  "tokio-native-tls",
@@ -823,7 +823,7 @@ checksum = "0fafdf7b2b2de7c9784f76e02c0935e65a8117ec3b768644379983ab333ac98c"
 dependencies = [
  "futures-util",
  "hex",
- "hyper 0.14.23",
+ "hyper 0.14.25",
  "pin-project",
  "tokio",
 ]
@@ -1557,7 +1557,7 @@ dependencies = [
  "h2",
  "http",
  "http-body",
- "hyper 0.14.23",
+ "hyper 0.14.25",
  "hyper-tls",
  "ipnet",
  "js-sys",
@@ -1597,6 +1597,7 @@ dependencies = [
  "thiserror",
  "tokio",
  "warp",
+ "worker_lib",
 ]
 
 [[package]]
@@ -2251,7 +2252,7 @@ dependencies = [
  "futures-util",
  "headers",
  "http",
- "hyper 0.14.23",
+ "hyper 0.14.25",
  "log 0.4.17",
  "mime 0.3.16",
  "mime_guess 2.0.4",
@@ -2503,6 +2504,28 @@ dependencies = [
  "tokio-util",
  "uuid",
  "warp",
+ "worker_lib",
+]
+
+[[package]]
+name = "worker_lib"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "bollard",
+ "common",
+ "derive_builder",
+ "futures",
+ "hyper 0.14.25",
+ "log 0.4.17",
+ "reqwest",
+ "tar",
+ "thiserror",
+ "tokio",
+ "tokio-stream",
+ "tokio-util",
+ "uuid",
 ]
 
 [[package]]
