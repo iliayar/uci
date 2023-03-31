@@ -3,7 +3,8 @@ use std::{collections::HashMap, path::PathBuf};
 use bollard::{
     container::{self, CreateContainerOptions, RemoveContainerOptions, WaitContainerOptions},
     exec::{CreateExecOptions, StartExecResults},
-    image::{BuildImageOptions, CreateImageOptions}, models::HostConfig,
+    image::{BuildImageOptions, CreateImageOptions},
+    models::HostConfig,
 };
 use log::*;
 
@@ -64,6 +65,11 @@ pub struct RunCommandParams {
     image: String,
     mounts: HashMap<PathBuf, String>,
     command: Vec<String>,
+}
+
+pub enum DeployBuildParams {
+    Build(BuildParams),
+    Pull(PullParams),
 }
 
 fn default_tag() -> String {
@@ -158,7 +164,7 @@ impl Docker {
             ..Default::default()
         });
 
-        Ok(self
+        let name = self
             .con
             .create_container(
                 create_container_options,
@@ -168,10 +174,14 @@ impl Docker {
                 },
             )
             .await?
-            .id)
+            .id;
+        info!("Created container {}", name);
+
+        Ok(name)
     }
 
     pub async fn start_container(&self, params: StartContainerParams) -> Result<(), DockerError> {
+        info!("Starting container {}", params.name);
         self.con
             .start_container::<&str>(&params.name, None)
             .await
@@ -179,15 +189,15 @@ impl Docker {
     }
 
     pub async fn run_command(&self, params: RunCommandParams) -> Result<(), DockerError> {
-	let host_config = HostConfig {
-	    binds: Some(binds_from_map(params.mounts)),
-	    ..Default::default()
-	};
+        let host_config = HostConfig {
+            binds: Some(binds_from_map(params.mounts)),
+            ..Default::default()
+        };
 
         let config = container::Config {
             image: Some(params.image),
             tty: Some(true),
-	    host_config: Some(host_config),
+            host_config: Some(host_config),
             ..Default::default()
         };
 
@@ -243,6 +253,30 @@ impl Docker {
                 }),
             )
             .await?;
+
+        Ok(())
+    }
+
+    pub async fn deploy(
+        &self,
+        build_params: DeployBuildParams,
+        create_params: CreateContainerParams,
+        start_params: StartContainerParams,
+    ) -> Result<(), DockerError> {
+        match build_params {
+            DeployBuildParams::Build(build_params) => {
+                self.build(build_params).await?;
+            }
+            DeployBuildParams::Pull(pull_params) => self.pull(pull_params).await?,
+        }
+
+        info!("Stopping container {}", start_params.name);
+        self.con.stop_container(&start_params.name, None).await?;
+        info!("Container stopped {}, removing", start_params.name);
+        self.con.remove_container(&start_params.name, None).await?;
+
+        self.create_container(create_params).await?;
+        self.start_container(start_params).await?;
 
         Ok(())
     }

@@ -1,4 +1,7 @@
-use std::{collections::HashMap, path::PathBuf};
+use std::{
+    collections::{HashMap, HashSet},
+    path::PathBuf,
+};
 
 use crate::lib::git;
 
@@ -20,9 +23,27 @@ pub struct Repo {
     branch: String,
 }
 
+pub type ReposDiffs = HashMap<String, git::ChangedFiles>;
+
 impl Repos {
     pub async fn load(configs_root: PathBuf) -> Result<Repos, LoadConfigError> {
         raw::parse(configs_root.join(REPO_CONFIG)).await
+    }
+
+    pub async fn pull_all(
+        &self,
+        config: &super::ServiceConfig,
+        repos: &[String],
+    ) -> Result<ReposDiffs, super::ExecutionError> {
+        info!("Pulling repos");
+
+        let mut repo_diffs = ReposDiffs::new();
+        for repo_id in repos.iter() {
+            repo_diffs.insert(repo_id.clone(), self.pull(config, repo_id).await?);
+        }
+        debug!("Repos diffs: {:?}", repo_diffs);
+
+        Ok(repo_diffs)
     }
 
     pub async fn pull(
@@ -61,7 +82,7 @@ impl Repos {
             }
         }
 
-        futures::future::try_join_all(git_tasks);
+        futures::future::try_join_all(git_tasks).await?;
 
         Ok(())
     }

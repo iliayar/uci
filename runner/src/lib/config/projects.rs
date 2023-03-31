@@ -4,7 +4,7 @@ use std::path::PathBuf;
 
 use super::LoadConfigError;
 
-const PROJECTS_CONFIG: &str = "repos.yaml";
+const PROJECTS_CONFIG: &str = "projects.yaml";
 
 #[derive(Debug)]
 pub struct Projects {

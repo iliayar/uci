@@ -42,7 +42,7 @@ pub fn run(
     context: ContextStore,
     worker_context: Option<worker_lib::context::Context>,
 ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
-    warp::path!("run" / String / String)
+    warp::path!(String / String / "run")
         .and(warp::post())
         .and(with_context(context))
         .and(with_worker_context(worker_context))

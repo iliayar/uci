@@ -10,6 +10,7 @@ pub struct Project {
     pub path: PathBuf,
     pub actions: super::Actions,
     pub pipelines: super::Pipelines,
+    pub services: super::Services,
 }
 
 impl Project {
@@ -17,7 +18,8 @@ impl Project {
         Ok(Project {
             path: project_root.clone(),
             actions: super::Actions::load(project_root.clone()).await?,
-            pipelines: super::Pipelines::load(project_root).await?,
+            pipelines: super::Pipelines::load(project_root.clone()).await?,
+            services: super::Services::load(project_root.clone()).await?,
         })
     }
 
@@ -53,5 +55,13 @@ impl Project {
         info!("Pipeline {} started", pipeline_id);
 
         Ok(())
+    }
+
+    pub async fn run_service_action(
+        &self,
+        service: String,
+        action: super::ServiceAction,
+    ) -> Result<(), super::ExecutionError> {
+        todo!()
     }
 }

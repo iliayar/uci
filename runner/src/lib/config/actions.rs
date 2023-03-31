@@ -1,6 +1,6 @@
 use crate::lib::git;
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use std::path::PathBuf;
 
@@ -21,10 +21,16 @@ pub struct Action {
     cases: Vec<Case>,
 }
 
+#[derive(Debug, Clone)]
+pub enum ServiceAction {
+    Deploy,
+}
+
 #[derive(Debug)]
 pub struct Case {
     condition: Condition,
-    run_pipelines: Vec<String>,
+    run_pipelines: Option<Vec<String>>,
+    services: Option<HashMap<String, ServiceAction>>,
 }
 
 #[derive(Debug)]
@@ -47,25 +53,55 @@ impl Actions {
 impl Action {
     pub async fn get_matched_pipelines(
         &self,
-        config: &super::ServiceConfig,
-        repos: &super::Repos,
-    ) -> Result<Vec<String>, super::ExecutionError> {
-        info!("Pulling repos");
+        diffs: &super::ReposDiffs,
+    ) -> Result<HashSet<String>, super::ExecutionError> {
+        Ok(self
+            .get_actions(diffs, |case| case.run_pipelines.clone())
+            .await?
+            .into_iter()
+            .map(|v| v.into_iter())
+            .flatten()
+            .collect())
+    }
 
-        let mut repo_diffs = HashMap::new();
-        for repo_id in self.update_repos.iter() {
-            repo_diffs.insert(repo_id.clone(), repos.pull(config, repo_id).await?);
-        }
+    pub async fn get_service_actions(
+        &self,
+        diffs: &super::ReposDiffs,
+    ) -> Result<HashMap<String, super::ServiceAction>, super::ExecutionError> {
+        Ok(self
+            .get_actions(diffs, |case| case.services.clone())
+            .await?
+            .into_iter()
+            .map(|m| m.into_iter())
+            .flatten()
+            .collect())
+    }
 
-        let mut run_pipelines = Vec::new();
+    async fn get_actions<T>(
+        &self,
+        diffs: &super::ReposDiffs,
+        f: impl Fn(&super::Case) -> Option<T>,
+    ) -> Result<Vec<T>, super::ExecutionError> {
+        let mut res = Vec::new();
+
         for (i, case) in self.cases.iter().enumerate() {
-            if case.condition.check_matched(&repo_diffs).await {
+            if case.condition.check_matched(diffs).await {
                 info!("Match condition {}", i);
-                run_pipelines.append(&mut case.run_pipelines.clone());
+                if let Some(value) = f(case) {
+                    res.push(value);
+                }
             }
         }
 
-        Ok(run_pipelines)
+        Ok(res)
+    }
+
+    pub async fn get_diffs(
+        &self,
+        config: &super::ServiceConfig,
+        repos: &super::Repos,
+    ) -> Result<super::ReposDiffs, super::ExecutionError> {
+        repos.pull_all(config, &self.update_repos).await
     }
 }
 
@@ -103,10 +139,17 @@ mod raw {
     }
 
     #[derive(Deserialize, Serialize)]
+    enum ServiceAction {
+        #[serde(rename = "deploy")]
+        Deploy,
+    }
+
+    #[derive(Deserialize, Serialize)]
     struct Condition {
         #[serde(rename = "type")]
         t: ConditionType,
-        run_pipelines: Vec<String>,
+        run_pipelines: Option<Vec<String>>,
+        services: Option<HashMap<String, ServiceAction>>,
     }
 
     impl TryFrom<Actions> for super::Actions {
@@ -121,19 +164,39 @@ mod raw {
                 conditions,
             } in value.actions.into_iter()
             {
-                let cases = conditions
+                let cases: Result<Vec<_>, super::LoadConfigError> = conditions
                     .into_iter()
-                    .map(|Condition { t, run_pipelines }| {
-                        let condition = match t {
-                            ConditionType::Always => super::Condition::Always,
-                        };
+                    .map(
+                        |Condition {
+                             t,
+                             run_pipelines,
+                             services,
+                         }| {
+                            let condition = match t {
+                                ConditionType::Always => super::Condition::Always,
+                            };
 
-                        super::Case {
-                            condition,
-                            run_pipelines,
-                        }
-                    })
+                            let services: Option<Result<HashMap<_, _>, super::LoadConfigError>> =
+                                services.map(|m| {
+                                    m.into_iter()
+                                        .map(|(k, v)| Ok((k, super::ServiceAction::try_from(v)?)))
+                                        .collect()
+                                });
+                            let services = if let Some(services) = services {
+                                Some(services?)
+                            } else {
+                                None
+                            };
+
+                            Ok(super::Case {
+                                condition,
+                                run_pipelines,
+                                services,
+                            })
+                        },
+                    )
                     .collect();
+                let cases = cases?;
 
                 actions.insert(
                     id,
@@ -145,6 +208,16 @@ mod raw {
             }
 
             Ok(super::Actions { actions })
+        }
+    }
+
+    impl TryFrom<ServiceAction> for super::ServiceAction {
+        type Error = super::LoadConfigError;
+
+        fn try_from(value: ServiceAction) -> Result<Self, Self::Error> {
+            Ok(match value {
+                ServiceAction::Deploy => super::ServiceAction::Deploy,
+            })
         }
     }
 

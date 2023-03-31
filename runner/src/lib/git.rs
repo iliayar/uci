@@ -5,6 +5,7 @@ use tokio::process::Command;
 use common::utils::run_command_with_output;
 
 use anyhow::anyhow;
+use log::*;
 
 #[derive(Debug, thiserror::Error)]
 pub enum GitError {
@@ -18,13 +19,26 @@ pub enum GitError {
 pub type ChangedFiles = Vec<String>;
 
 pub async fn clone(repo: String, path: PathBuf) -> Result<(), GitError> {
-    git(path.clone(), &[repo, path.to_string_lossy().to_string()])
-        .await
-        .map(|_| ())
+    git(
+        PathBuf::from("."),
+        &[
+            String::from("clone"),
+            repo,
+            path.to_string_lossy().to_string(),
+        ],
+    )
+    .await
+    .map(|_| ())
 }
 
 pub async fn check_exists(path: PathBuf) -> Result<bool, GitError> {
-    git_status(path.clone(), &[]).await.map(|s| s.success())
+    if !path.exists() {
+        return Ok(false);
+    }
+
+    git_status(path.clone(), &[String::from("status")])
+        .await
+        .map(|s| s.success())
 }
 
 pub async fn pull(path: PathBuf, branch: String) -> Result<ChangedFiles, GitError> {
@@ -34,7 +48,11 @@ pub async fn pull(path: PathBuf, branch: String) -> Result<ChangedFiles, GitErro
     git(path.clone(), &[String::from("checkout"), branch.clone()]).await?;
     git(
         path.clone(),
-        &[String::from("pull"), String::from("origin"), branch.clone()],
+        &[
+            String::from("reset"),
+            String::from("--hard"),
+            format!("origin/{}", branch.clone()),
+        ],
     )
     .await?;
 
@@ -44,7 +62,7 @@ pub async fn pull(path: PathBuf, branch: String) -> Result<ChangedFiles, GitErro
         path.clone(),
         &[
             String::from("diff"),
-            String::from("--names-only"),
+            String::from("--name-only"),
             old_commit,
             new_commit,
         ],
@@ -68,6 +86,7 @@ async fn current_commit(path: PathBuf) -> Result<String, GitError> {
 async fn git_out(path: PathBuf, args: &[String]) -> Result<Vec<String>, GitError> {
     let mut command = git_base(path)?;
     command.args(args);
+    debug!("Executing git command: git {}", args.join(" "));
 
     let out = command.output().await?;
     Ok(String::from_utf8_lossy(&out.stdout)
@@ -91,6 +110,7 @@ async fn git(path: PathBuf, args: &[String]) -> Result<(), GitError> {
 async fn git_status(path: PathBuf, args: &[String]) -> Result<ExitStatus, GitError> {
     let mut command = git_base(path)?;
     command.args(args);
+    debug!("Executing git command: git {}", args.join(" "));
 
     let status = run_command_with_output(command).await?;
 

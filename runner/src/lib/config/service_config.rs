@@ -2,7 +2,7 @@ use std::path::PathBuf;
 
 use super::LoadConfigError;
 
-const SERVICE_CONFIG: &str = "repos.yaml";
+const SERVICE_CONFIG: &str = "conf.yaml";
 
 #[derive(Debug)]
 pub struct ServiceConfig {

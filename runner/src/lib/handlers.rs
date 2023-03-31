@@ -20,7 +20,10 @@ pub async fn run(
     }
 
     tokio::spawn(async move {
-        if let Err(err) = config.run_project_action(worker_context, &project_id, &action_id).await {
+        if let Err(err) = config
+            .run_project_action(worker_context, &project_id, &action_id)
+            .await
+        {
             error!(
                 "Failed to execute action {} on project {}: {}",
                 action_id, project_id, err

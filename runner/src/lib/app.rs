@@ -58,7 +58,7 @@ impl App {
 
         let app = App {
             context: context::Context::new(args.config).await?,
-	    worker_context,
+            worker_context,
             port: args.port,
         };
 

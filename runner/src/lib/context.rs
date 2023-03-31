@@ -49,6 +49,6 @@ impl Context {
 
     pub async fn clone_missing_repos(&self) -> Result<(), ContextError> {
         self.config.lock().await.clone_missing_repos().await?;
-	Ok(())
+        Ok(())
     }
 }

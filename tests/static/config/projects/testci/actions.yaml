@@ -6,3 +6,10 @@ actions:
       - type: always
         run_pipelines:
           - echo
+  - id: deploy
+    update_repos:
+      - test
+    conditions:
+      - type: always
+        services:
+          test-service: deploy
