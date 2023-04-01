@@ -1,6 +1,5 @@
-use common::BuildImageConfig;
+use std::path::PathBuf;
 
-use super::task;
 use crate::{
     docker,
     utils::{file_utils, tempfile},
@@ -9,13 +8,17 @@ use crate::{
 use anyhow::anyhow;
 use log::*;
 
+const DEFUALT_CONTEXT: &str = "./";
+
 #[async_trait::async_trait]
-impl task::Task for BuildImageConfig {
-    async fn run(self, context: &crate::context::Context) -> Result<(), task::TaskError> {
+impl super::Task for common::BuildImageConfig {
+    async fn run(self, context: &crate::context::Context) -> Result<(), super::TaskError> {
         if let Some(source) = self.source {
+            let context_path = source.context.unwrap_or(DEFUALT_CONTEXT.to_string());
             let tar_tempfile = match source.path {
                 common::BuildImageConfigSourcePath::Directory(path) => {
-                    file_utils::create_temp_tar(path.into()).await?
+                    let path: PathBuf = path.into();
+                    file_utils::create_temp_tar(path.join(context_path)).await?
                 }
                 common::BuildImageConfigSourcePath::Tar(path) => {
                     tempfile::TempFile::dummy(path.into()).await
@@ -30,6 +33,10 @@ impl task::Task for BuildImageConfig {
 
             if let Some(tag) = self.tag {
                 params_builder.tag(tag);
+            }
+
+            if let Some(dockerfile) = source.dockerfile {
+                params_builder.dockerfile(dockerfile);
             }
 
             context

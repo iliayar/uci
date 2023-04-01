@@ -97,14 +97,13 @@ mod raw {
 
     #[derive(Deserialize, Serialize)]
     struct Repo {
-        id: String,
         source: String,
         branch: Option<String>,
     }
 
     #[derive(Deserialize, Serialize)]
     struct Repos {
-        repos: Vec<Repo>,
+        repos: HashMap<String, Repo>,
     }
 
     impl TryFrom<Repos> for super::Repos {
@@ -113,7 +112,7 @@ mod raw {
         fn try_from(value: Repos) -> Result<Self, Self::Error> {
             let mut repos = HashMap::new();
 
-            for Repo { id, source, branch } in value.repos.into_iter() {
+            for (id, Repo { source, branch }) in value.repos.into_iter() {
                 repos.insert(
                     id,
                     super::Repo {

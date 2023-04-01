@@ -30,8 +30,13 @@ impl Task for common::Step {
         debug!("Running step with config {:?}", self);
 
         match self {
-	    common::Step::RunShell(config) => config.run(context).await,
-            _ => todo!(),
+            common::Step::RunShell(config) => config.run(context).await,
+            common::Step::BuildImage(config) => config.run(context).await,
+            common::Step::Request(config) => config.run(context).await,
+            common::Step::RunContainer(config) => config.run(context).await,
+            common::Step::Parallel(config) => config.run(context).await,
+            common::Step::Deploy(config) => config.run(context).await,
+            common::Step::StopContainer(config) => config.run(context).await,
         }
     }
 }

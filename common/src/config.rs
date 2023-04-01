@@ -5,12 +5,27 @@ pub enum Step {
     RunContainer(RunContainerConfig),
     BuildImage(BuildImageConfig),
     RunShell(RunShellConfig),
+    StopContainer(StopContainerConfig),
     Request(RequestConfig),
+    Parallel(ParallelConfig),
+    Deploy(DeployConfig),
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Pipeline {
     pub steps: Vec<Step>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct ParallelConfig {
+    pub steps: Vec<Step>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct DeployConfig {
+    pub stop_config: StopContainerConfig,
+    pub build_config: BuildImageConfig,
+    pub run_config: RunContainerConfig,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -20,22 +35,14 @@ pub struct RunContainerConfig {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct StopContainerConfig {
+    pub name: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct BuildImagePullConfig {
     pub image: String,
     pub tag: Option<String>,
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct BuildImagePathConfig {
-    pub path: String,
-    pub dockerfile: Option<String>,
-    pub tag: String,
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct BuildImageArchiveConfig {
-    pub tar_path: String,
-    pub dockerfile: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -48,6 +55,7 @@ pub struct BuildImageConfig {
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct BuildImageConfigSource {
     pub dockerfile: Option<String>,
+    pub context: Option<String>,
     pub path: BuildImageConfigSourcePath,
 }
 
@@ -73,5 +81,6 @@ pub struct RequestConfig {
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub enum RequestMethod {
-    Post, Get,
+    Post,
+    Get,
 }

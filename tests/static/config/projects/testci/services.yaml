@@ -2,7 +2,7 @@ services:
   test-service:
     build:
       repo: test
-      dockerfile: app/Dockerfile
+      context: ./app
   common-service:
     image: ealen/echo-server
     global: true

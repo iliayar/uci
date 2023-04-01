@@ -30,13 +30,12 @@ mod raw {
 
     #[derive(Deserialize, Serialize)]
     struct Project {
-        id: String,
         path: String,
     }
 
     #[derive(Deserialize, Serialize)]
     struct Projects {
-        projects: Vec<Project>,
+        projects: HashMap<String, Project>,
     }
 
     pub async fn parse(config_path: PathBuf) -> Result<super::Projects, super::LoadConfigError> {
@@ -45,10 +44,14 @@ mod raw {
 
         let mut projects = HashMap::new();
 
-        for Project { id, path } in data.projects.into_iter() {
+        for (id, Project { path }) in data.projects.into_iter() {
             projects.insert(
-                id,
-                config::Project::load(utils::abs_or_rel_to_file(path, config_path.clone())).await?,
+                id.clone(),
+                config::Project::load(
+                    id.clone(),
+                    utils::abs_or_rel_to_file(path, config_path.clone()),
+                )
+                .await?,
             );
         }
 

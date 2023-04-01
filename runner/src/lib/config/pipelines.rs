@@ -30,12 +30,11 @@ mod raw {
 
     #[derive(Deserialize, Serialize)]
     struct Pipelines {
-        pipelines: Vec<PipelineLocation>,
+        pipelines: HashMap<String, PipelineLocation>,
     }
 
     #[derive(Deserialize, Serialize)]
     struct PipelineLocation {
-        id: String,
         path: String,
     }
 
@@ -44,7 +43,7 @@ mod raw {
         let data: Pipelines = serde_yaml::from_str(&content)?;
 
         let mut pipelines = HashMap::new();
-        for PipelineLocation { id, path } in data.pipelines.into_iter() {
+        for (id, PipelineLocation { path }) in data.pipelines.into_iter() {
             pipelines.insert(
                 id,
                 load_pipeline(utils::abs_or_rel_to_file(path, config_root.clone())).await?,

@@ -5,8 +5,8 @@ mod project;
 mod projects;
 mod repo;
 mod service_config;
-mod utils;
 mod services;
+mod utils;
 
 pub use actions::*;
 pub use config::*;

@@ -1,5 +1,5 @@
 repos:
-  - id: test
+  test:
     source: ssh://git@gitlab.com:iliayar/testci.git
     branch: main
   # - id: itmo

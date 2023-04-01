@@ -1,4 +1,4 @@
 projects:
-  - id: testci
+  testci:
     # TODO: Maybe make possible to store project configs in Repo
     path: projects/testci

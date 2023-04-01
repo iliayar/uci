@@ -22,7 +22,6 @@ impl task::Task for RunContainerConfig {
                     .map_err(|e| anyhow!("Invalid create container params: {}", e))?,
             )
             .await?;
-        info!("Created container '{}'", name);
 
         let mut start_params_builder = docker::StartContainerParamsBuilder::default();
         start_params_builder.name(name.clone());
@@ -35,7 +34,6 @@ impl task::Task for RunContainerConfig {
                     .map_err(|e| anyhow!("Invalid start container params: {}", e))?,
             )
             .await?;
-        info!("Container started '{}'", name);
 
         Ok(())
     }

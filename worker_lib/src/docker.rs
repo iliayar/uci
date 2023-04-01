@@ -4,7 +4,7 @@ use bollard::{
     container::{self, CreateContainerOptions, RemoveContainerOptions, WaitContainerOptions},
     exec::{CreateExecOptions, StartExecResults},
     image::{BuildImageOptions, CreateImageOptions},
-    models::HostConfig,
+    models::{ContainerState, HostConfig},
 };
 use log::*;
 
@@ -61,6 +61,11 @@ pub struct StartContainerParams {
 }
 
 #[derive(derive_builder::Builder)]
+pub struct StopContainerParams {
+    name: String,
+}
+
+#[derive(derive_builder::Builder)]
 pub struct RunCommandParams {
     image: String,
     mounts: HashMap<PathBuf, String>,
@@ -77,7 +82,7 @@ fn default_tag() -> String {
 }
 
 fn default_dockerfile() -> String {
-    String::from("latest")
+    String::from("Dockerfile")
 }
 
 impl Docker {
@@ -150,7 +155,7 @@ impl Docker {
                 error!("{}", error);
             }
         }
-        info!("Building image {} done", params.tag);
+        info!("Building image {} done", params.image);
 
         Ok(())
     }
@@ -257,26 +262,32 @@ impl Docker {
         Ok(())
     }
 
-    pub async fn deploy(
+    pub async fn stop_container(
         &self,
-        build_params: DeployBuildParams,
-        create_params: CreateContainerParams,
-        start_params: StartContainerParams,
+        stop_params: StopContainerParams,
     ) -> Result<(), DockerError> {
-        match build_params {
-            DeployBuildParams::Build(build_params) => {
-                self.build(build_params).await?;
+        let params = match self.con.inspect_container(&stop_params.name, None).await {
+            Ok(params) => params,
+            Err(err) => {
+                error!("Cannot inspect container: {}", err);
+                warn!("Assuming container doesn't exists, do not remove it");
+                return Ok(());
             }
-            DeployBuildParams::Pull(pull_params) => self.pull(pull_params).await?,
+        };
+
+        if let Some(state) = params.state {
+            if let Some(true) = state.running {
+                info!("Stopping container {}", stop_params.name);
+                self.con.stop_container(&stop_params.name, None).await?;
+            } else {
+                error!("Cannot get container runnig state, do not stop");
+            }
+        } else {
+            error!("Cannot get container state, do not stop");
         }
 
-        info!("Stopping container {}", start_params.name);
-        self.con.stop_container(&start_params.name, None).await?;
-        info!("Container stopped {}, removing", start_params.name);
-        self.con.remove_container(&start_params.name, None).await?;
-
-        self.create_container(create_params).await?;
-        self.start_container(start_params).await?;
+        info!("Container stopped {}, removing", stop_params.name);
+        self.con.remove_container(&stop_params.name, None).await?;
 
         Ok(())
     }

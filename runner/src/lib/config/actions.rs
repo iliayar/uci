@@ -122,12 +122,11 @@ mod raw {
 
     #[derive(Deserialize, Serialize)]
     struct Actions {
-        actions: Vec<Action>,
+        actions: HashMap<String, Action>,
     }
 
     #[derive(Deserialize, Serialize)]
     struct Action {
-        id: String,
         update_repos: Vec<String>,
         conditions: Vec<Condition>,
     }
@@ -158,11 +157,13 @@ mod raw {
         fn try_from(value: Actions) -> Result<Self, Self::Error> {
             let mut actions = HashMap::new();
 
-            for Action {
+            for (
                 id,
-                update_repos,
-                conditions,
-            } in value.actions.into_iter()
+                Action {
+                    update_repos,
+                    conditions,
+                },
+            ) in value.actions.into_iter()
             {
                 let cases: Result<Vec<_>, super::LoadConfigError> = conditions
                     .into_iter()

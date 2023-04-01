@@ -1,12 +1,12 @@
 actions:
-  - id: main
+  main:
     update_repos:
       - test
     conditions:
       - type: always
         run_pipelines:
           - echo
-  - id: deploy
+  deploy:
     update_repos:
       - test
     conditions:

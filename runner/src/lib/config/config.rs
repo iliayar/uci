@@ -50,9 +50,9 @@ impl Config {
 
         let diffs = action.get_diffs(&self.service_config, &self.repos).await?;
         let run_pipelines = action.get_matched_pipelines(&diffs).await?;
-	let service_actions = action.get_service_actions(&diffs).await?;
+        let service_actions = action.get_service_actions(&diffs).await?;
 
-	info!("Runnign pipelines {:?}", run_pipelines);
+        info!("Runnign pipelines {:?}", run_pipelines);
         let mut tasks = Vec::new();
         for pipeline_id in run_pipelines.iter() {
             tasks.push(project.run_pipeline(
@@ -63,11 +63,16 @@ impl Config {
         }
         futures::future::try_join_all(tasks).await?;
 
-	info!("Running service actions {:?}", service_actions);
-	let mut tasks = Vec::new();
-	for (service, action) in service_actions.into_iter() {
-	    tasks.push(project.run_service_action(service, action));
-	}
+        info!("Running service actions {:?}", service_actions);
+        let mut tasks = Vec::new();
+        for (service, action) in service_actions.into_iter() {
+            tasks.push(project.run_service_action(
+                &self.service_config,
+                worker_context.clone(),
+                service,
+                action,
+            ));
+        }
         futures::future::try_join_all(tasks).await?;
 
         Ok(())
