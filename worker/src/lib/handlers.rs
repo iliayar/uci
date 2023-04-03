@@ -19,8 +19,6 @@ pub async fn run(context: Context, config: Pipeline) -> Result<impl warp::Reply,
 }
 
 pub async fn run_impl(context: Context, config: Pipeline) -> Result<(), ExecutorError> {
-    debug!("Running with config {:?}", config);
-
     let executor = Executor::new(context)?;
     tokio::spawn(executor.run(config));
 

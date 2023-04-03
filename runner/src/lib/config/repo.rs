@@ -26,8 +26,11 @@ pub struct Repo {
 pub type ReposDiffs = HashMap<String, git::ChangedFiles>;
 
 impl Repos {
-    pub async fn load(configs_root: PathBuf) -> Result<Repos, LoadConfigError> {
-        raw::parse(configs_root.join(REPO_CONFIG)).await
+    pub async fn load<'a>(
+        configs_root: PathBuf,
+        context: &mut super::LoadContext<'a>,
+    ) -> Result<Repos, LoadConfigError> {
+        raw::load(configs_root.join(REPO_CONFIG), context).await
     }
 
     pub async fn pull_all(
@@ -93,7 +96,7 @@ mod raw {
 
     use serde::{Deserialize, Serialize};
 
-    use crate::lib::config::utils;
+    use crate::lib::{config, utils};
 
     #[derive(Deserialize, Serialize)]
     struct Repo {
@@ -106,27 +109,42 @@ mod raw {
         repos: HashMap<String, Repo>,
     }
 
-    impl TryFrom<Repos> for super::Repos {
-        type Error = super::LoadConfigError;
+    impl config::LoadRaw for Repos {
+        type Output = super::Repos;
 
-        fn try_from(value: Repos) -> Result<Self, Self::Error> {
-            let mut repos = HashMap::new();
-
-            for (id, Repo { source, branch }) in value.repos.into_iter() {
-                repos.insert(
-                    id,
-                    super::Repo {
-                        source,
-                        branch: branch.unwrap_or(String::from("master")),
-                    },
-                );
-            }
+        fn load_raw(
+            self,
+            context: &mut config::LoadContext,
+        ) -> Result<Self::Output, config::LoadConfigError> {
+            let repos: Result<HashMap<_, _>, super::LoadConfigError> = self
+                .repos
+                .into_iter()
+                .map(|(id, repo)| Ok((id, repo.load_raw(context)?)))
+                .collect();
+            let repos = repos?;
 
             Ok(super::Repos { repos })
         }
     }
 
-    pub async fn parse(path: PathBuf) -> Result<super::Repos, super::LoadConfigError> {
-        utils::load_file::<Repos, _>(path).await
+    impl config::LoadRaw for Repo {
+        type Output = super::Repo;
+
+        fn load_raw(
+            self,
+            context: &mut config::LoadContext,
+        ) -> Result<Self::Output, config::LoadConfigError> {
+            Ok(super::Repo {
+                source: self.source,
+                branch: self.branch.unwrap_or(String::from("master")),
+            })
+        }
+    }
+
+    pub async fn load<'a>(
+        path: PathBuf,
+        context: &mut config::LoadContext<'a>,
+    ) -> Result<super::Repos, super::LoadConfigError> {
+        config::load::<Repos>(path, context).await
     }
 }

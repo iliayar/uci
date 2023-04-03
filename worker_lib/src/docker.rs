@@ -5,7 +5,11 @@ use bollard::{
     exec::{CreateExecOptions, StartExecResults},
     image::{BuildImageOptions, CreateImageOptions},
     models::{ContainerState, HostConfig},
+    network::{ConnectNetworkOptions, CreateNetworkOptions},
+    volume::CreateVolumeOptions,
 };
+
+use anyhow::anyhow;
 use log::*;
 
 use futures::StreamExt;
@@ -53,6 +57,10 @@ pub struct BuildParams {
 pub struct CreateContainerParams {
     image: String,
     name: Option<String>,
+    #[builder(default = "Default::default()")]
+    mounts: HashMap<String, String>,
+    #[builder(default = "Default::default()")]
+    networks: Vec<String>,
 }
 
 #[derive(derive_builder::Builder)]
@@ -68,8 +76,12 @@ pub struct StopContainerParams {
 #[derive(derive_builder::Builder)]
 pub struct RunCommandParams {
     image: String,
-    mounts: HashMap<PathBuf, String>,
+    #[builder(default = "Default::default()")]
+    mounts: HashMap<String, String>,
     command: Vec<String>,
+    workdir: Option<String>,
+    #[builder(default = "Default::default()")]
+    networks: Vec<String>,
 }
 
 pub enum DeployBuildParams {
@@ -164,6 +176,17 @@ impl Docker {
         &self,
         params: CreateContainerParams,
     ) -> Result<String, DockerError> {
+        let host_config = HostConfig {
+            binds: Some(binds_from_map(params.mounts)),
+            ..Default::default()
+        };
+
+        let config = container::Config {
+            image: Some(params.image),
+            host_config: Some(host_config),
+            ..Default::default()
+        };
+
         let create_container_options = params.name.map(|name| CreateContainerOptions {
             name,
             ..Default::default()
@@ -171,15 +194,21 @@ impl Docker {
 
         let name = self
             .con
-            .create_container(
-                create_container_options,
-                container::Config {
-                    image: Some(params.image),
-                    ..container::Config::default()
-                },
-            )
+            .create_container(create_container_options, config)
             .await?
             .id;
+
+        for network in params.networks {
+            self.con
+                .connect_network::<&str>(
+                    &network,
+                    ConnectNetworkOptions {
+                        container: &name,
+                        ..Default::default()
+                    },
+                )
+                .await?;
+        }
         info!("Created container {}", name);
 
         Ok(name)
@@ -218,6 +247,18 @@ impl Docker {
             )
             .await?
             .id;
+
+        for network in params.networks {
+            self.con
+                .connect_network::<&str>(
+                    &network,
+                    ConnectNetworkOptions {
+                        container: &name,
+                        ..Default::default()
+                    },
+                )
+                .await?;
+        }
         info!("Created container '{}'", name);
 
         self.con.start_container::<&str>(&name, None).await?;
@@ -231,6 +272,7 @@ impl Docker {
                     attach_stdout: Some(true),
                     attach_stderr: Some(true),
                     cmd: Some(params.command),
+                    working_dir: params.workdir,
                     ..Default::default()
                 },
             )
@@ -291,17 +333,66 @@ impl Docker {
 
         Ok(())
     }
+
+    pub async fn get_workdir(&self, image: &str) -> Result<PathBuf, DockerError> {
+        let conf = self.con.inspect_image(image).await?;
+        let workdir = conf
+            .config
+            .ok_or(anyhow!("Image {} has no 'Config'", image))?
+            .working_dir;
+
+        if let Some(workdir) = workdir {
+            let p = PathBuf::from(workdir);
+            if p.is_absolute() {
+                Ok(p)
+            } else {
+                Ok(PathBuf::from("/").join(p))
+            }
+        } else {
+            Ok(PathBuf::from("/"))
+        }
+    }
+
+    pub async fn create_network_if_missing(&self, name: &str) -> Result<(), DockerError> {
+        if let Ok(_) = self.con.inspect_network::<&str>(name, None).await {
+            info!("Network {} already exists", name);
+            Ok(())
+        } else {
+            info!("Creating network {}", name);
+            self.con
+                .create_network(CreateNetworkOptions {
+                    name,
+                    ..Default::default()
+                })
+                .await?;
+
+            Ok(())
+        }
+    }
+
+    pub async fn create_volume_if_missing(&self, name: &str) -> Result<(), DockerError> {
+        if let Ok(_) = self.con.inspect_volume(name).await {
+            info!("Volume {} already exists", name);
+            Ok(())
+        } else {
+            info!("Creating volume {}", name);
+            self.con
+                .create_volume(CreateVolumeOptions {
+                    name,
+                    ..Default::default()
+                })
+                .await?;
+
+            Ok(())
+        }
+    }
 }
 
-fn binds_from_map(mounts: HashMap<PathBuf, String>) -> Vec<String> {
+fn binds_from_map(mounts: HashMap<String, String>) -> Vec<String> {
     let mut volumes = Vec::new();
 
     for (host_path, container_path) in mounts.into_iter() {
-        volumes.push(format!(
-            "{}:{}",
-            host_path.to_string_lossy(),
-            container_path
-        ));
+        volumes.push(format!("{}:{}", host_path, container_path));
     }
 
     volumes

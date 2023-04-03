@@ -12,7 +12,11 @@ const DEFUALT_CONTEXT: &str = "./";
 
 #[async_trait::async_trait]
 impl super::Task for common::BuildImageConfig {
-    async fn run(self, context: &crate::context::Context) -> Result<(), super::TaskError> {
+    async fn run(
+        self,
+        context: &crate::context::Context,
+        task_context: &super::TaskContext,
+    ) -> Result<(), super::TaskError> {
         if let Some(source) = self.source {
             let context_path = source.context.unwrap_or(DEFUALT_CONTEXT.to_string());
             let tar_tempfile = match source.path {

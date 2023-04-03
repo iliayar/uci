@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -13,6 +15,15 @@ pub enum Step {
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Pipeline {
+    pub jobs: HashMap<String, Job>,
+    pub links: HashMap<String, String>,
+    pub networks: Vec<String>,
+    pub volumes: Vec<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct Job {
+    pub needs: Vec<String>,
     pub steps: Vec<Step>,
 }
 
@@ -32,6 +43,8 @@ pub struct DeployConfig {
 pub struct RunContainerConfig {
     pub name: String,
     pub image: String,
+    pub networks: Vec<String>,
+    pub volumes: HashMap<String, String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -70,6 +83,8 @@ pub struct RunShellConfig {
     pub script: String,
     pub docker_image: Option<String>,
     pub interpreter: Option<Vec<String>>,
+    pub volumes: HashMap<String, String>,
+    pub networks: Vec<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]

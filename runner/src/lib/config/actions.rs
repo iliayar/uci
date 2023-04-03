@@ -127,7 +127,7 @@ mod raw {
 
     #[derive(Deserialize, Serialize)]
     struct Action {
-        update_repos: Vec<String>,
+        update_repos: Option<Vec<String>>,
         conditions: Vec<Condition>,
     }
 
@@ -202,7 +202,7 @@ mod raw {
                 actions.insert(
                     id,
                     super::Action {
-                        update_repos,
+                        update_repos: update_repos.unwrap_or(Vec::new()),
                         cases,
                     },
                 );

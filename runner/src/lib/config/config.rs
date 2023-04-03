@@ -14,7 +14,12 @@ impl Config {
     pub async fn load(configs_root: PathBuf) -> Result<Config, super::LoadConfigError> {
         info!("Loading config");
 
-        let service_config = super::ServiceConfig::load(configs_root.clone()).await?;
+        let mut load_context = super::LoadContext::default();
+
+        let service_config =
+            super::ServiceConfig::load(configs_root.clone(), &mut load_context).await?;
+	load_context.set_config(&service_config);
+
         let repos = super::Repos::load(configs_root.clone()).await?;
         let projects = super::Projects::load(configs_root).await?;
 

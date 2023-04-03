@@ -7,6 +7,7 @@ mod repo;
 mod service_config;
 mod services;
 mod utils;
+mod load;
 
 pub use actions::*;
 pub use config::*;
@@ -16,6 +17,7 @@ pub use projects::*;
 pub use repo::*;
 pub use service_config::*;
 pub use services::*;
+pub use load::*;
 
 #[derive(Debug, thiserror::Error)]
 pub enum LoadConfigError {
@@ -39,6 +41,9 @@ pub enum ExecutionError {
 
     #[error("Pipeline failed: {0}")]
     PipelineError(#[from] worker_lib::executor::ExecutorError),
+
+    #[error("IO Error: {0}")]
+    IOError(#[from] tokio::io::Error),
 
     #[error(transparent)]
     Other(#[from] anyhow::Error),

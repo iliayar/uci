@@ -1,2 +1,2 @@
-repos_path: ~/.microci/repos
+data_dir: ~/.microci
 # worker_url: http://localhost:3001

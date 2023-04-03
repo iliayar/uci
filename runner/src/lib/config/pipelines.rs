@@ -27,6 +27,7 @@ mod raw {
     use crate::lib::{config, utils};
 
     use anyhow::anyhow;
+    use log::*;
 
     #[derive(Deserialize, Serialize)]
     struct Pipelines {
@@ -55,18 +56,28 @@ mod raw {
 
     #[derive(Deserialize, Serialize)]
     struct Pipeline {
-        steps: Vec<Step>,
+        jobs: HashMap<String, Job>,
+        links: Option<HashMap<String, String>>,
+    }
+
+    #[derive(Deserialize, Serialize)]
+    struct Job {
+        needs: Option<Vec<String>>,
+        steps: Option<Vec<Step>>,
     }
 
     #[derive(Deserialize, Serialize)]
     struct Step {
         #[serde(rename = "type")]
-        t: Type,
+        t: Option<Type>,
         script: Option<String>,
         interpreter: Option<Vec<String>>,
+	image: Option<String>,
+	networks: Option<Vec<String>>,
+	volumes: Option<HashMap<String, String>>,
     }
 
-    #[derive(Deserialize, Serialize)]
+    #[derive(Deserialize, Serialize, Clone, Copy)]
     enum Type {
         #[serde(rename = "script")]
         Script,
@@ -76,28 +87,81 @@ mod raw {
         type Error = super::LoadConfigError;
 
         fn try_from(value: Pipeline) -> Result<Self, Self::Error> {
-            let mut steps = Vec::<common::Step>::new();
-
-            for step_raw in value.steps.into_iter() {
-                match step_raw.t {
-                    Type::Script => {
-                        let config = common::RunShellConfig {
-                            script: step_raw
-                                .script
-                                .ok_or(anyhow!("'script' step requires 'scipt' field"))?,
-                            docker_image: None,
-                            interpreter: step_raw.interpreter,
-                        };
-                        steps.push(common::Step::RunShell(config));
+            let jobs: Result<HashMap<_, _>, super::LoadConfigError> = value
+                .jobs
+                .into_iter()
+                .map(|(k, v)| {
+                    if v.steps.is_none() {
+                        warn!("steps in job {} is not specified", k);
                     }
+
+                    let steps: Result<Vec<common::Step>, super::LoadConfigError> = v
+                        .steps
+                        .unwrap_or_default()
+                        .into_iter()
+                        .map(|step| step.try_into())
+                        .collect();
+                    let steps = steps?;
+
+                    let job = common::Job {
+                        needs: v.needs.unwrap_or_default(),
+                        steps,
+                    };
+
+                    Ok((k, job))
+                })
+                .collect();
+            let jobs = jobs?;
+
+            Ok(common::Pipeline {
+                jobs,
+                links: value.links.unwrap_or_default(),
+		networks: Default::default(),
+		volumes: Default::default(),
+            })
+        }
+    }
+
+    impl TryFrom<Step> for common::Step {
+        type Error = super::LoadConfigError;
+
+        fn try_from(value: Step) -> Result<Self, Self::Error> {
+            match get_type(&value)? {
+                Type::Script => {
+                    let config = common::RunShellConfig {
+                        script: value
+                            .script
+                            .ok_or(anyhow!("'script' step requires 'scipt' field"))?,
+                        docker_image: value.image,
+                        interpreter: value.interpreter,
+			volumes: value.volumes.unwrap_or_default(),
+			networks: value.networks.unwrap_or_default(),
+                    };
+                    Ok(common::Step::RunShell(config))
                 }
             }
-
-            Ok(common::Pipeline { steps })
         }
     }
 
     async fn load_pipeline(path: PathBuf) -> Result<common::Pipeline, super::LoadConfigError> {
         config::utils::load_file::<Pipeline, _>(path).await
+    }
+
+    fn get_type(step: &Step) -> Result<Type, super::LoadConfigError> {
+        if let Some(t) = step.t {
+            Ok(t)
+        } else if let Some(t) = guess_type(step) {
+            Ok(t)
+        } else {
+            Err(anyhow!("Type is not specified for step, cannot guess type").into())
+        }
+    }
+
+    fn guess_type(step: &Step) -> Option<Type> {
+        if step.script.is_some() {
+            Some(Type::Script)
+        } else {
+            None
+        }
     }
 }

@@ -1,5 +1,23 @@
-steps:
-  - type: script
-    script: |
-      set -e
-      echo "LUL"
+jobs:
+  run_script:
+    steps:
+      - type: script
+        image: ubuntu
+        script: |
+          apt-get update && apt-get install -y curl
+
+          pwd
+          ls -la
+          ls src
+          echo "KEK: $(id)" >> out/echo
+          echo "AMOGUS" >> /mnt/test/file
+          echo "ABOBA" >> /mnt/test-global/file
+          curl common-service/AMOGUS >> out/file
+        volumes:
+          '/mnt/test': test-vol
+          '/mnt/test-global': global-test-vol
+        networks:
+          - test-global-net
+links:
+  'src': $repos/test
+  'out': $data/some_result

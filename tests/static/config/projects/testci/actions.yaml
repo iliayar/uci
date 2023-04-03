@@ -13,3 +13,10 @@ actions:
       - type: always
         services:
           test-service: deploy
+          common-service: deploy
+
+  test:
+    conditions:
+      - type: always
+        run_pipelines:
+          - test-needs

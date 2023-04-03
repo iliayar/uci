@@ -8,11 +8,17 @@ use anyhow::anyhow;
 
 #[async_trait::async_trait]
 impl task::Task for RunContainerConfig {
-    async fn run(self, context: &crate::context::Context) -> Result<(), task::TaskError> {
+    async fn run(
+        self,
+        context: &crate::context::Context,
+        task_context: &super::TaskContext,
+    ) -> Result<(), task::TaskError> {
         let mut create_params_builder = docker::CreateContainerParamsBuilder::default();
         create_params_builder
             .image(self.image)
-            .name(Some(self.name));
+            .name(Some(self.name))
+            .mounts(self.volumes)
+            .networks(self.networks);
 
         let name = context
             .docker()
