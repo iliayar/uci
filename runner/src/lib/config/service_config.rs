@@ -2,12 +2,6 @@ use std::path::PathBuf;
 
 use super::LoadConfigError;
 
-const SERVICE_CONFIG: &str = "conf.yaml";
-
-const DEFAULT_REPOS_PATH: &str = "repos";
-const DEFAULT_DATA_PATH: &str = "data";
-const DEFAULT_DATA_DIR: &str = "~/.microci";
-
 #[derive(Debug)]
 pub struct ServiceConfig {
     pub data_dir: PathBuf,
@@ -18,10 +12,9 @@ pub struct ServiceConfig {
 
 impl ServiceConfig {
     pub async fn load<'a>(
-        configs_root: PathBuf,
-        context: &mut super::LoadContext<'a>,
+        context: &super::LoadContext<'a>,
     ) -> Result<ServiceConfig, LoadConfigError> {
-        super::load::<raw::ServiceConfig>(configs_root.join(SERVICE_CONFIG), context).await
+        raw::load(context).await
     }
 }
 
@@ -32,25 +25,30 @@ mod raw {
 
     use crate::lib::{config, utils};
 
+    const SERVICE_CONFIG: &str = "conf.yaml";
+
+    const DEFAULT_REPOS_PATH: &str = "repos";
+    const DEFAULT_DATA_PATH: &str = "data";
+    const DEFAULT_DATA_DIR: &str = "~/.microci";
+
     #[derive(Serialize, Deserialize)]
-    pub struct ServiceConfig {
+    struct ServiceConfig {
         data_dir: Option<String>,
         worker_url: Option<String>,
     }
 
-    impl config::LoadRaw for ServiceConfig {
+    impl config::LoadRawSync for ServiceConfig {
         type Output = super::ServiceConfig;
 
         fn load_raw(
             self,
-            context: &mut config::LoadContext,
+            context: &config::LoadContext,
         ) -> Result<Self::Output, config::LoadConfigError> {
-            let data_dir = utils::try_expand_home(
-                self.data_dir.unwrap_or(super::DEFAULT_DATA_DIR.to_string()),
-            );
+            let data_dir =
+                utils::try_expand_home(self.data_dir.unwrap_or(DEFAULT_DATA_DIR.to_string()));
             Ok(super::ServiceConfig {
-                data_path: data_dir.join(super::DEFAULT_DATA_PATH),
-                repos_path: data_dir.join(super::DEFAULT_REPOS_PATH),
+                data_path: data_dir.join(DEFAULT_DATA_PATH),
+                repos_path: data_dir.join(DEFAULT_REPOS_PATH),
                 worker_url: self.worker_url,
                 data_dir,
             })
@@ -58,9 +56,9 @@ mod raw {
     }
 
     pub async fn load<'a>(
-        path: PathBuf,
-        context: &mut config::LoadContext<'a>,
+        context: &config::LoadContext<'a>,
     ) -> Result<super::ServiceConfig, super::LoadConfigError> {
-        config::load::<ServiceConfig>(path, context).await
+        config::load_sync::<ServiceConfig>(context.configs_root()?.join(SERVICE_CONFIG), context)
+            .await
     }
 }

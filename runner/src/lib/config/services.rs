@@ -2,8 +2,6 @@ use std::{collections::HashMap, path::PathBuf};
 
 use super::LoadConfigError;
 
-const SERVICES_CONFIG: &str = "services.yaml";
-
 #[derive(Debug)]
 pub struct Services {
     services: HashMap<String, Service>,
@@ -23,146 +21,77 @@ pub struct Volume {
 
 #[derive(Debug)]
 pub struct Service {
-    id: String,
-    global: bool,
+    container: String,
     build: Option<Build>,
-    image: Option<String>,
+    image: String,
     volumes: HashMap<String, String>,
     networks: Vec<String>,
 }
 
 #[derive(Debug)]
 struct Build {
-    repo: String,
+    path: PathBuf,
     dockerfile: Option<String>,
     context: Option<String>,
 }
 
 impl Services {
-    pub async fn load(project_root: PathBuf) -> Result<Services, LoadConfigError> {
-        raw::parse(project_root.join(SERVICES_CONFIG)).await
+    pub async fn load<'a>(context: &super::LoadContext<'a>) -> Result<Services, LoadConfigError> {
+        raw::load(context).await
     }
 
     pub fn get(&self, service: &str) -> Option<&Service> {
         self.services.get(service)
     }
-
-    pub fn get_network_name(&self, project: &super::Project, name: &str) -> String {
-        if let Some(config) = self.networks.get(name) {
-            get_resource_name(project, name, config.global)
-        } else {
-            name.to_string()
-        }
-    }
-
-    pub fn get_volume_name(&self, project: &super::Project, name: &str) -> String {
-        if let Some(config) = self.volumes.get(name) {
-            get_resource_name(project, name, config.global)
-        } else {
-            name.to_string()
-        }
-    }
-}
-
-pub fn get_resource_name(project: &super::Project, name: &str, global: bool) -> String {
-    if global {
-        name.to_string()
-    } else {
-        format!("{}_{}", project.id, name)
-    }
 }
 
 impl Service {
-    pub fn get_build_config(
-        &self,
-        project: &super::Project,
-        config: &super::ServiceConfig,
-    ) -> Option<common::BuildImageConfig> {
-        let image = self.get_image_name(project);
+    pub fn get_build_config(&self) -> Option<common::BuildImageConfig> {
         let source = self
             .build
             .as_ref()
             .map(|build| common::BuildImageConfigSource {
                 dockerfile: build.dockerfile.clone(),
                 path: common::BuildImageConfigSourcePath::Directory(
-                    config
-                        .repos_path
-                        .join(build.repo.clone())
-                        .to_string_lossy()
-                        .to_string(),
+                    build.path.to_string_lossy().to_string(),
                 ),
                 context: build.context.clone(),
             });
 
         Some(common::BuildImageConfig {
-            image,
+            image: self.image.clone(),
             tag: None, // FIXME: Specify somewhere
             source,
         })
     }
 
-    pub fn get_run_config(
-        &self,
-        project: &super::Project,
-        config: &super::ServiceConfig,
-    ) -> Option<common::RunContainerConfig> {
-        let image = self.get_image_name(project);
-        let name = self.get_container_name(project);
-        let volumes = super::utils::prepare_links(&project.id, config, &self.volumes);
-        let volumes = volumes
-            .into_iter()
-            .map(|(k, v)| (project.services.get_volume_name(project, &v), k))
-            .collect();
-        let networks = self
-            .networks
-            .iter()
-            .map(|name| project.services.get_network_name(project, name))
-            .collect();
+    pub fn get_run_config(&self) -> Option<common::RunContainerConfig> {
+        let volumes = self.volumes.clone();
+        let networks = self.networks.clone();
 
         Some(common::RunContainerConfig {
-            name,
-            image,
+            name: self.image.clone(),
+            image: self.container.clone(),
             volumes,
             networks,
         })
     }
 
-    pub fn get_stop_config(&self, project: &super::Project) -> Option<common::StopContainerConfig> {
-        let name = self.get_container_name(project);
-
-        Some(common::StopContainerConfig { name })
-    }
-
-    fn get_image_name(&self, project: &super::Project) -> String {
-        if let Some(image) = &self.image {
-            // Will pull specified image
-            String::from(image)
-        } else if self.global {
-            // Image name is service name
-            String::from(&self.id)
-        } else {
-            // Image name is scoped under project
-            format!("{}_{}", project.id, self.id)
-        }
-    }
-
-    fn get_container_name(&self, project: &super::Project) -> String {
-        if self.global {
-            // Container name is service name
-            String::from(&self.id)
-        } else {
-            // Container name is scoped under project
-            format!("{}_{}", project.id, self.id)
-        }
+    pub fn get_stop_config(&self) -> Option<common::StopContainerConfig> {
+        Some(common::StopContainerConfig {
+            name: self.container.clone(),
+        })
     }
 }
 
 mod raw {
-    use std::{collections::HashMap, path::PathBuf};
+    use std::collections::HashMap;
 
     use serde::{Deserialize, Serialize};
 
-    use crate::lib::{config, utils};
+    use crate::lib::config;
+
+    const SERVICES_CONFIG: &str = "services.yaml";
 
     #[derive(Serialize, Deserialize)]
     struct Services {
@@ -190,73 +119,43 @@ mod raw {
 
     #[derive(Serialize, Deserialize)]
     struct Network {
-        global: Option<bool>,
+        #[serde(default = "default_global")]
+        global: bool,
     }
 
     #[derive(Serialize, Deserialize)]
     struct Volume {
-        global: Option<bool>,
+        #[serde(default = "default_global")]
+        global: bool,
     }
 
     fn default_global() -> bool {
         false
     }
 
-    impl TryFrom<Services> for super::Services {
-        type Error = super::LoadConfigError;
+    impl config::LoadRawSync for Services {
+        type Output = super::Services;
 
-        fn try_from(value: Services) -> Result<Self, Self::Error> {
-            fn convert_service(
-                (k, v): (String, Service),
-            ) -> Result<(String, super::Service), super::LoadConfigError> {
-                let build = if let Some(build) = v.build {
-                    Some(build.try_into()?)
-                } else {
-                    None
-                };
+        fn load_raw(
+            self,
+            context: &config::LoadContext,
+        ) -> Result<Self::Output, config::LoadConfigError> {
+            let networks = self.networks.load_raw(context)?;
+            let volumes = self.volumes.load_raw(context)?;
 
-                Ok((
-                    k.clone(),
-                    super::Service {
-                        id: k.clone(),
-                        global: v.global,
-                        image: v.image,
-                        networks: v.networks.unwrap_or_default(),
-                        volumes: v.volumes.unwrap_or_default(),
-                        build,
-                    },
-                ))
-            }
-
-            let services: Result<HashMap<_, _>, super::LoadConfigError> =
-                value.services.into_iter().map(convert_service).collect();
+            let services: Result<HashMap<_, _>, super::LoadConfigError> = self
+                .services
+                .into_iter()
+                .map(|(id, service)| {
+                    let mut context = context.clone();
+                    context.set_service_id(&id);
+                    context.set_networks(&networks);
+                    context.set_volumes(&volumes);
+                    let service = service.load_raw(&context)?;
+                    Ok((id, service))
+                })
+                .collect();
             let services = services?;
-
-            let networks = value
-                .networks
-                .into_iter()
-                .map(|(k, Network { global })| {
-                    (
-                        k,
-                        super::Network {
-                            global: global.unwrap_or(false),
-                        },
-                    )
-                })
-                .collect();
-
-            let volumes = value
-                .volumes
-                .into_iter()
-                .map(|(k, Volume { global })| {
-                    (
-                        k,
-                        super::Volume {
-                            global: global.unwrap_or(false),
-                        },
-                    )
-                })
-                .collect();
 
             Ok(super::Services {
                 services,
@@ -266,19 +165,116 @@ mod raw {
         }
     }
 
-    impl TryFrom<Build> for super::Build {
-        type Error = super::LoadConfigError;
+    impl config::LoadRawSync for Network {
+        type Output = super::Network;
 
-        fn try_from(value: Build) -> Result<Self, Self::Error> {
-            Ok(super::Build {
-                repo: value.repo,
-                dockerfile: value.dockerfile,
-                context: value.context,
+        fn load_raw(
+            self,
+            context: &config::LoadContext,
+        ) -> Result<Self::Output, config::LoadConfigError> {
+            Ok(super::Network {
+                global: self.global,
             })
         }
     }
 
-    pub async fn parse(path: PathBuf) -> Result<super::Services, super::LoadConfigError> {
-        config::utils::load_file::<Services, _>(path).await
+    impl config::LoadRawSync for Volume {
+        type Output = super::Volume;
+
+        fn load_raw(
+            self,
+            context: &config::LoadContext,
+        ) -> Result<Self::Output, config::LoadConfigError> {
+            Ok(super::Volume {
+                global: self.global,
+            })
+        }
+    }
+
+    impl config::LoadRawSync for Service {
+        type Output = super::Service;
+
+        fn load_raw(
+            self,
+            context: &config::LoadContext,
+        ) -> Result<Self::Output, config::LoadConfigError> {
+            let build = if let Some(build) = self.build {
+                Some(build.load_raw(context)?)
+            } else {
+                None
+            };
+
+            let networks =
+                config::utils::get_networks_names(context, self.networks.unwrap_or_default())?;
+            let volumes =
+                config::utils::get_volumes_names(context, self.volumes.unwrap_or_default())?;
+
+            Ok(super::Service {
+                image: get_image_name(context, self.image, self.global)?,
+                container: get_container_name(context, self.global)?,
+                networks,
+                volumes,
+                build,
+            })
+        }
+    }
+
+    fn get_image_name(
+        context: &config::LoadContext,
+        image: Option<String>,
+        global: bool,
+    ) -> Result<String, config::LoadConfigError> {
+        if let Some(image) = image {
+            // Will pull specified image
+            Ok(String::from(image))
+        } else if global {
+            // Image name is service name
+            Ok(String::from(context.service_id()?))
+        } else {
+            // Image name is scoped under project
+            Ok(format!(
+                "{}_{}",
+                context.project_id()?,
+                context.service_id()?
+            ))
+        }
+    }
+
+    fn get_container_name(
+        context: &config::LoadContext,
+        global: bool,
+    ) -> Result<String, super::LoadConfigError> {
+        if global {
+            // Container name is service name
+            Ok(String::from(context.service_id()?))
+        } else {
+            // Container name is scoped under project
+            Ok(format!(
+                "{}_{}",
+                context.project_id()?,
+                context.service_id()?
+            ))
+        }
+    }
+
+    impl config::LoadRawSync for Build {
+        type Output = super::Build;
+
+        fn load_raw(
+            self,
+            context: &config::LoadContext,
+        ) -> Result<Self::Output, config::LoadConfigError> {
+            Ok(super::Build {
+                path: context.config()?.repos_path.join(self.repo.clone()),
+                dockerfile: self.dockerfile,
+                context: self.context,
+            })
+        }
+    }
+
+    pub async fn load<'a>(
+        context: &config::LoadContext<'a>,
+    ) -> Result<super::Services, super::LoadConfigError> {
+        config::load_sync::<Services>(context.project_root()?.join(SERVICES_CONFIG), context).await
     }
 }

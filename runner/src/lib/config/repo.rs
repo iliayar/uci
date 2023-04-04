@@ -10,8 +10,6 @@ use super::LoadConfigError;
 use anyhow::anyhow;
 use log::*;
 
-const REPO_CONFIG: &str = "repos.yaml";
-
 #[derive(Debug)]
 pub struct Repos {
     repos: HashMap<String, Repo>,
@@ -26,11 +24,8 @@ pub struct Repo {
 pub type ReposDiffs = HashMap<String, git::ChangedFiles>;
 
 impl Repos {
-    pub async fn load<'a>(
-        configs_root: PathBuf,
-        context: &mut super::LoadContext<'a>,
-    ) -> Result<Repos, LoadConfigError> {
-        raw::load(configs_root.join(REPO_CONFIG), context).await
+    pub async fn load<'a>(context: &super::LoadContext<'a>) -> Result<Repos, LoadConfigError> {
+        raw::load(context).await
     }
 
     pub async fn pull_all(
@@ -98,6 +93,8 @@ mod raw {
 
     use crate::lib::{config, utils};
 
+    const REPO_CONFIG: &str = "repos.yaml";
+
     #[derive(Deserialize, Serialize)]
     struct Repo {
         source: String,
@@ -109,30 +106,25 @@ mod raw {
         repos: HashMap<String, Repo>,
     }
 
-    impl config::LoadRaw for Repos {
+    impl config::LoadRawSync for Repos {
         type Output = super::Repos;
 
         fn load_raw(
             self,
-            context: &mut config::LoadContext,
+            context: &config::LoadContext,
         ) -> Result<Self::Output, config::LoadConfigError> {
-            let repos: Result<HashMap<_, _>, super::LoadConfigError> = self
-                .repos
-                .into_iter()
-                .map(|(id, repo)| Ok((id, repo.load_raw(context)?)))
-                .collect();
-            let repos = repos?;
-
-            Ok(super::Repos { repos })
+            Ok(super::Repos {
+                repos: self.repos.load_raw(context)?,
+            })
         }
     }
 
-    impl config::LoadRaw for Repo {
+    impl config::LoadRawSync for Repo {
         type Output = super::Repo;
 
         fn load_raw(
             self,
-            context: &mut config::LoadContext,
+            context: &config::LoadContext,
         ) -> Result<Self::Output, config::LoadConfigError> {
             Ok(super::Repo {
                 source: self.source,
@@ -142,9 +134,8 @@ mod raw {
     }
 
     pub async fn load<'a>(
-        path: PathBuf,
-        context: &mut config::LoadContext<'a>,
+        context: &config::LoadContext<'a>,
     ) -> Result<super::Repos, super::LoadConfigError> {
-        config::load::<Repos>(path, context).await
+        config::load_sync::<Repos>(context.configs_root()?.join(REPO_CONFIG), context).await
     }
 }

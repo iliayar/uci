@@ -2,9 +2,7 @@ use std::collections::HashMap;
 
 use std::path::PathBuf;
 
-use super::LoadConfigError;
-
-const PROJECTS_CONFIG: &str = "projects.yaml";
+use super::{LoadConfigError, LoadContext};
 
 #[derive(Debug)]
 pub struct Projects {
@@ -12,8 +10,8 @@ pub struct Projects {
 }
 
 impl Projects {
-    pub async fn load(configs_root: PathBuf) -> Result<Projects, LoadConfigError> {
-        raw::parse(configs_root.join(PROJECTS_CONFIG)).await
+    pub async fn load<'a>(context: &LoadContext<'a>) -> Result<Projects, LoadConfigError> {
+        raw::load(context).await
     }
 
     pub fn get(&self, project: &str) -> Option<&super::Project> {
@@ -22,7 +20,7 @@ impl Projects {
 }
 
 mod raw {
-    use std::{collections::HashMap, path::PathBuf};
+    use std::collections::HashMap;
 
     use serde::{Deserialize, Serialize};
 
@@ -38,23 +36,33 @@ mod raw {
         projects: HashMap<String, Project>,
     }
 
-    pub async fn parse(config_path: PathBuf) -> Result<super::Projects, super::LoadConfigError> {
-        let project_raw = tokio::fs::read_to_string(config_path.clone()).await?;
-        let data: Projects = serde_yaml::from_str(&project_raw)?;
+    const PROJECTS_CONFIG: &str = "projects.yaml";
 
-        let mut projects = HashMap::new();
+    #[async_trait::async_trait]
+    impl config::LoadRaw for Projects {
+        type Output = super::Projects;
 
-        for (id, Project { path }) in data.projects.into_iter() {
-            projects.insert(
-                id.clone(),
-                config::Project::load(
-                    id.clone(),
-                    utils::abs_or_rel_to_file(path, config_path.clone()),
-                )
-                .await?,
-            );
+        async fn load_raw(
+            self,
+            context: &config::LoadContext,
+        ) -> Result<Self::Output, config::LoadConfigError> {
+            let mut projects = HashMap::new();
+
+            for (id, Project { path }) in self.projects.into_iter() {
+                let project_root = utils::abs_or_rel_to_dir(path, context.configs_root()?.clone());
+                let mut context = context.clone();
+                context.set_project_id(&id);
+                context.set_project_root(&project_root);
+                projects.insert(id.clone(), config::Project::load(&context).await?);
+            }
+
+            Ok(super::Projects { projects })
         }
+    }
 
-        Ok(super::Projects { projects })
+    pub async fn load<'a>(
+        context: &config::LoadContext<'a>,
+    ) -> Result<super::Projects, super::LoadConfigError> {
+        config::load::<Projects>(context.configs_root()?.join(PROJECTS_CONFIG), context).await
     }
 }

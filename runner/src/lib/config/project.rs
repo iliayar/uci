@@ -15,16 +15,24 @@ pub struct Project {
 }
 
 impl Project {
-    pub async fn load(
-        project_id: String,
-        project_root: PathBuf,
+    pub async fn load<'a>(
+        context: &super::LoadContext<'a>,
     ) -> Result<Project, super::LoadConfigError> {
+        let services = super::Services::load(context).await?;
+        let actions = super::Actions::load(context).await?;
+
+        let mut context = context.clone();
+        context.set_networks(&services.networks);
+        context.set_volumes(&services.volumes);
+
+        let pipelines = super::Pipelines::load(&context).await?;
+
         Ok(Project {
-            id: project_id,
-            path: project_root.clone(),
-            actions: super::Actions::load(project_root.clone()).await?,
-            pipelines: super::Pipelines::load(project_root.clone()).await?,
-            services: super::Services::load(project_root.clone()).await?,
+            id: context.project_id()?.to_string(),
+            path: context.project_root()?.clone(),
+            actions,
+            services,
+            pipelines,
         })
     }
 
@@ -64,15 +72,15 @@ impl Project {
 
         let steps = match action {
             super::ServiceAction::Deploy => {
-                let build_config = service.get_build_config(&self, config).ok_or(anyhow!(
+                let build_config = service.get_build_config().ok_or(anyhow!(
                     "Cannot construct build config for service {}",
                     service_id
                 ))?;
-                let run_config = service.get_run_config(&self, config).ok_or(anyhow!(
+                let run_config = service.get_run_config().ok_or(anyhow!(
                     "Cannot construct run config for service {}",
                     service_id
                 ))?;
-                let stop_config = service.get_stop_config(&self).ok_or(anyhow!(
+                let stop_config = service.get_stop_config().ok_or(anyhow!(
                     "Cannot construct stop config for service {}",
                     service_id
                 ))?;
@@ -114,8 +122,6 @@ impl Project {
         worker_context: Option<worker_lib::context::Context>,
         pipeline: common::Pipeline,
     ) -> Result<(), super::ExecutionError> {
-        let pipeline = self.prepare_pipeline(config, pipeline.clone()).await?;
-
         match id {
             Id::Pipeline(id) => info!("Running pipeline {}", id),
             Id::Service(id) => info!("Running service {} action", id),
@@ -144,77 +150,6 @@ impl Project {
         }
 
         Ok(())
-    }
-
-    async fn prepare_pipeline(
-        &self,
-        config: &super::ServiceConfig,
-        pipeline: common::Pipeline,
-    ) -> Result<common::Pipeline, super::ExecutionError> {
-        let jobs = pipeline
-            .jobs
-            .into_iter()
-            .map(|(k, v)| (k, self.prepare_job(config, v)))
-            .collect();
-        let links = super::utils::prepare_links(&self.id, config, &pipeline.links);
-
-        let networks = self
-            .services
-            .networks
-            .iter()
-            .map(|(k, v)| super::get_resource_name(&self, k, v.global))
-            .collect();
-
-        let volumes = self
-            .services
-            .volumes
-            .iter()
-            .map(|(k, v)| super::get_resource_name(&self, k, v.global))
-            .collect();
-
-        Ok(common::Pipeline {
-            jobs,
-            links,
-            networks,
-            volumes,
-        })
-    }
-
-    fn prepare_job(&self, config: &super::ServiceConfig, job: common::Job) -> common::Job {
-        let steps = job
-            .steps
-            .into_iter()
-            .map(|step| self.prepare_step(config, step))
-            .collect();
-
-        common::Job {
-            steps,
-            needs: job.needs,
-        }
-    }
-
-    fn prepare_step(&self, config: &super::ServiceConfig, step: common::Step) -> common::Step {
-        match step {
-            common::Step::RunShell(shell) => {
-                let volumes = super::utils::prepare_links(&self.id, config, &shell.volumes);
-                let volumes = volumes
-                    .into_iter()
-                    .map(|(k, v)| (self.services.get_volume_name(&self, &v), k))
-                    .collect();
-                let networks = shell
-                    .networks
-                    .iter()
-                    .map(|name| self.services.get_network_name(&self, name))
-                    .collect();
-
-                common::Step::RunShell(common::RunShellConfig {
-                    volumes,
-                    networks,
-                    ..shell
-                })
-            }
-            step => step,
-        }
     }
 }
 

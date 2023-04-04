@@ -8,8 +8,6 @@ use log::*;
 
 use super::LoadConfigError;
 
-const ACTIONS_CONFIG: &str = "actions.yaml";
-
 #[derive(Debug)]
 pub struct Actions {
     actions: HashMap<String, Action>,
@@ -39,15 +37,13 @@ pub enum Condition {
 }
 
 impl Actions {
-    pub async fn load(project_root: PathBuf) -> Result<Actions, LoadConfigError> {
-        raw::parse(project_root.join(ACTIONS_CONFIG)).await
+    pub async fn load<'a>(context: &super::LoadContext<'a>) -> Result<Actions, LoadConfigError> {
+        raw::load(context).await
     }
 
     pub fn get(&self, action: &str) -> Option<&Action> {
         self.actions.get(action)
     }
-
-    // pub async fn check_matched(&self, diffs)
 }
 
 impl Action {
@@ -114,11 +110,13 @@ impl Condition {
 }
 
 mod raw {
-    use std::{collections::HashMap, path::PathBuf};
+    use std::collections::HashMap;
 
     use serde::{Deserialize, Serialize};
 
     use crate::lib::config;
+
+    const ACTIONS_CONFIG: &str = "actions.yaml";
 
     #[derive(Deserialize, Serialize)]
     struct Actions {
@@ -151,78 +149,77 @@ mod raw {
         services: Option<HashMap<String, ServiceAction>>,
     }
 
-    impl TryFrom<Actions> for super::Actions {
-        type Error = super::LoadConfigError;
+    impl config::LoadRawSync for Actions {
+        type Output = super::Actions;
 
-        fn try_from(value: Actions) -> Result<Self, Self::Error> {
-            let mut actions = HashMap::new();
-
-            for (
-                id,
-                Action {
-                    update_repos,
-                    conditions,
-                },
-            ) in value.actions.into_iter()
-            {
-                let cases: Result<Vec<_>, super::LoadConfigError> = conditions
-                    .into_iter()
-                    .map(
-                        |Condition {
-                             t,
-                             run_pipelines,
-                             services,
-                         }| {
-                            let condition = match t {
-                                ConditionType::Always => super::Condition::Always,
-                            };
-
-                            let services: Option<Result<HashMap<_, _>, super::LoadConfigError>> =
-                                services.map(|m| {
-                                    m.into_iter()
-                                        .map(|(k, v)| Ok((k, super::ServiceAction::try_from(v)?)))
-                                        .collect()
-                                });
-                            let services = if let Some(services) = services {
-                                Some(services?)
-                            } else {
-                                None
-                            };
-
-                            Ok(super::Case {
-                                condition,
-                                run_pipelines,
-                                services,
-                            })
-                        },
-                    )
-                    .collect();
-                let cases = cases?;
-
-                actions.insert(
-                    id,
-                    super::Action {
-                        update_repos: update_repos.unwrap_or(Vec::new()),
-                        cases,
-                    },
-                );
-            }
-
-            Ok(super::Actions { actions })
+        fn load_raw(
+            self,
+            context: &config::LoadContext,
+        ) -> Result<Self::Output, config::LoadConfigError> {
+            Ok(super::Actions {
+                actions: self.actions.load_raw(context)?,
+            })
         }
     }
 
-    impl TryFrom<ServiceAction> for super::ServiceAction {
-        type Error = super::LoadConfigError;
+    impl config::LoadRawSync for Action {
+        type Output = super::Action;
 
-        fn try_from(value: ServiceAction) -> Result<Self, Self::Error> {
-            Ok(match value {
+        fn load_raw(
+            self,
+            context: &config::LoadContext,
+        ) -> Result<Self::Output, config::LoadConfigError> {
+            Ok(super::Action {
+                update_repos: self.update_repos.unwrap_or_default(),
+                cases: self.conditions.load_raw(context)?,
+            })
+        }
+    }
+
+    impl config::LoadRawSync for ConditionType {
+        type Output = super::Condition;
+
+        fn load_raw(
+            self,
+            context: &config::LoadContext,
+        ) -> Result<Self::Output, config::LoadConfigError> {
+            Ok(match self {
+                ConditionType::Always => super::Condition::Always,
+            })
+        }
+    }
+
+    impl config::LoadRawSync for Condition {
+        type Output = super::Case;
+
+        fn load_raw(
+            self,
+            context: &config::LoadContext,
+        ) -> Result<Self::Output, config::LoadConfigError> {
+            Ok(super::Case {
+                condition: self.t.load_raw(context)?,
+                run_pipelines: self.run_pipelines,
+                services: self.services.load_raw(context)?,
+            })
+        }
+    }
+
+    impl config::LoadRawSync for ServiceAction {
+        type Output = super::ServiceAction;
+
+        fn load_raw(
+            self,
+            context: &config::LoadContext,
+        ) -> Result<Self::Output, config::LoadConfigError> {
+            Ok(match self {
                 ServiceAction::Deploy => super::ServiceAction::Deploy,
             })
         }
     }
 
-    pub async fn parse(path: PathBuf) -> Result<super::Actions, super::LoadConfigError> {
-        config::utils::load_file::<Actions, _>(path).await
+    pub async fn load<'a>(
+        context: &config::LoadContext<'a>,
+    ) -> Result<super::Actions, super::LoadConfigError> {
+        config::load_sync::<Actions>(context.project_root()?.join(ACTIONS_CONFIG), context).await
     }
 }

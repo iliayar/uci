@@ -1,8 +1,6 @@
-use std::{collections::HashMap, path::PathBuf};
+use std::collections::HashMap;
 
 use super::LoadConfigError;
-
-const PIPELINES_CONFIG: &str = "pipelines.yaml";
 
 #[derive(Debug)]
 pub struct Pipelines {
@@ -10,8 +8,8 @@ pub struct Pipelines {
 }
 
 impl Pipelines {
-    pub async fn load(project_root: PathBuf) -> Result<Pipelines, LoadConfigError> {
-        raw::parse(project_root.join(PIPELINES_CONFIG)).await
+    pub async fn load<'a>(context: &super::LoadContext<'a>) -> Result<Pipelines, LoadConfigError> {
+        raw::load(context).await
     }
 
     pub fn get(&self, pipeline: &str) -> Option<&common::Pipeline> {
@@ -20,7 +18,7 @@ impl Pipelines {
 }
 
 mod raw {
-    use std::{collections::HashMap, path::PathBuf};
+    use std::collections::HashMap;
 
     use serde::{Deserialize, Serialize};
 
@@ -28,6 +26,8 @@ mod raw {
 
     use anyhow::anyhow;
     use log::*;
+
+    const PIPELINES_CONFIG: &str = "pipelines.yaml";
 
     #[derive(Deserialize, Serialize)]
     struct Pipelines {
@@ -37,21 +37,6 @@ mod raw {
     #[derive(Deserialize, Serialize)]
     struct PipelineLocation {
         path: String,
-    }
-
-    pub async fn parse(config_root: PathBuf) -> Result<super::Pipelines, super::LoadConfigError> {
-        let content = tokio::fs::read_to_string(config_root.clone()).await?;
-        let data: Pipelines = serde_yaml::from_str(&content)?;
-
-        let mut pipelines = HashMap::new();
-        for (id, PipelineLocation { path }) in data.pipelines.into_iter() {
-            pipelines.insert(
-                id,
-                load_pipeline(utils::abs_or_rel_to_file(path, config_root.clone())).await?,
-            );
-        }
-
-        Ok(super::Pipelines { pipelines })
     }
 
     #[derive(Deserialize, Serialize)]
@@ -72,9 +57,9 @@ mod raw {
         t: Option<Type>,
         script: Option<String>,
         interpreter: Option<Vec<String>>,
-	image: Option<String>,
-	networks: Option<Vec<String>>,
-	volumes: Option<HashMap<String, String>>,
+        image: Option<String>,
+        networks: Option<Vec<String>>,
+        volumes: Option<HashMap<String, String>>,
     }
 
     #[derive(Deserialize, Serialize, Clone, Copy)]
@@ -83,68 +68,89 @@ mod raw {
         Script,
     }
 
-    impl TryFrom<Pipeline> for common::Pipeline {
-        type Error = super::LoadConfigError;
+    #[async_trait::async_trait]
+    impl config::LoadRaw for Pipelines {
+        type Output = super::Pipelines;
 
-        fn try_from(value: Pipeline) -> Result<Self, Self::Error> {
-            let jobs: Result<HashMap<_, _>, super::LoadConfigError> = value
-                .jobs
-                .into_iter()
-                .map(|(k, v)| {
-                    if v.steps.is_none() {
-                        warn!("steps in job {} is not specified", k);
-                    }
+        async fn load_raw(
+            self,
+            context: &config::LoadContext,
+        ) -> Result<Self::Output, config::LoadConfigError> {
+            let mut pipelines = HashMap::new();
+            for (id, PipelineLocation { path }) in self.pipelines.into_iter() {
+                let pipeline_path = utils::abs_or_rel_to_dir(path, context.project_root()?.clone());
+                let pipeline = config::load_sync::<Pipeline>(pipeline_path, context).await?;
+                pipelines.insert(id, pipeline);
+            }
 
-                    let steps: Result<Vec<common::Step>, super::LoadConfigError> = v
-                        .steps
-                        .unwrap_or_default()
-                        .into_iter()
-                        .map(|step| step.try_into())
-                        .collect();
-                    let steps = steps?;
+            Ok(super::Pipelines { pipelines })
+        }
+    }
 
-                    let job = common::Job {
-                        needs: v.needs.unwrap_or_default(),
-                        steps,
-                    };
+    impl config::LoadRawSync for Pipeline {
+        type Output = common::Pipeline;
 
-                    Ok((k, job))
-                })
-                .collect();
-            let jobs = jobs?;
+        fn load_raw(
+            self,
+            context: &config::LoadContext,
+        ) -> Result<Self::Output, config::LoadConfigError> {
+            let links =
+                config::utils::substitute_path_vars(context, self.links.unwrap_or_default())?;
 
             Ok(common::Pipeline {
-                jobs,
-                links: value.links.unwrap_or_default(),
-		networks: Default::default(),
-		volumes: Default::default(),
+                links,
+                jobs: self.jobs.load_raw(context)?,
+                networks: Default::default(),
+                volumes: Default::default(),
             })
         }
     }
 
-    impl TryFrom<Step> for common::Step {
-        type Error = super::LoadConfigError;
+    impl config::LoadRawSync for Job {
+        type Output = common::Job;
 
-        fn try_from(value: Step) -> Result<Self, Self::Error> {
-            match get_type(&value)? {
+        fn load_raw(
+            self,
+            context: &config::LoadContext,
+        ) -> Result<Self::Output, config::LoadConfigError> {
+            Ok(common::Job {
+                needs: self.needs.unwrap_or_default(),
+                steps: self.steps.unwrap_or_default().load_raw(context)?,
+            })
+        }
+    }
+
+    impl config::LoadRawSync for Step {
+        type Output = common::Step;
+
+        fn load_raw(
+            self,
+            context: &config::LoadContext,
+        ) -> Result<Self::Output, config::LoadConfigError> {
+            match get_type(&self)? {
                 Type::Script => {
+                    let networks = config::utils::get_networks_names(
+                        context,
+                        self.networks.unwrap_or_default(),
+                    )?;
+                    let volumes = config::utils::get_volumes_names(
+                        context,
+                        self.volumes.unwrap_or_default(),
+                    )?;
+
                     let config = common::RunShellConfig {
-                        script: value
+                        script: self
                             .script
-                            .ok_or(anyhow!("'script' step requires 'scipt' field"))?,
-                        docker_image: value.image,
-                        interpreter: value.interpreter,
-			volumes: value.volumes.unwrap_or_default(),
-			networks: value.networks.unwrap_or_default(),
+                            .ok_or(anyhow!("'script' step requires 'script' field"))?,
+                        docker_image: self.image,
+                        interpreter: self.interpreter,
+                        volumes,
+                        networks,
                     };
                     Ok(common::Step::RunShell(config))
                 }
             }
         }
-    }
-
-    async fn load_pipeline(path: PathBuf) -> Result<common::Pipeline, super::LoadConfigError> {
-        config::utils::load_file::<Pipeline, _>(path).await
     }
 
     fn get_type(step: &Step) -> Result<Type, super::LoadConfigError> {
@@ -163,5 +169,11 @@ mod raw {
         } else {
             None
         }
+    }
+
+    pub async fn load<'a>(
+        context: &config::LoadContext<'a>,
+    ) -> Result<super::Pipelines, super::LoadConfigError> {
+        config::load::<Pipelines>(context.project_root()?.join(PIPELINES_CONFIG), context).await
     }
 }

@@ -1,42 +1,88 @@
 use std::{collections::HashMap, path::PathBuf};
 
-pub async fn load_file<R, T>(path: PathBuf) -> Result<T, super::LoadConfigError>
-where
-    R: for<'a> serde::Deserialize<'a>,
-    T: TryFrom<R>,
-    <T as TryFrom<R>>::Error: Into<super::LoadConfigError>,
-{
-    let content = tokio::fs::read_to_string(path).await?;
-    serde_yaml::from_str::<R>(&content)?
-        .try_into()
-        .map_err(Into::into)
-}
+use anyhow::anyhow;
 
-pub fn prepare_links(
-    project_id: &str,
-    config: &super::ServiceConfig,
-    unprepared_links: &HashMap<String, String>,
-) -> HashMap<String, String> {
+pub fn substitute_path_vars(
+    context: &super::LoadContext,
+    unprepared_links: HashMap<String, String>,
+) -> Result<HashMap<String, String>, super::LoadConfigError> {
+    let project_id = context.project_id()?;
+    let config = context.config()?;
+
     let substitutions: HashMap<String, PathBuf> = HashMap::from([
         (String::from("repos"), config.repos_path.clone()),
         (String::from("data"), config.data_path.join(project_id)),
     ]);
 
-    let mut links = HashMap::new();
-    for (link, path) in unprepared_links.into_iter() {
-        let new_path = substitute_path(&substitutions, path);
-        links.insert(link.clone(), new_path);
-    }
-
-    links
+    Ok(unprepared_links
+        .into_iter()
+        .map(|(link, path)| {
+            let new_path = substitute_path(&substitutions, path);
+            (link, new_path)
+        })
+        .collect())
 }
 
-fn substitute_path(substitutions: &HashMap<String, PathBuf>, path: &str) -> String {
+fn substitute_path(substitutions: &HashMap<String, PathBuf>, path: String) -> String {
     for (var, subst) in substitutions {
         if let Some(rel_path) = path.strip_prefix(&format!("${}/", var)) {
             return subst.join(rel_path).to_string_lossy().to_string();
         }
     }
 
-    path.to_string()
+    path
+}
+
+pub fn get_networks_names(
+    context: &super::LoadContext,
+    networks: Vec<String>,
+) -> Result<Vec<String>, super::LoadConfigError> {
+    networks
+        .into_iter()
+        .map(|network| get_network_name(context, network))
+        .collect()
+}
+
+pub fn get_volumes_names(
+    context: &super::LoadContext,
+    volumes: HashMap<String, String>,
+) -> Result<HashMap<String, String>, super::LoadConfigError> {
+    let volumes: Result<HashMap<_, _>, super::LoadConfigError> =
+        substitute_path_vars(context, volumes)?
+            .into_iter()
+            .map(|(k, v)| Ok((get_volume_name(context, v)?, k)))
+            .collect();
+
+    Ok(volumes?)
+}
+
+pub fn get_network_name(
+    context: &super::LoadContext,
+    network: String,
+) -> Result<String, super::LoadConfigError> {
+    let global = context
+        .networks()?
+        .get(&network)
+        .ok_or(anyhow!("No such network {}", network))?
+        .global;
+    Ok(get_resource_name(context.project_id()?, network, global))
+}
+
+pub fn get_volume_name(
+    context: &super::LoadContext,
+    volume: String,
+) -> Result<String, super::LoadConfigError> {
+    if let Some(v) = context.volumes()?.get(&volume) {
+        Ok(get_resource_name(context.project_id()?, volume, v.global))
+    } else {
+        Ok(volume)
+    }
+}
+
+fn get_resource_name(project_id: &str, name: String, global: bool) -> String {
+    if global {
+        name
+    } else {
+        format!("{}_{}", project_id, name)
+    }
 }
