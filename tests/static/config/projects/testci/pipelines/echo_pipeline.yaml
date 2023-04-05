@@ -19,5 +19,5 @@ jobs:
         networks:
           - test-global-net
 links:
-  'src': $repos/test
-  'out': $data/some_result
+  'src': ${repos.test.path}
+  'out': ${project.data.path}/some_result

@@ -9,8 +9,13 @@ pub struct LoadContext<'a> {
     project_id: Option<&'a str>,
     project_root: Option<&'a PathBuf>,
     service_id: Option<&'a str>,
+    repo_id: Option<&'a str>,
     networks: Option<&'a HashMap<String, super::Network>>,
     volumes: Option<&'a HashMap<String, super::Volume>>,
+
+    repos: Option<&'a super::Repos>,
+
+    extra: HashMap<String, &'a str>,
 }
 
 impl<'a> LoadContext<'a> {
@@ -54,6 +59,14 @@ impl<'a> LoadContext<'a> {
         getter_impl(self.service_id, "service_id")
     }
 
+    pub fn set_repo_id(&mut self, repo_id: &'a str) {
+        self.repo_id = Some(repo_id);
+    }
+
+    pub fn repo_id(&self) -> Result<&str, super::LoadConfigError> {
+        getter_impl(self.repo_id, "repo_id")
+    }
+
     pub fn set_networks(&mut self, networks: &'a HashMap<String, super::Network>) {
         self.networks = Some(networks);
     }
@@ -68,6 +81,54 @@ impl<'a> LoadContext<'a> {
 
     pub fn volumes(&self) -> Result<&HashMap<String, super::Volume>, super::LoadConfigError> {
         getter_impl(self.volumes, "volumes")
+    }
+
+    pub fn set_repos(&mut self, repos: &'a super::Repos) {
+        self.repos = Some(repos);
+    }
+
+    pub fn repos(&self) -> Result<&super::Repos, super::LoadConfigError> {
+        getter_impl(self.repos, "repos")
+    }
+
+    pub fn set_extra(&mut self, key: String, value: &'a str) {
+        self.extra.insert(key, value);
+    }
+
+    pub fn extra(&self, key: &str) -> Result<&str, super::LoadConfigError> {
+        self.extra
+            .get(key)
+            .map(|k| *k)
+            .ok_or(anyhow!("No such extra key: {}", key))
+            .map_err(Into::into)
+    }
+
+    pub fn get_vars(&self) -> common::vars::Vars {
+        use common::vars::*;
+        let mut value = HashMap::new();
+
+        if let Some(repos) = self.repos {
+            value.insert(String::from("repos"), repos.get_vars());
+        }
+
+        if let Some(config) = self.config {
+            if let Some(project_id) = self.project_id {
+                let data_path = config.data_path.join(project_id);
+                value.insert(
+                    String::from("project"),
+                    Value::Object(HashMap::from_iter([(
+                        String::from("data"),
+                        Value::Object(HashMap::from_iter([(
+                            String::from("path"),
+                            Value::<()>::String(data_path.to_string_lossy().to_string()),
+                        )])),
+                    )]))
+                    .into(),
+                );
+            }
+        }
+
+        value.into()
     }
 }
 
@@ -128,7 +189,12 @@ impl<T: LoadRawSync> LoadRawSync for HashMap<String, T> {
 
     fn load_raw(self, context: &LoadContext) -> Result<Self::Output, super::LoadConfigError> {
         self.into_iter()
-            .map(|(id, network)| Ok((id, network.load_raw(context)?)))
+            .map(|(id, value)| {
+                let mut context = context.clone();
+                context.set_extra(String::from("_id"), &id);
+                let value = value.load_raw(&context)?;
+                Ok((id, value))
+            })
             .collect()
     }
 }

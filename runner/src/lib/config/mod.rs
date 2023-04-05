@@ -27,6 +27,9 @@ pub enum LoadConfigError {
     #[error("Yaml parsing error: {0}")]
     YamlParseError(#[from] serde_yaml::Error),
 
+    #[error("Failed to substitute vars: {0}")]
+    SubstitutionError(#[from] common::vars::SubstitutionError),
+
     #[error(transparent)]
     Other(#[from] anyhow::Error),
 }

@@ -52,7 +52,7 @@ pub enum Vars {
     None,
 }
 
-pub enum Value<T> {
+pub enum Value<T = ()> {
     Object(HashMap<String, T>),
     List(Vec<T>),
     String(String),
@@ -61,6 +61,12 @@ pub enum Value<T> {
 
 impl Default for Vars {
     fn default() -> Self {
+        Vars::None
+    }
+}
+
+impl Into<Vars> for () {
+    fn into(self) -> Vars {
         Vars::None
     }
 }

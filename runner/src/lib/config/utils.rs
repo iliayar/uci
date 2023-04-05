@@ -6,21 +6,13 @@ pub fn substitute_path_vars(
     context: &super::LoadContext,
     unprepared_links: HashMap<String, String>,
 ) -> Result<HashMap<String, String>, super::LoadConfigError> {
-    let project_id = context.project_id()?;
-    let config = context.config()?;
-
-    let substitutions: HashMap<String, PathBuf> = HashMap::from([
-        (String::from("repos"), config.repos_path.clone()),
-        (String::from("data"), config.data_path.join(project_id)),
-    ]);
-
-    Ok(unprepared_links
+    let vars = context.get_vars();
+    let result: Result<_, super::LoadConfigError> = unprepared_links
         .into_iter()
-        .map(|(link, path)| {
-            let new_path = substitute_path(&substitutions, path);
-            (link, new_path)
-        })
-        .collect())
+        .map(|(link, path)| Ok((link, vars.eval(&path)?)))
+        .collect();
+
+    Ok(result?)
 }
 
 fn substitute_path(substitutions: &HashMap<String, PathBuf>, path: String) -> String {
