@@ -31,6 +31,15 @@ impl Config {
         })
     }
 
+    pub async fn autostart(
+        &self,
+        worker_context: Option<worker_lib::context::Context>,
+    ) -> Result<(), super::ExecutionError> {
+        self.projects
+            .autorun(&self.service_config, worker_context)
+            .await
+    }
+
     pub async fn has_project_action(&self, project_id: &str, action_id: &str) -> bool {
         self.projects
             .get(project_id)

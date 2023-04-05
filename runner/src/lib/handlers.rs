@@ -34,13 +34,31 @@ pub async fn run(
     Ok(StatusCode::OK)
 }
 
-pub async fn reload_config(store: ContextStore) -> Result<impl warp::Reply, Infallible> {
-    // TODO: Respond with error messages
-    match store.context().reload_config().await {
+pub async fn reload_config(
+    store: ContextStore,
+    worker_context: Option<worker_lib::context::Context>,
+) -> Result<impl warp::Reply, Infallible> {
+    match reload_config_impl(store, worker_context).await {
         Ok(_) => Ok(StatusCode::OK),
         Err(err) => {
             error!("Failed to reload config: {}", err);
             Ok(StatusCode::INTERNAL_SERVER_ERROR)
         }
     }
+}
+
+async fn reload_config_impl(
+    store: ContextStore,
+    worker_context: Option<worker_lib::context::Context>,
+) -> Result<(), anyhow::Error> {
+    store.context().reload_config().await?;
+    store.context().clone_missing_repos().await?;
+    store
+        .context()
+        .config()
+        .await
+        .autostart(worker_context)
+        .await?;
+
+    Ok(())
 }

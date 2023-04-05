@@ -119,29 +119,34 @@ mod raw {
     const ACTIONS_CONFIG: &str = "actions.yaml";
 
     #[derive(Deserialize, Serialize)]
+    #[serde(deny_unknown_fields)]
     struct Actions {
         actions: HashMap<String, Action>,
     }
 
     #[derive(Deserialize, Serialize)]
+    #[serde(deny_unknown_fields)]
     struct Action {
         update_repos: Option<Vec<String>>,
         conditions: Vec<Condition>,
     }
 
     #[derive(Deserialize, Serialize)]
+    #[serde(deny_unknown_fields)]
     enum ConditionType {
         #[serde(rename = "always")]
         Always,
     }
 
     #[derive(Deserialize, Serialize)]
+    #[serde(deny_unknown_fields)]
     enum ServiceAction {
         #[serde(rename = "deploy")]
         Deploy,
     }
 
     #[derive(Deserialize, Serialize)]
+    #[serde(deny_unknown_fields)]
     struct Condition {
         #[serde(rename = "type")]
         t: ConditionType,

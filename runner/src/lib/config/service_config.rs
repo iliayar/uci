@@ -32,6 +32,7 @@ mod raw {
     const DEFAULT_DATA_DIR: &str = "~/.microci";
 
     #[derive(Serialize, Deserialize)]
+    #[serde(deny_unknown_fields)]
     struct ServiceConfig {
         data_dir: Option<String>,
         worker_url: Option<String>,

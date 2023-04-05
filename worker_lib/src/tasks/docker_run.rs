@@ -18,7 +18,10 @@ impl task::Task for RunContainerConfig {
             .image(self.image)
             .name(Some(self.name))
             .mounts(self.volumes)
-            .networks(self.networks);
+            .networks(self.networks)
+            .ports(self.ports)
+            .command(self.command)
+            .restart(self.restart_policy);
 
         let name = context
             .docker()

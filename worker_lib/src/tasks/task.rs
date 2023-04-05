@@ -41,7 +41,6 @@ impl Task for common::Step {
             common::Step::Request(config) => config.run(context, task_context).await,
             common::Step::RunContainer(config) => config.run(context, task_context).await,
             common::Step::Parallel(config) => config.run(context, task_context).await,
-            common::Step::Deploy(config) => config.run(context, task_context).await,
             common::Step::StopContainer(config) => config.run(context, task_context).await,
         }
     }

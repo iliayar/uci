@@ -31,7 +31,7 @@ pub fn runner(
     let context_store = ContextStore::new(context);
     ping()
         .or(run(context_store.clone(), worker_context.clone()))
-        .or(reload_config(context_store.clone()))
+        .or(reload_config(context_store.clone(), worker_context.clone()))
 }
 
 pub fn ping() -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
@@ -51,10 +51,12 @@ pub fn run(
 
 pub fn reload_config(
     context: ContextStore,
+    worker_context: Option<worker_lib::context::Context>,
 ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
     warp::path!("reload_config")
         .and(warp::post())
         .and(with_context(context))
+        .and(with_worker_context(worker_context))
         .and_then(handlers::reload_config)
 }
 

@@ -30,28 +30,33 @@ mod raw {
     const PIPELINES_CONFIG: &str = "pipelines.yaml";
 
     #[derive(Deserialize, Serialize)]
+    #[serde(deny_unknown_fields)]
     struct Pipelines {
         pipelines: HashMap<String, PipelineLocation>,
     }
 
     #[derive(Deserialize, Serialize)]
+    #[serde(deny_unknown_fields)]
     struct PipelineLocation {
         path: String,
     }
 
     #[derive(Deserialize, Serialize)]
+    #[serde(deny_unknown_fields)]
     struct Pipeline {
         jobs: HashMap<String, Job>,
         links: Option<HashMap<String, String>>,
     }
 
     #[derive(Deserialize, Serialize)]
+    #[serde(deny_unknown_fields)]
     struct Job {
         needs: Option<Vec<String>>,
         steps: Option<Vec<Step>>,
     }
 
     #[derive(Deserialize, Serialize)]
+    #[serde(deny_unknown_fields)]
     struct Step {
         #[serde(rename = "type")]
         t: Option<Type>,
@@ -63,6 +68,7 @@ mod raw {
     }
 
     #[derive(Deserialize, Serialize, Clone, Copy)]
+    #[serde(deny_unknown_fields)]
     enum Type {
         #[serde(rename = "script")]
         Script,

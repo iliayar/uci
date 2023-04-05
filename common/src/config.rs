@@ -10,7 +10,6 @@ pub enum Step {
     StopContainer(StopContainerConfig),
     Request(RequestConfig),
     Parallel(ParallelConfig),
-    Deploy(DeployConfig),
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -33,10 +32,11 @@ pub struct ParallelConfig {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct DeployConfig {
-    pub stop_config: StopContainerConfig,
-    pub build_config: BuildImageConfig,
-    pub run_config: RunContainerConfig,
+pub struct PortMapping {
+    pub container_port: u16,
+    pub proto: String,
+    pub host_port: u16,
+    pub host: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -45,6 +45,9 @@ pub struct RunContainerConfig {
     pub image: String,
     pub networks: Vec<String>,
     pub volumes: HashMap<String, String>,
+    pub command: Option<Vec<String>>,
+    pub ports: Vec<PortMapping>,
+    pub restart_policy: String,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]

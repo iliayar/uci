@@ -57,10 +57,20 @@ pub struct BuildParams {
 pub struct CreateContainerParams {
     image: String,
     name: Option<String>,
+
     #[builder(default = "Default::default()")]
     mounts: HashMap<String, String>,
+
     #[builder(default = "Default::default()")]
     networks: Vec<String>,
+
+    #[builder(default = "Default::default()")]
+    ports: Vec<common::PortMapping>,
+
+    command: Option<Vec<String>>,
+
+    #[builder(default = "default_restart()")]
+    restart: String,
 }
 
 #[derive(derive_builder::Builder)]
@@ -95,6 +105,10 @@ fn default_tag() -> String {
 
 fn default_dockerfile() -> String {
     String::from("Dockerfile")
+}
+
+fn default_restart() -> String {
+    String::from("on_failure")
 }
 
 impl Docker {
@@ -176,14 +190,29 @@ impl Docker {
         &self,
         params: CreateContainerParams,
     ) -> Result<String, DockerError> {
+        let exposed_ports: HashMap<_, _> = params
+            .ports
+            .iter()
+            .map(|ports| {
+                (
+                    format!("{}/{}", ports.container_port, ports.proto),
+                    HashMap::new(),
+                )
+            })
+            .collect();
+
         let host_config = HostConfig {
             binds: Some(binds_from_map(params.mounts)),
+            port_bindings: Some(port_mappig(params.ports)),
+            restart_policy: Some(get_restart_policy(&params.restart)),
             ..Default::default()
         };
 
         let config = container::Config {
             image: Some(params.image),
             host_config: Some(host_config),
+            cmd: params.command,
+            exposed_ports: Some(exposed_ports),
             ..Default::default()
         };
 
@@ -396,4 +425,47 @@ fn binds_from_map(mounts: HashMap<String, String>) -> Vec<String> {
     }
 
     volumes
+}
+
+fn port_mappig(mapping: Vec<common::PortMapping>) -> bollard::models::PortMap {
+    let mut map = HashMap::new();
+
+    for common::PortMapping {
+        container_port,
+        proto,
+        host_port,
+        host,
+    } in mapping
+    {
+        let key = format!("{}/{}", container_port, proto);
+        if !map.contains_key(&key) {
+            map.insert(key.clone(), Some(Vec::new()));
+        }
+        map.get_mut(&key)
+            .unwrap()
+            .as_mut()
+            .unwrap()
+            .push(bollard::models::PortBinding {
+                host_ip: host,
+                host_port: Some(host_port.to_string()),
+            })
+    }
+
+    map
+}
+
+fn get_restart_policy(policy: &str) -> bollard::models::RestartPolicy {
+    let policy = match policy {
+        "always" => Some(bollard::models::RestartPolicyNameEnum::ALWAYS),
+        "on_failure" => Some(bollard::models::RestartPolicyNameEnum::ON_FAILURE),
+        _ => {
+            warn!("Unknown restart policy: {}", policy);
+            None
+        }
+    };
+
+    bollard::models::RestartPolicy {
+        name: policy,
+        ..Default::default()
+    }
 }

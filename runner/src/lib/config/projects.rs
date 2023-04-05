@@ -4,6 +4,8 @@ use std::path::PathBuf;
 
 use super::{LoadConfigError, LoadContext};
 
+use log::*;
+
 #[derive(Debug)]
 pub struct Projects {
     projects: HashMap<String, super::Project>,
@@ -17,6 +19,19 @@ impl Projects {
     pub fn get(&self, project: &str) -> Option<&super::Project> {
         self.projects.get(project)
     }
+
+    pub async fn autorun(
+        &self,
+        config: &super::ServiceConfig,
+        worker_context: Option<worker_lib::context::Context>,
+    ) -> Result<(), super::ExecutionError> {
+        for (project_id, project) in self.projects.iter() {
+            info!("Autorunning service/pipelines in project {}", project_id);
+            project.autorun(config, worker_context.clone()).await?;
+        }
+
+        Ok(())
+    }
 }
 
 mod raw {
@@ -27,11 +42,13 @@ mod raw {
     use crate::lib::{config, utils};
 
     #[derive(Deserialize, Serialize)]
+    #[serde(deny_unknown_fields)]
     struct Project {
         path: String,
     }
 
     #[derive(Deserialize, Serialize)]
+    #[serde(deny_unknown_fields)]
     struct Projects {
         projects: HashMap<String, Project>,
     }

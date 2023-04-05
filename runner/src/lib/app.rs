@@ -74,6 +74,22 @@ impl App {
             }
         }
 
+        match self
+            .context
+            .config()
+            .await
+            .autostart(self.worker_context.clone())
+            .await
+        {
+            Ok(_) => {}
+            Err(err) => {
+                error!(
+                    "Failed to autostart services/pipelines, continuing: {}",
+                    err
+                );
+            }
+        }
+
         let api = filters::runner(self.context, self.worker_context);
         let routes = api.with(warp::log("runner"));
         warp::serve(routes).run(([127, 0, 0, 1], self.port)).await;

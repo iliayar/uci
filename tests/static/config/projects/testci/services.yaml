@@ -17,6 +17,15 @@ services:
     networks:
       - test-global-net
 
+  ubuntu-nc:
+    autostart: true
+    build:
+      repo: ubuntu-with-nc
+    command: ["nc", "-l", "-p", "8080"]
+    ports:
+      - 8080:8080
+    restart: always
+
 volumes:
   test-vol:
   global-test-vol:

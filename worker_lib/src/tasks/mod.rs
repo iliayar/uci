@@ -1,4 +1,3 @@
-mod deploy;
 mod docker_build;
 mod docker_run;
 mod docker_stop;
@@ -7,7 +6,6 @@ mod request;
 mod run_shell;
 mod task;
 
-pub use deploy::*;
 pub use docker_build::*;
 pub use docker_run::*;
 pub use docker_stop::*;

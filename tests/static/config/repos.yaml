@@ -2,6 +2,10 @@ repos:
   test:
     source: ssh://git@gitlab.com:iliayar/testci.git
     branch: main
+  ubuntu-with-nc:
+    manual: true
+  test-manual:
+    manual: true
   # - id: itmo
   #   source: ssh://git@github.com:iliayar/itmo.git
   # - id: site-main

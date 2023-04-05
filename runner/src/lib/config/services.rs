@@ -2,6 +2,9 @@ use std::{collections::HashMap, path::PathBuf};
 
 use super::LoadConfigError;
 
+use anyhow::anyhow;
+use log::*;
+
 #[derive(Debug)]
 pub struct Services {
     services: HashMap<String, Service>,
@@ -26,6 +29,10 @@ pub struct Service {
     image: String,
     volumes: HashMap<String, String>,
     networks: Vec<String>,
+    ports: Vec<common::PortMapping>,
+    command: Option<Vec<String>>,
+    autostart: bool,
+    restart: String,
 }
 
 #[derive(Debug)]
@@ -42,6 +49,24 @@ impl Services {
 
     pub fn get(&self, service: &str) -> Option<&Service> {
         self.services.get(service)
+    }
+
+    pub async fn autorun(&self) -> Result<HashMap<String, common::Job>, super::ExecutionError> {
+        let mut res = HashMap::new();
+        for (service_id, service) in self.services.iter() {
+            if !service.autostart {
+                continue;
+            }
+
+            info!("Autorunning service {}", service_id);
+            let job = service.get_deploy_job().ok_or(anyhow!(
+                "Cannot construct config for service {} autorun",
+                service_id
+            ))?;
+            res.insert(format!("deploy_{}", service_id), job);
+        }
+
+        Ok(res)
     }
 }
 
@@ -72,6 +97,9 @@ impl Service {
         Some(common::RunContainerConfig {
             name: self.image.clone(),
             image: self.container.clone(),
+            ports: self.ports.clone(),
+            command: self.command.clone(),
+	    restart_policy: self.restart.clone(),
             volumes,
             networks,
         })
@@ -80,6 +108,23 @@ impl Service {
     pub fn get_stop_config(&self) -> Option<common::StopContainerConfig> {
         Some(common::StopContainerConfig {
             name: self.container.clone(),
+        })
+    }
+
+    pub fn get_deploy_job(&self) -> Option<common::Job> {
+        let build_config = self.get_build_config()?;
+        let run_config = self.get_run_config()?;
+        let stop_config = self.get_stop_config()?;
+
+        let steps = vec![
+            common::Step::BuildImage(build_config),
+            common::Step::StopContainer(stop_config),
+            common::Step::RunContainer(run_config),
+        ];
+
+        Some(common::Job {
+            needs: Vec::new(),
+            steps,
         })
     }
 }
@@ -91,9 +136,12 @@ mod raw {
 
     use crate::lib::config;
 
+    use anyhow::anyhow;
+
     const SERVICES_CONFIG: &str = "services.yaml";
 
     #[derive(Serialize, Deserialize)]
+    #[serde(deny_unknown_fields)]
     struct Services {
         services: HashMap<String, Service>,
         networks: HashMap<String, Network>,
@@ -101,6 +149,7 @@ mod raw {
     }
 
     #[derive(Serialize, Deserialize)]
+    #[serde(deny_unknown_fields)]
     struct Service {
         #[serde(default = "default_global")]
         global: bool,
@@ -108,9 +157,14 @@ mod raw {
         image: Option<String>,
         volumes: Option<HashMap<String, String>>,
         networks: Option<Vec<String>>,
+        autostart: Option<bool>,
+        ports: Option<Vec<String>>,
+        command: Option<Vec<String>>,
+        restart: Option<String>,
     }
 
     #[derive(Serialize, Deserialize)]
+    #[serde(deny_unknown_fields)]
     struct Build {
         repo: String,
         dockerfile: Option<String>,
@@ -118,12 +172,14 @@ mod raw {
     }
 
     #[derive(Serialize, Deserialize)]
+    #[serde(deny_unknown_fields)]
     struct Network {
         #[serde(default = "default_global")]
         global: bool,
     }
 
     #[derive(Serialize, Deserialize)]
+    #[serde(deny_unknown_fields)]
     struct Volume {
         #[serde(default = "default_global")]
         global: bool,
@@ -212,11 +268,55 @@ mod raw {
             Ok(super::Service {
                 image: get_image_name(context, self.image, self.global)?,
                 container: get_container_name(context, self.global)?,
+                autostart: self.autostart.unwrap_or(false),
+                command: self.command,
+                ports: parse_port_mapping(self.ports.unwrap_or_default())?,
+                restart: self.restart.unwrap_or(String::from("on_failure")),
                 networks,
                 volumes,
                 build,
             })
         }
+    }
+
+    fn parse_port_mapping(
+        ports: Vec<String>,
+    ) -> Result<Vec<common::PortMapping>, config::LoadConfigError> {
+        let res: Result<Vec<_>, anyhow::Error> = ports
+            .into_iter()
+            .map(|port| {
+                let splits: Vec<&str> = port.split("/").collect();
+                let (ports, proto) = if splits.len() == 1 {
+                    (splits[0].to_string(), None)
+                } else if splits.len() == 2 {
+                    (splits[0].to_string(), Some(splits[1].to_string()))
+                } else {
+                    return Err(anyhow!("Invald port mapping: {}", port));
+                };
+
+                let splits: Vec<&str> = ports.split(":").collect();
+
+                let (host, host_port, container_port) = if splits.len() == 2 {
+                    (None, splits[0].parse()?, splits[1].parse()?)
+                } else if splits.len() == 3 {
+                    (
+                        Some(splits[0].to_string()),
+                        splits[1].parse()?,
+                        splits[2].parse()?,
+                    )
+                } else {
+                    return Err(anyhow!("Invalid port mapping: {}", port).into());
+                };
+
+                Ok(common::PortMapping {
+                    container_port,
+                    proto: proto.unwrap_or(String::from("tcp")),
+                    host_port,
+                    host,
+                })
+            })
+            .collect();
+        Ok(res?)
     }
 
     fn get_image_name(

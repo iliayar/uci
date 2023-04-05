@@ -36,6 +36,31 @@ impl Project {
         })
     }
 
+    pub async fn autorun(
+        &self,
+        config: &super::ServiceConfig,
+        worker_context: Option<worker_lib::context::Context>,
+    ) -> Result<(), super::ExecutionError> {
+        let jobs = self.services.autorun().await?;
+
+        let pipeline = common::Pipeline {
+            jobs,
+            links: Default::default(),
+            networks: Default::default(),
+            volumes: Default::default(),
+        };
+
+        self.run_pipeline_impl(
+            Id::Other(&format!("autorun_{}", self.id)),
+            config,
+            worker_context,
+            pipeline,
+        )
+        .await?;
+
+        Ok(())
+    }
+
     pub async fn run_pipeline(
         &self,
         config: &super::ServiceConfig,
@@ -70,37 +95,15 @@ impl Project {
             .get(&service_id)
             .ok_or(anyhow!("Now such service {} to run action on", service_id))?;
 
-        let steps = match action {
-            super::ServiceAction::Deploy => {
-                let build_config = service.get_build_config().ok_or(anyhow!(
-                    "Cannot construct build config for service {}",
-                    service_id
-                ))?;
-                let run_config = service.get_run_config().ok_or(anyhow!(
-                    "Cannot construct run config for service {}",
-                    service_id
-                ))?;
-                let stop_config = service.get_stop_config().ok_or(anyhow!(
-                    "Cannot construct stop config for service {}",
-                    service_id
-                ))?;
-
-                vec![common::Step::Deploy(common::DeployConfig {
-                    stop_config,
-                    build_config,
-                    run_config,
-                })]
-            }
+        let job = match action {
+            super::ServiceAction::Deploy => service.get_deploy_job().ok_or(anyhow!(
+                "Cannot construct deploy config for service {}",
+                service_id
+            ))?,
         };
 
         let mut jobs = HashMap::new();
-        jobs.insert(
-            String::from("deploy"),
-            common::Job {
-                needs: Vec::new(),
-                steps,
-            },
-        );
+        jobs.insert(String::from("deploy"), job);
 
         let pipeline = common::Pipeline {
             jobs,
@@ -125,6 +128,7 @@ impl Project {
         match id {
             Id::Pipeline(id) => info!("Running pipeline {}", id),
             Id::Service(id) => info!("Running service {} action", id),
+            Id::Other(id) => info!("Running pipeline for {} action", id),
         };
 
         if let Some(worker_context) = worker_context {
@@ -147,6 +151,7 @@ impl Project {
         match id {
             Id::Pipeline(id) => info!("Pipeline {} started", id),
             Id::Service(id) => info!("Service {} action started", id),
+            Id::Other(id) => info!("Pipeline for {} started", id),
         }
 
         Ok(())
@@ -156,4 +161,5 @@ impl Project {
 enum Id<'a> {
     Pipeline(&'a str),
     Service(&'a str),
+    Other(&'a str),
 }
