@@ -258,9 +258,11 @@ dependencies = [
 name = "common"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "log 0.4.17",
  "logger",
  "serde",
+ "thiserror",
  "tokio",
  "tokio-stream",
 ]

@@ -1,4 +1,4 @@
-use std::{borrow::BorrowMut, path::PathBuf, sync::Arc};
+use std::{borrow::BorrowMut, collections::HashMap, path::PathBuf, sync::Arc};
 
 use super::{config, git};
 
@@ -51,4 +51,10 @@ impl Context {
         self.config.lock().await.clone_missing_repos().await?;
         Ok(())
     }
+}
+
+pub enum ContextVar {
+    Object { values: HashMap<String, ContextVar> },
+    Array { values: Vec<ContextVar> },
+    String { value: String },
 }
