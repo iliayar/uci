@@ -65,6 +65,7 @@ mod raw {
         image: Option<String>,
         networks: Option<Vec<String>>,
         volumes: Option<HashMap<String, String>>,
+        env: Option<HashMap<String, String>>,
     }
 
     #[derive(Deserialize, Serialize, Clone, Copy)]
@@ -101,7 +102,7 @@ mod raw {
             context: &config::LoadContext,
         ) -> Result<Self::Output, config::LoadConfigError> {
             let links =
-                config::utils::substitute_path_vars(context, self.links.unwrap_or_default())?;
+                config::utils::substitute_vars_dict(context, self.links.unwrap_or_default())?;
 
             Ok(common::Pipeline {
                 links,
@@ -150,6 +151,10 @@ mod raw {
                             .ok_or(anyhow!("'script' step requires 'script' field"))?,
                         docker_image: self.image,
                         interpreter: self.interpreter,
+                        env: config::utils::substitute_vars_dict(
+                            context,
+                            self.env.unwrap_or_default(),
+                        )?,
                         volumes,
                         networks,
                     };

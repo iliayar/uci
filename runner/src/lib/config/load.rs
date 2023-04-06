@@ -8,8 +8,8 @@ pub struct LoadContext<'a> {
     config: Option<&'a super::ServiceConfig>,
     project_id: Option<&'a str>,
     project_root: Option<&'a PathBuf>,
+    project_config: Option<&'a PathBuf>,
     service_id: Option<&'a str>,
-    repo_id: Option<&'a str>,
     networks: Option<&'a HashMap<String, super::Network>>,
     volumes: Option<&'a HashMap<String, super::Volume>>,
 
@@ -51,20 +51,20 @@ impl<'a> LoadContext<'a> {
         getter_impl(self.project_root, "project_root")
     }
 
+    pub fn set_project_config(&mut self, project_config: &'a PathBuf) {
+        self.project_config = Some(project_config);
+    }
+
+    pub fn project_config(&self) -> Result<&PathBuf, super::LoadConfigError> {
+        getter_impl(self.project_config, "project_config")
+    }
+
     pub fn set_service_id(&mut self, service_id: &'a str) {
         self.service_id = Some(service_id);
     }
 
     pub fn service_id(&self) -> Result<&str, super::LoadConfigError> {
         getter_impl(self.service_id, "service_id")
-    }
-
-    pub fn set_repo_id(&mut self, repo_id: &'a str) {
-        self.repo_id = Some(repo_id);
-    }
-
-    pub fn repo_id(&self) -> Result<&str, super::LoadConfigError> {
-        getter_impl(self.repo_id, "repo_id")
     }
 
     pub fn set_networks(&mut self, networks: &'a HashMap<String, super::Network>) {
@@ -102,13 +102,15 @@ impl<'a> LoadContext<'a> {
             .ok_or(anyhow!("No such extra key: {}", key))
             .map_err(Into::into)
     }
+}
 
-    pub fn get_vars(&self) -> common::vars::Vars {
+impl<'a> Into<common::vars::Vars> for &LoadContext<'a> {
+    fn into(self) -> common::vars::Vars {
         use common::vars::*;
-        let mut value = HashMap::new();
+        let mut value: HashMap<String, common::vars::Vars> = HashMap::new();
 
         if let Some(repos) = self.repos {
-            value.insert(String::from("repos"), repos.get_vars());
+            value.insert(String::from("repos"), repos.into());
         }
 
         if let Some(config) = self.config {
@@ -132,6 +134,12 @@ impl<'a> LoadContext<'a> {
     }
 }
 
+impl<'a> Into<common::vars::Vars> for LoadContext<'a> {
+    fn into(self) -> common::vars::Vars {
+        (&self).into()
+    }
+}
+
 fn getter_impl<'a, T: ?Sized>(
     binding: Option<&'a T>,
     name: &str,
@@ -142,19 +150,13 @@ fn getter_impl<'a, T: ?Sized>(
 }
 
 #[async_trait::async_trait]
-pub trait LoadRaw
-where
-    Self: for<'a> serde::Deserialize<'a>,
-{
+pub trait LoadRaw {
     type Output;
 
     async fn load_raw(self, context: &LoadContext) -> Result<Self::Output, super::LoadConfigError>;
 }
 
-pub trait LoadRawSync
-where
-    Self: for<'a> serde::Deserialize<'a>,
-{
+pub trait LoadRawSync {
     type Output;
 
     fn load_raw(self, context: &LoadContext) -> Result<Self::Output, super::LoadConfigError>;
@@ -163,7 +165,10 @@ where
 pub async fn load<'a, T: LoadRaw>(
     path: PathBuf,
     context: &LoadContext<'a>,
-) -> Result<<T as LoadRaw>::Output, super::LoadConfigError> {
+) -> Result<<T as LoadRaw>::Output, super::LoadConfigError>
+where
+    T: for<'b> serde::Deserialize<'b>,
+{
     let content = tokio::fs::read_to_string(path).await?;
     serde_yaml::from_str::<T>(&content)?.load_raw(context).await
 }
@@ -171,7 +176,10 @@ pub async fn load<'a, T: LoadRaw>(
 pub async fn load_sync<'a, T: LoadRawSync>(
     path: PathBuf,
     context: &LoadContext<'a>,
-) -> Result<<T as LoadRawSync>::Output, super::LoadConfigError> {
+) -> Result<<T as LoadRawSync>::Output, super::LoadConfigError>
+where
+    T: for<'b> serde::Deserialize<'b>,
+{
     let content = tokio::fs::read_to_string(path).await?;
     serde_yaml::from_str::<T>(&content)?.load_raw(context)
 }

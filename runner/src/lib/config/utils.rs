@@ -2,27 +2,36 @@ use std::{collections::HashMap, path::PathBuf};
 
 use anyhow::anyhow;
 
-pub fn substitute_path_vars(
+pub fn substitute_vars_dict(
     context: &super::LoadContext,
-    unprepared_links: HashMap<String, String>,
+    dict: HashMap<String, String>,
 ) -> Result<HashMap<String, String>, super::LoadConfigError> {
-    let vars = context.get_vars();
-    let result: Result<_, super::LoadConfigError> = unprepared_links
+    let vars: common::vars::Vars = context.into();
+    let result: Result<_, super::LoadConfigError> = dict
         .into_iter()
-        .map(|(link, path)| Ok((link, vars.eval(&path)?)))
+        .map(|(k, v)| Ok((k, vars.eval(&v)?)))
         .collect();
 
     Ok(result?)
 }
 
-fn substitute_path(substitutions: &HashMap<String, PathBuf>, path: String) -> String {
-    for (var, subst) in substitutions {
-        if let Some(rel_path) = path.strip_prefix(&format!("${}/", var)) {
-            return subst.join(rel_path).to_string_lossy().to_string();
-        }
-    }
+pub fn substitute_vars_list(
+    context: &super::LoadContext,
+    list: Vec<String>,
+) -> Result<Vec<String>, super::LoadConfigError> {
+    let vars: common::vars::Vars = context.into();
+    let result: Result<_, super::LoadConfigError> =
+        list.into_iter().map(|v| Ok(vars.eval(&v)?)).collect();
 
-    path
+    Ok(result?)
+}
+
+pub fn substitute_vars(
+    context: &super::LoadContext,
+    s: String,
+) -> Result<String, super::LoadConfigError> {
+    let vars: common::vars::Vars = context.into();
+    Ok(vars.eval(&s)?)
 }
 
 pub fn get_networks_names(
@@ -40,7 +49,7 @@ pub fn get_volumes_names(
     volumes: HashMap<String, String>,
 ) -> Result<HashMap<String, String>, super::LoadConfigError> {
     let volumes: Result<HashMap<_, _>, super::LoadConfigError> =
-        substitute_path_vars(context, volumes)?
+        substitute_vars_dict(context, volumes)?
             .into_iter()
             .map(|(k, v)| Ok((get_volume_name(context, v)?, k)))
             .collect();

@@ -3,3 +3,6 @@ jobs:
     steps:
       - script: |
           pwd
+          echo $TEST_ENV
+        env:
+          TEST_ENV: aboba

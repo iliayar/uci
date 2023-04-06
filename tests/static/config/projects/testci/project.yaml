@@ -1,0 +1,13 @@
+bind9:
+  zones:
+    'iyay.space':
+      nameservers:
+        'n1': 1.2.3.4
+      cnames:
+        - 'test1'
+        - 'test2'
+    'iliayar.ru':
+      nameservers:
+        'n1': 5.6.7.8
+      cnames:
+        - 'some-service'

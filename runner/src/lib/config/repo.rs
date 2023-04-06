@@ -77,8 +77,10 @@ impl Repo {
             }
         }
     }
+}
 
-    pub fn get_vars(&self) -> common::vars::Vars {
+impl Into<common::vars::Vars> for &Repo {
+    fn into(self) -> common::vars::Vars {
         use common::vars::*;
         let path = match self {
             Repo::Regular {
@@ -138,11 +140,13 @@ impl Repos {
 
         Ok(())
     }
+}
 
-    pub fn get_vars(&self) -> common::vars::Vars {
-        let mut value = HashMap::new();
+impl Into<common::vars::Vars> for &Repos {
+    fn into(self) -> common::vars::Vars {
+        let mut value: HashMap<String, common::vars::Vars> = HashMap::new();
         for (id, repo) in self.repos.iter() {
-            value.insert(id.to_string(), repo.get_vars());
+            value.insert(id.to_string(), repo.into());
         }
         value.into()
     }

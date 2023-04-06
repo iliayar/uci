@@ -40,6 +40,7 @@ mod raw {
     use serde::{Deserialize, Serialize};
 
     use crate::lib::{config, utils};
+    use log::*;
 
     #[derive(Deserialize, Serialize)]
     #[serde(deny_unknown_fields)]
@@ -67,6 +68,11 @@ mod raw {
 
             for (id, Project { path }) in self.projects.into_iter() {
                 let project_root = utils::abs_or_rel_to_dir(path, context.configs_root()?.clone());
+		if !project_root.exists() {
+		    error!("Failed to load project at {:?}. Skiping", project_root);
+		    continue;
+		}
+
                 let mut context = context.clone();
                 context.set_project_id(&id);
                 context.set_project_root(&project_root);

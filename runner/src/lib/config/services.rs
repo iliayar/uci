@@ -33,13 +33,13 @@ pub struct Service {
     command: Option<Vec<String>>,
     autostart: bool,
     restart: String,
+    env: HashMap<String, String>,
 }
 
 #[derive(Debug)]
 struct Build {
     path: PathBuf,
     dockerfile: Option<String>,
-    context: Option<String>,
 }
 
 impl Services {
@@ -80,7 +80,6 @@ impl Service {
                 path: common::BuildImageConfigSourcePath::Directory(
                     build.path.to_string_lossy().to_string(),
                 ),
-                context: build.context.clone(),
             });
 
         Some(common::BuildImageConfig {
@@ -99,7 +98,8 @@ impl Service {
             image: self.container.clone(),
             ports: self.ports.clone(),
             command: self.command.clone(),
-	    restart_policy: self.restart.clone(),
+            restart_policy: self.restart.clone(),
+            env: self.env.clone(),
             volumes,
             networks,
         })
@@ -134,7 +134,7 @@ mod raw {
 
     use serde::{Deserialize, Serialize};
 
-    use crate::lib::config;
+    use crate::lib::{config, utils};
 
     use anyhow::anyhow;
 
@@ -161,14 +161,14 @@ mod raw {
         ports: Option<Vec<String>>,
         command: Option<Vec<String>>,
         restart: Option<String>,
+        env: Option<HashMap<String, String>>,
     }
 
     #[derive(Serialize, Deserialize)]
     #[serde(deny_unknown_fields)]
     struct Build {
-        repo: String,
+        path: String,
         dockerfile: Option<String>,
-        context: Option<String>,
     }
 
     #[derive(Serialize, Deserialize)]
@@ -272,6 +272,7 @@ mod raw {
                 command: self.command,
                 ports: parse_port_mapping(self.ports.unwrap_or_default())?,
                 restart: self.restart.unwrap_or(String::from("on_failure")),
+                env: config::utils::substitute_vars_dict(context, self.env.unwrap_or_default())?,
                 networks,
                 volumes,
                 build,
@@ -364,10 +365,10 @@ mod raw {
             self,
             context: &config::LoadContext,
         ) -> Result<Self::Output, config::LoadConfigError> {
+            let path = utils::try_expand_home(config::utils::substitute_vars(context, self.path)?);
             Ok(super::Build {
-                path: context.config()?.repos_path.join(self.repo.clone()),
+                path,
                 dockerfile: self.dockerfile,
-                context: self.context,
             })
         }
     }

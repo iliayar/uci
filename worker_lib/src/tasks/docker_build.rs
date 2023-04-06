@@ -8,8 +8,6 @@ use crate::{
 use anyhow::anyhow;
 use log::*;
 
-const DEFUALT_CONTEXT: &str = "./";
-
 #[async_trait::async_trait]
 impl super::Task for common::BuildImageConfig {
     async fn run(
@@ -18,11 +16,10 @@ impl super::Task for common::BuildImageConfig {
         task_context: &super::TaskContext,
     ) -> Result<(), super::TaskError> {
         if let Some(source) = self.source {
-            let context_path = source.context.unwrap_or(DEFUALT_CONTEXT.to_string());
             let tar_tempfile = match source.path {
                 common::BuildImageConfigSourcePath::Directory(path) => {
                     let path: PathBuf = path.into();
-                    file_utils::create_temp_tar(path.join(context_path)).await?
+                    file_utils::create_temp_tar(path).await?
                 }
                 common::BuildImageConfigSourcePath::Tar(path) => {
                     tempfile::TempFile::dummy(path.into()).await

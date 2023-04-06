@@ -21,7 +21,8 @@ impl task::Task for RunContainerConfig {
             .networks(self.networks)
             .ports(self.ports)
             .command(self.command)
-            .restart(self.restart_policy);
+            .restart(self.restart_policy)
+            .env(self.env);
 
         let name = context
             .docker()

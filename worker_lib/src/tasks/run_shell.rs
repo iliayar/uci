@@ -53,6 +53,8 @@ impl task::Task for common::RunShellConfig {
 
             run_command_builder.workdir(Some(task_context_dir));
 
+	    run_command_builder.env(self.env);
+
             context
                 .docker()
                 .run_command(

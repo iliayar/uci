@@ -71,6 +71,9 @@ pub struct CreateContainerParams {
 
     #[builder(default = "default_restart()")]
     restart: String,
+
+    #[builder(default = "Default::default()")]
+    env: HashMap<String, String>,
 }
 
 #[derive(derive_builder::Builder)]
@@ -86,12 +89,17 @@ pub struct StopContainerParams {
 #[derive(derive_builder::Builder)]
 pub struct RunCommandParams {
     image: String,
+
     #[builder(default = "Default::default()")]
     mounts: HashMap<String, String>,
     command: Vec<String>,
     workdir: Option<String>,
+
     #[builder(default = "Default::default()")]
     networks: Vec<String>,
+
+    #[builder(default = "Default::default()")]
+    env: HashMap<String, String>,
 }
 
 pub enum DeployBuildParams {
@@ -213,6 +221,7 @@ impl Docker {
             host_config: Some(host_config),
             cmd: params.command,
             exposed_ports: Some(exposed_ports),
+	    env: Some(get_env(params.env)),
             ..Default::default()
         };
 
@@ -261,6 +270,7 @@ impl Docker {
             image: Some(params.image),
             tty: Some(true),
             host_config: Some(host_config),
+	    env: Some(get_env(params.env)),
             ..Default::default()
         };
 
@@ -468,4 +478,10 @@ fn get_restart_policy(policy: &str) -> bollard::models::RestartPolicy {
         name: policy,
         ..Default::default()
     }
+}
+
+fn get_env(env: HashMap<String, String>) -> Vec<String> {
+    env.into_iter()
+        .map(|(k, v)| format!("{}={}", k, v))
+        .collect()
 }

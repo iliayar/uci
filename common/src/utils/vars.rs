@@ -45,6 +45,7 @@ pub enum VarsError {
     GetCustomVarNotImplemented,
 }
 
+#[derive(serde::Deserialize, serde::Serialize, Clone)]
 pub enum Vars {
     Object { values: HashMap<String, Vars> },
     List { values: Vec<Vars> },
@@ -202,6 +203,78 @@ impl Vars {
     pub fn eval(&self, text: &str) -> Result<String, SubstitutionError> {
         substitute_vars(self, text)
     }
+
+    pub fn assign(&mut self, path: Path, value: Vars) -> Result<(), VarsError> {
+        let mut result: &mut Vars = self;
+        for item in path.items.into_iter() {
+            result = match item {
+                PathItem::Key(key) => match result {
+                    Vars::Object { values } => {
+                        if !values.contains_key(&key) {
+                            values.insert(key.clone(), Vars::None);
+                        }
+
+                        values.get_mut(&key).unwrap()
+                    }
+                    Vars::None => {
+                        *result = Vars::Object {
+                            values: HashMap::from_iter([(key.clone(), Vars::None)]),
+                        };
+                        if let Vars::Object { values } = result {
+                            values.get_mut(&key).unwrap()
+                        } else {
+                            unreachable!()
+                        }
+                    }
+                    _ => {
+                        return Err(VarsError::NotAnObject { key });
+                    }
+                },
+                PathItem::Index(index) => match result {
+                    Vars::List { values } => {
+                        while values.len() <= index {
+                            values.push(Vars::None);
+                        }
+                        &mut values[index]
+                    }
+                    Vars::None => {
+                        *result = Vars::List {
+                            values: vec![Vars::None; index + 1],
+                        };
+                        if let Vars::List { values } = result {
+                            &mut values[index]
+                        } else {
+                            unreachable!()
+                        }
+                    }
+                    _ => {
+                        return Err(VarsError::NotAList { index });
+                    }
+                },
+            };
+        }
+        *result = value;
+        Ok(())
+    }
+
+    pub fn from_list<S: AsRef<str>>(assignes: &[(S, Vars)]) -> Result<Vars, SubstitutionError> {
+        let mut vars = Vars::default();
+        for (path, value) in assignes {
+            let path = parse_path_simple(path.as_ref())?;
+            vars.assign(path, value.clone())?;
+        }
+        Ok(vars)
+    }
+
+    pub fn from_list_strings<S: AsRef<str>, V: ToString>(
+        assignes: &[(S, V)],
+    ) -> Result<Vars, SubstitutionError> {
+        let mut nassigned = Vec::new();
+        for (path, value) in assignes {
+            nassigned.push((path.clone(), Vars::String(value.to_string())));
+        }
+        Vars::from_list(&nassigned)
+    }
 }
 
 pub fn substitute_vars(vars: &Vars, text: &str) -> Result<String, SubstitutionError> {
@@ -302,9 +375,7 @@ fn try_parse_expr(vars: &Vars, chars: &mut Peekable<Chars>) -> Result<String, Su
                         State::End
                     }
                     _ => {
-                        unreachable!(
-                            "parse_expr should end only when it mets closing bracket or EOF"
-                        )
+                        return Err(SubstitutionError::MissingClosingBracket);
                     }
                 },
                 None => {
@@ -316,6 +387,12 @@ fn try_parse_expr(vars: &Vars, chars: &mut Peekable<Chars>) -> Result<String, Su
             }
         };
     }
+}
+
+fn parse_path_simple(path: &str) -> Result<Path, SubstitutionError> {
+    let mut chars = path.chars().peekable();
+    let vars = Vars::default();
+    parse_path(&vars, &mut chars)
 }
 
 fn parse_path(vars: &Vars, chars: &mut Peekable<Chars>) -> Result<Path, SubstitutionError> {
@@ -341,9 +418,7 @@ fn parse_path(vars: &Vars, chars: &mut Peekable<Chars>) -> Result<Path, Substitu
                     '}' => State::End,
                     _ => State::Key,
                 },
-                None => {
-                    return Err(SubstitutionError::MissingClosingBracket);
-                }
+                None => State::End,
             },
             State::Key => match chars.peek() {
                 Some(ch) => match ch {
@@ -374,7 +449,9 @@ fn parse_path(vars: &Vars, chars: &mut Peekable<Chars>) -> Result<Path, Substitu
                     }
                 },
                 None => {
-                    return Err(SubstitutionError::MissingClosingBracket);
+                    path.key(current);
+                    current = String::new();
+                    State::End
                 }
             },
             State::Index => match chars.peek() {
@@ -574,6 +651,53 @@ mod tests {
 
         let content = "this ${b[${keys[3]}]}";
         assert_eq!(super::substitute_vars(&vars, content)?, "this ab");
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_assign() -> Result<(), anyhow::Error> {
+        let mut vars = super::Vars::default();
+        vars.assign(
+            super::parse_path_simple("a.b")?,
+            super::Value::<()>::String("123".to_string()).into(),
+        )?;
+        vars.assign(
+            super::parse_path_simple("a.g")?,
+            super::Value::<()>::String("aboba".to_string()).into(),
+        )?;
+        vars.assign(
+            super::parse_path_simple("b[5]")?,
+            super::Value::<()>::String("lol".to_string()).into(),
+        )?;
+        vars.assign(
+            super::parse_path_simple("c")?,
+            super::Value::<()>::String("booba".to_string()).into(),
+        )?;
+
+        let content = "this ${a.b} ${a.g} ${b[5]} ${c}";
+        assert_eq!(
+            super::substitute_vars(&vars, content)?,
+            "this 123 aboba lol booba"
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_assign_strings() -> Result<(), anyhow::Error> {
+        let vars = super::Vars::from_list_strings(&[
+            ("a.b", "123"),
+            ("a.g", "aboba"),
+            ("b[5]", "lol"),
+            ("c", "booba"),
+        ])?;
+
+        let content = "this ${a.b} ${a.g} ${b[5]} ${c}";
+        assert_eq!(
+            super::substitute_vars(&vars, content)?,
+            "this 123 aboba lol booba"
+        );
 
         Ok(())
     }

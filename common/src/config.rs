@@ -48,6 +48,7 @@ pub struct RunContainerConfig {
     pub command: Option<Vec<String>>,
     pub ports: Vec<PortMapping>,
     pub restart_policy: String,
+    pub env: HashMap<String, String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -71,7 +72,6 @@ pub struct BuildImageConfig {
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct BuildImageConfigSource {
     pub dockerfile: Option<String>,
-    pub context: Option<String>,
     pub path: BuildImageConfigSourcePath,
 }
 
@@ -88,6 +88,7 @@ pub struct RunShellConfig {
     pub interpreter: Option<Vec<String>>,
     pub volumes: HashMap<String, String>,
     pub networks: Vec<String>,
+    pub env: HashMap<String, String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]

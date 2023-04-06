@@ -3,6 +3,8 @@ jobs:
     steps:
       - type: script
         image: ubuntu
+        env:
+          TEST_ENV: aboba
         script: |
           apt-get update && apt-get install -y curl
 
@@ -11,7 +13,7 @@ jobs:
           ls src
           echo "KEK: $(id)" >> out/echo
           echo "AMOGUS" >> /mnt/test/file
-          echo "ABOBA" >> /mnt/test-global/file
+          echo $TEST_ENV >> /mnt/test-global/file
           curl common-service/AMOGUS >> out/file
         volumes:
           '/mnt/test': test-vol
