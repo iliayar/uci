@@ -282,12 +282,13 @@ mod raw {
 
     #[derive(Serialize, Deserialize)]
     pub struct Config {
-        bind9: Bind,
+        bind9: Option<Bind>,
     }
 
     #[derive(Serialize, Deserialize)]
     #[serde(deny_unknown_fields)]
     pub struct Bind {
+        enabled: Option<bool>,
         zones: HashMap<String, Zone>,
     }
 
@@ -333,13 +334,17 @@ mod raw {
         context: &config::LoadContext<'a>,
     ) -> Result<Option<super::Bind>, super::LoadConfigError> {
         let path = context.project_config()?.clone();
+
         if path.exists() {
-            Ok(Some(
-                config::load_sync::<Config>(path, context)
-                    .await?
-                    .bind9
-                    .load_raw(context)?,
-            ))
+            if let Some(bind9) = config::load_sync::<Config>(path, context).await?.bind9 {
+                if bind9.enabled.unwrap_or(true) {
+                    Ok(Some(bind9.load_raw(context)?))
+                } else {
+                    Ok(None)
+                }
+            } else {
+                Ok(None)
+            }
         } else {
             Ok(None)
         }

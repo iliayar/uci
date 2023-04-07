@@ -8,7 +8,7 @@ use log::*;
 
 use super::LoadConfigError;
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct Actions {
     actions: HashMap<String, Action>,
 }
@@ -34,7 +34,16 @@ pub struct Case {
 #[derive(Debug)]
 pub enum Condition {
     Always,
+    OnConfigReload,
 }
+
+pub enum Trigger {
+    ConfigReloaded,
+    // NOTE: Dont like it btw
+    RepoUpdate(super::ReposDiffs),
+}
+
+pub const ACTIONS_CONFIG: &str = "actions.yaml";
 
 impl Actions {
     pub async fn load<'a>(context: &super::LoadContext<'a>) -> Result<Actions, LoadConfigError> {
@@ -44,15 +53,13 @@ impl Actions {
     pub fn get(&self, action: &str) -> Option<&Action> {
         self.actions.get(action)
     }
-}
 
-impl Action {
     pub async fn get_matched_pipelines(
         &self,
-        diffs: &super::ReposDiffs,
+        trigger: &Trigger,
     ) -> Result<HashSet<String>, super::ExecutionError> {
         Ok(self
-            .get_actions(diffs, |case| case.run_pipelines.clone())
+            .get_actions(&trigger, &|case| case.run_pipelines.clone())
             .await?
             .into_iter()
             .map(|v| v.into_iter())
@@ -62,10 +69,10 @@ impl Action {
 
     pub async fn get_service_actions(
         &self,
-        diffs: &super::ReposDiffs,
+        trigger: &Trigger,
     ) -> Result<HashMap<String, super::ServiceAction>, super::ExecutionError> {
         Ok(self
-            .get_actions(diffs, |case| case.services.clone())
+            .get_actions(&trigger, &|case| case.services.clone())
             .await?
             .into_iter()
             .map(|m| m.into_iter())
@@ -73,15 +80,29 @@ impl Action {
             .collect())
     }
 
+    pub async fn get_actions<T>(
+        &self,
+        trigger: &Trigger,
+        f: &impl Fn(&super::Case) -> Option<T>,
+    ) -> Result<Vec<T>, super::ExecutionError> {
+        let mut actions = Vec::new();
+        for (action_id, action) in self.actions.iter() {
+            actions.append(&mut action.get_actions(trigger, f).await?);
+        }
+        Ok(actions)
+    }
+}
+
+impl Action {
     async fn get_actions<T>(
         &self,
-        diffs: &super::ReposDiffs,
-        f: impl Fn(&super::Case) -> Option<T>,
+        trigger: &Trigger,
+        f: &impl Fn(&super::Case) -> Option<T>,
     ) -> Result<Vec<T>, super::ExecutionError> {
         let mut res = Vec::new();
 
         for (i, case) in self.cases.iter().enumerate() {
-            if case.condition.check_matched(diffs).await {
+            if case.condition.check_matched(trigger).await {
                 info!("Match condition {}", i);
                 if let Some(value) = f(case) {
                     res.push(value);
@@ -102,9 +123,14 @@ impl Action {
 }
 
 impl Condition {
-    async fn check_matched(&self, diffs: &HashMap<String, Vec<String>>) -> bool {
+    async fn check_matched(&self, trigger: &Trigger) -> bool {
         match self {
-            Condition::Always => true,
+            Condition::Always => {
+                !matches!(Trigger::ConfigReloaded, trigger)
+	    },
+            Condition::OnConfigReload => {
+                matches!(Trigger::ConfigReloaded, trigger)
+            }
         }
     }
 }
@@ -115,8 +141,6 @@ mod raw {
     use serde::{Deserialize, Serialize};
 
     use crate::lib::config;
-
-    const ACTIONS_CONFIG: &str = "actions.yaml";
 
     #[derive(Deserialize, Serialize)]
     #[serde(deny_unknown_fields)]
@@ -136,6 +160,9 @@ mod raw {
     enum ConditionType {
         #[serde(rename = "always")]
         Always,
+
+        #[serde(rename = "on_config_reload")]
+        OnConfigReload,
     }
 
     #[derive(Deserialize, Serialize)]
@@ -190,6 +217,7 @@ mod raw {
         ) -> Result<Self::Output, config::LoadConfigError> {
             Ok(match self {
                 ConditionType::Always => super::Condition::Always,
+                ConditionType::OnConfigReload => super::Condition::OnConfigReload,
             })
         }
     }
@@ -225,6 +253,10 @@ mod raw {
     pub async fn load<'a>(
         context: &config::LoadContext<'a>,
     ) -> Result<super::Actions, super::LoadConfigError> {
-        config::load_sync::<Actions>(context.project_root()?.join(ACTIONS_CONFIG), context).await
+	let path = context.project_root()?.join(super::ACTIONS_CONFIG);
+	if !path.exists() {
+	    return Ok(Default::default());
+	}
+        config::load_sync::<Actions>(path, context).await
     }
 }

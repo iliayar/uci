@@ -5,7 +5,7 @@ use super::LoadConfigError;
 use anyhow::anyhow;
 use log::*;
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct Services {
     services: HashMap<String, Service>,
     pub networks: HashMap<String, Network>,
@@ -42,6 +42,8 @@ struct Build {
     dockerfile: Option<String>,
 }
 
+pub const SERVICES_CONFIG: &str = "services.yaml";
+
 impl Services {
     pub async fn load<'a>(context: &super::LoadContext<'a>) -> Result<Services, LoadConfigError> {
         raw::load(context).await
@@ -67,13 +69,6 @@ impl Services {
         }
 
         Ok(res)
-    }
-
-    pub fn add_bind9_service(
-        &mut self,
-        config: &super::ServiceConfig,
-    ) -> Result<(), LoadConfigError> {
-        Ok(())
     }
 }
 
@@ -145,13 +140,16 @@ mod raw {
 
     use anyhow::anyhow;
 
-    const SERVICES_CONFIG: &str = "services.yaml";
-
     #[derive(Serialize, Deserialize)]
     #[serde(deny_unknown_fields)]
     struct Services {
+        #[serde(default = "Default::default")]
         services: HashMap<String, Service>,
+
+        #[serde(default = "Default::default")]
         networks: HashMap<String, Network>,
+
+        #[serde(default = "Default::default")]
         volumes: HashMap<String, Volume>,
     }
 
@@ -168,7 +166,9 @@ mod raw {
         ports: Option<Vec<String>>,
         command: Option<Vec<String>>,
         restart: Option<String>,
-        env: Option<HashMap<String, String>>,
+
+        #[serde(default)]
+        env: HashMap<String, String>,
     }
 
     #[derive(Serialize, Deserialize)]
@@ -200,16 +200,11 @@ mod raw {
         type Output = super::Services;
 
         fn load_raw(
-            mut self,
+            self,
             context: &config::LoadContext,
         ) -> Result<Self::Output, config::LoadConfigError> {
             let networks = self.networks.load_raw(context)?;
             let volumes = self.volumes.load_raw(context)?;
-
-            if let Some(service) = try_get_dns_service(context) {
-                self.services
-                    .insert(String::from("microci-bind9-configured"), service);
-            }
 
             let services: Result<HashMap<_, _>, super::LoadConfigError> = self
                 .services
@@ -231,25 +226,6 @@ mod raw {
                 volumes,
             })
         }
-    }
-
-    fn try_get_dns_service(context: &config::LoadContext) -> Option<Service> {
-        if let Err(_) = context.extra("dns") {
-            return None;
-        }
-        let service: Service = serde_yaml::from_str(
-            r#"
-autostart: true
-build:
-  path: ${config.data.path}/__bind9__
-ports:
-  - 3053:53/udp
-restart: always
-global: true
-"#,
-        )
-        .unwrap();
-        Some(service)
     }
 
     impl config::LoadRawSync for Network {
@@ -303,7 +279,7 @@ global: true
                 command: self.command,
                 ports: parse_port_mapping(self.ports.unwrap_or_default())?,
                 restart: self.restart.unwrap_or(String::from("on_failure")),
-                env: config::utils::substitute_vars_dict(context, self.env.unwrap_or_default())?,
+                env: config::utils::substitute_vars_dict(context, self.env)?,
                 networks,
                 volumes,
                 build,
@@ -407,6 +383,10 @@ global: true
     pub async fn load<'a>(
         context: &config::LoadContext<'a>,
     ) -> Result<super::Services, super::LoadConfigError> {
-        config::load_sync::<Services>(context.project_root()?.join(SERVICES_CONFIG), context).await
+        let path = context.project_root()?.join(super::SERVICES_CONFIG);
+        if !path.exists() {
+            return Ok(Default::default());
+        }
+        config::load_sync::<Services>(path, context).await
     }
 }

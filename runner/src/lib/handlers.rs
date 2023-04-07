@@ -19,17 +19,11 @@ pub async fn run(
         return Ok(StatusCode::NOT_FOUND);
     }
 
-    tokio::spawn(async move {
-        if let Err(err) = config
-            .run_project_action(worker_context, &project_id, &action_id)
-            .await
-        {
-            error!(
-                "Failed to execute action {} on project {}: {}",
-                action_id, project_id, err
-            );
-        }
-    });
+    let trigger = super::config::ActionTrigger::DirectCall {
+	project_id: project_id.clone(),
+	action_id: action_id.clone(),
+    };
+    trigger_projects_impl(trigger, store, worker_context).await;
 
     Ok(StatusCode::OK)
 }
@@ -52,12 +46,24 @@ async fn reload_config_impl(
     worker_context: Option<worker_lib::context::Context>,
 ) -> Result<(), anyhow::Error> {
     store.context().reload_config().await?;
-    store
-        .context()
-        .config()
-        .await
-        .autostart(worker_context)
-        .await?;
+
+    let trigger = super::config::ActionTrigger::ConfigReloaded;
+    trigger_projects_impl(trigger, store, worker_context).await;
 
     Ok(())
+}
+
+pub async fn trigger_projects_impl(
+    trigger: super::config::ActionTrigger,
+    store: ContextStore,
+    worker_context: Option<worker_lib::context::Context>,
+) {
+    tokio::spawn(async move {
+        if let Err(err) = store.context().config().await.run_project_actions(worker_context, trigger).await {
+            error!(
+                "Failed to execute actions: {}", err
+            );
+        }
+    });
+
 }

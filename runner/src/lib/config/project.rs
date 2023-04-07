@@ -13,6 +13,7 @@ pub struct Project {
     pub pipelines: super::Pipelines,
     pub services: super::Services,
     pub bind: Option<super::Bind>,
+    pub caddy: Option<super::Caddy>,
 }
 
 const PROJECT_CONFIG: &str = "project.yaml";
@@ -27,8 +28,16 @@ impl Project {
         context.set_project_config(&project_config);
 
         let bind = super::Bind::load(&context).await?;
+        let caddy = super::Caddy::load(&context).await?;
 
-	context.set_extra(String::from("dns"), "");
+        if bind.is_some() {
+            context.set_extra(String::from("dns"), "");
+        }
+
+        if caddy.is_some() {
+            context.set_extra(String::from("caddy"), "");
+        }
+
         let services = super::Services::load(&context).await?;
 
         let actions = super::Actions::load(&context).await?;
@@ -44,6 +53,7 @@ impl Project {
             services,
             pipelines,
             bind,
+            caddy,
         })
     }
 
@@ -53,6 +63,10 @@ impl Project {
         worker_context: Option<worker_lib::context::Context>,
     ) -> Result<(), super::ExecutionError> {
         let jobs = self.services.autorun().await?;
+
+        if jobs.is_empty() {
+            return Ok(());
+        }
 
         let pipeline = common::Pipeline {
             jobs,
@@ -164,6 +178,39 @@ impl Project {
             Id::Service(id) => info!("Service {} action started", id),
             Id::Other(id) => info!("Pipeline for {} started", id),
         }
+
+        Ok(())
+    }
+
+    pub async fn run_matched(
+        &self,
+        config: &super::ServiceConfig,
+        worker_context: Option<worker_lib::context::Context>,
+        trigger: &super::Trigger,
+    ) -> Result<(), super::ExecutionError> {
+        let run_pipelines = self.actions.get_matched_pipelines(trigger).await?;
+        let service_actions = self.actions.get_service_actions(trigger).await?;
+
+        let mut pipeline_tasks = Vec::new();
+        let mut service_tasks = Vec::new();
+
+        info!("Running pipelines {:?}", run_pipelines);
+        for pipeline_id in run_pipelines.iter() {
+            pipeline_tasks.push(self.run_pipeline(config, worker_context.clone(), pipeline_id))
+        }
+
+        info!("Running service actions {:?}", service_actions);
+        for (service, action) in service_actions.iter() {
+            service_tasks.push(self.run_service_action(
+                config,
+                worker_context.clone(),
+                service.to_string(),
+                action.clone(),
+            ));
+        }
+
+        futures::future::try_join_all(pipeline_tasks).await?;
+        futures::future::try_join_all(service_tasks).await?;
 
         Ok(())
     }

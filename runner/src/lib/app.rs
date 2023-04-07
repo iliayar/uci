@@ -74,15 +74,17 @@ impl App {
         };
 
         let context = context::Context::new(self.config).await?;
+        let context_store = super::filters::ContextStore::new(context);
 
-        context
-            .config()
-            .await
-            .autostart(worker_context.clone())
-            .await
-            .map_err(|err| Into::<context::ContextError>::into(err))?;
+        let trigger = super::config::ActionTrigger::ConfigReloaded;
+        super::handlers::trigger_projects_impl(
+            trigger,
+            context_store.clone(),
+            worker_context.clone(),
+        )
+        .await;
 
-        let api = filters::runner(context, worker_context);
+        let api = filters::runner(context_store, worker_context);
         let routes = api.with(warp::log("runner"));
         warp::serve(routes).run(([127, 0, 0, 1], self.port)).await;
         Ok(())

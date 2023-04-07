@@ -25,10 +25,9 @@ impl ContextStore {
 }
 
 pub fn runner(
-    context: Context,
+    context_store: ContextStore,
     worker_context: Option<worker_lib::context::Context>,
 ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
-    let context_store = ContextStore::new(context);
     ping()
         .or(run(context_store.clone(), worker_context.clone()))
         .or(reload_config(context_store.clone(), worker_context.clone()))

@@ -1,4 +1,7 @@
-use std::{collections::HashMap, path::PathBuf};
+use std::{
+    collections::{HashMap, HashSet},
+    path::PathBuf,
+};
 
 use anyhow::anyhow;
 use log::*;
@@ -8,6 +11,14 @@ pub struct Config {
     pub service_config: super::ServiceConfig,
     pub repos: super::Repos,
     pub projects: super::Projects,
+}
+
+pub enum ActionTrigger {
+    ConfigReloaded,
+    DirectCall {
+        project_id: String,
+        action_id: String,
+    },
 }
 
 impl Config {
@@ -36,6 +47,10 @@ impl Config {
         self.projects.make_dns(&self.service_config).await
     }
 
+    pub async fn make_caddy(&self) -> Result<(), super::LoadConfigError> {
+        self.projects.make_caddy(&self.service_config).await
+    }
+
     pub async fn autostart(
         &self,
         worker_context: Option<worker_lib::context::Context>,
@@ -52,48 +67,35 @@ impl Config {
             .unwrap_or(false)
     }
 
-    pub async fn run_project_action(
+    pub async fn run_project_actions(
         &self,
         worker_context: Option<worker_lib::context::Context>,
-        project_id: &str,
-        action_id: &str,
+        trigger: ActionTrigger,
     ) -> Result<(), super::ExecutionError> {
-        let project = self
-            .projects
-            .get(project_id)
-            .ok_or(anyhow!("Should only be called for existing project"))?;
-        let action = project
-            .actions
-            .get(action_id)
-            .ok_or(anyhow!("Should only be called for existing action"))?;
-        info!("Running action {} on project {}", action_id, project_id);
+        let trigger = match trigger {
+            ActionTrigger::DirectCall {
+                project_id,
+                action_id,
+            } => {
+                let project = self
+                    .projects
+                    .get(&project_id)
+                    .ok_or(anyhow!("Should only be called for existing project"))?;
+                let action = project
+                    .actions
+                    .get(&action_id)
+                    .ok_or(anyhow!("Should only be called for existing action"))?;
+                info!("Running action {} on project {}", action_id, project_id);
 
-        let diffs = action.get_diffs(&self.service_config, &self.repos).await?;
-        let run_pipelines = action.get_matched_pipelines(&diffs).await?;
-        let service_actions = action.get_service_actions(&diffs).await?;
+                let diffs = action.get_diffs(&self.service_config, &self.repos).await?;
+                super::Trigger::RepoUpdate(diffs)
+            }
+            ActionTrigger::ConfigReloaded => {
+		super::Trigger::ConfigReloaded
+            }
+        };
 
-        info!("Runnign pipelines {:?}", run_pipelines);
-        let mut tasks = Vec::new();
-        for pipeline_id in run_pipelines.iter() {
-            tasks.push(project.run_pipeline(
-                &self.service_config,
-                worker_context.clone(),
-                pipeline_id,
-            ))
-        }
-        futures::future::try_join_all(tasks).await?;
-
-        info!("Running service actions {:?}", service_actions);
-        let mut tasks = Vec::new();
-        for (service, action) in service_actions.into_iter() {
-            tasks.push(project.run_service_action(
-                &self.service_config,
-                worker_context.clone(),
-                service,
-                action,
-            ));
-        }
-        futures::future::try_join_all(tasks).await?;
+	self.projects.run_matched(&self.service_config, worker_context, &trigger).await?;
 
         Ok(())
     }

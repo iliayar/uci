@@ -9,6 +9,8 @@ mod services;
 mod utils;
 mod load;
 mod bind;
+mod caddy;
+mod codegen;
 
 pub use actions::*;
 pub use config::*;
@@ -20,6 +22,7 @@ pub use service_config::*;
 pub use services::*;
 pub use load::*;
 pub use bind::*;
+pub use caddy::*;
 
 #[derive(Debug, thiserror::Error)]
 pub enum LoadConfigError {

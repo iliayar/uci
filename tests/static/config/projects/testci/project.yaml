@@ -1,4 +1,5 @@
 bind9:
+  enabled: true
   zones:
     'ilyay.space':
       ip: 12.34.56.78
@@ -13,30 +14,32 @@ bind9:
         'n1': 5.6.7.8
       cnames:
         - 'some-service'
-caddy: |
-  ilyay.space {
-    file_server
-    root * /home/iliayar/Repos/infra/caddy
-  }
-  
-  conspects.ilyay.space {
-    file_server
-    root * /home/iliayar/Repos/infra/caddy/conspects/out
-  
-    route / {
-      redir https://conspects.ilyay.space/README.html
+caddy:
+  enabled: true
+  config: |
+    ilyay.space {
+      file_server
+      root * ${repos.test.path}/caddy
     }
   
-    handle_errors {
-      @404 expression `{err.status_code} in [404]`
-      handle @404 {
-        redir https://github.com/iliayar/ITMO/tree/master{uri}
+    conspects.ilyay.space {
+      file_server
+      root * ${project.data.path}/caddy/conspects/out
+  
+      route / {
+        redir https://conspects.ilyay.space/README.html
+      }
+  
+      handle_errors {
+        @404 expression `{err.status_code} in [404]`
+        handle @404 {
+          redir https://github.com/iliayar/ITMO/tree/master{uri}
+        }
       }
     }
-  }
   
-  iliayar.ru {
-    redir https://ilyay.space{uri}
-  }
+    iliayar.ru {
+      redir https://ilyay.space{uri}
+    }
 
   

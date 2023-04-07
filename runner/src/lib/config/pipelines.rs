@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use super::LoadConfigError;
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct Pipelines {
     pipelines: HashMap<String, common::Pipeline>,
 }
@@ -185,6 +185,10 @@ mod raw {
     pub async fn load<'a>(
         context: &config::LoadContext<'a>,
     ) -> Result<super::Pipelines, super::LoadConfigError> {
-        config::load::<Pipelines>(context.project_root()?.join(PIPELINES_CONFIG), context).await
+	let path = context.project_root()?.join(PIPELINES_CONFIG);
+	if !path.exists() {
+	    return Ok(Default::default());
+	}
+        config::load::<Pipelines>(path, context).await
     }
 }

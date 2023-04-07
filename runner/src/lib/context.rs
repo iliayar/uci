@@ -54,6 +54,7 @@ async fn load_config_impl(config_path: PathBuf) -> Result<config::Config, Contex
 
     config.clone_missing_repos().await?;
     config.make_dns().await?;
+    config.make_caddy().await?;
 
     Ok(config)
 }
