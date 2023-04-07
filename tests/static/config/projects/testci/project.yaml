@@ -1,13 +1,42 @@
 bind9:
   zones:
-    'iyay.space':
+    'ilyay.space':
+      ip: 12.34.56.78
       nameservers:
         'n1': 1.2.3.4
       cnames:
         - 'test1'
         - 'test2'
     'iliayar.ru':
+      ip: 5.5.5.5
       nameservers:
         'n1': 5.6.7.8
       cnames:
         - 'some-service'
+caddy: |
+  ilyay.space {
+    file_server
+    root * /home/iliayar/Repos/infra/caddy
+  }
+  
+  conspects.ilyay.space {
+    file_server
+    root * /home/iliayar/Repos/infra/caddy/conspects/out
+  
+    route / {
+      redir https://conspects.ilyay.space/README.html
+    }
+  
+    handle_errors {
+      @404 expression `{err.status_code} in [404]`
+      handle @404 {
+        redir https://github.com/iliayar/ITMO/tree/master{uri}
+      }
+    }
+  }
+  
+  iliayar.ru {
+    redir https://ilyay.space{uri}
+  }
+
+  

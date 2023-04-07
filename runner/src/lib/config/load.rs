@@ -107,30 +107,25 @@ impl<'a> LoadContext<'a> {
 impl<'a> Into<common::vars::Vars> for &LoadContext<'a> {
     fn into(self) -> common::vars::Vars {
         use common::vars::*;
-        let mut value: HashMap<String, common::vars::Vars> = HashMap::new();
+        let mut vars = Vars::default();
 
         if let Some(repos) = self.repos {
-            value.insert(String::from("repos"), repos.into());
+            vars.assign("repos", repos.into()).ok();
         }
 
         if let Some(config) = self.config {
             if let Some(project_id) = self.project_id {
                 let data_path = config.data_path.join(project_id);
-                value.insert(
-                    String::from("project"),
-                    Value::Object(HashMap::from_iter([(
-                        String::from("data"),
-                        Value::Object(HashMap::from_iter([(
-                            String::from("path"),
-                            Value::<()>::String(data_path.to_string_lossy().to_string()),
-                        )])),
-                    )]))
-                    .into(),
-                );
+                vars.assign(
+                    "project.data.path",
+                    data_path.to_string_lossy().to_string().into(),
+                ).ok();
             }
+	    let data = config.data_path.to_string_lossy().to_string();
+	    vars.assign("config.data.path", data.into()).ok();
         }
 
-        value.into()
+	vars
     }
 }
 
@@ -216,5 +211,24 @@ impl<T: LoadRawSync> LoadRawSync for Option<T> {
         } else {
             Ok(None)
         }
+    }
+}
+
+pub trait AutoLoadRaw {}
+
+impl<T: AutoLoadRaw> LoadRawSync for T {
+    type Output = T;
+
+    fn load_raw(self, context: &LoadContext) -> Result<Self::Output, super::LoadConfigError> {
+        Ok(self)
+    }
+}
+
+#[async_trait::async_trait]
+impl<T: AutoLoadRaw + Send> LoadRaw for T {
+    type Output = T;
+
+    async fn load_raw(self, context: &LoadContext) -> Result<Self::Output, super::LoadConfigError> {
+        Ok(self)
     }
 }

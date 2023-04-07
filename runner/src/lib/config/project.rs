@@ -12,19 +12,29 @@ pub struct Project {
     pub actions: super::Actions,
     pub pipelines: super::Pipelines,
     pub services: super::Services,
+    pub bind: Option<super::Bind>,
 }
+
+const PROJECT_CONFIG: &str = "project.yaml";
 
 impl Project {
     pub async fn load<'a>(
         context: &super::LoadContext<'a>,
     ) -> Result<Project, super::LoadConfigError> {
-        let services = super::Services::load(context).await?;
-        let actions = super::Actions::load(context).await?;
-
         let mut context = context.clone();
+
+        let project_config = context.project_root()?.join(PROJECT_CONFIG);
+        context.set_project_config(&project_config);
+
+        let bind = super::Bind::load(&context).await?;
+
+	context.set_extra(String::from("dns"), "");
+        let services = super::Services::load(&context).await?;
+
+        let actions = super::Actions::load(&context).await?;
+
         context.set_networks(&services.networks);
         context.set_volumes(&services.volumes);
-
         let pipelines = super::Pipelines::load(&context).await?;
 
         Ok(Project {
@@ -33,6 +43,7 @@ impl Project {
             actions,
             services,
             pipelines,
+            bind,
         })
     }
 

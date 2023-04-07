@@ -21,7 +21,7 @@ impl Config {
         load_context.set_config(&service_config);
 
         let repos = super::Repos::load(&load_context).await?;
-	load_context.set_repos(&repos);
+        load_context.set_repos(&repos);
 
         let projects = super::Projects::load(&load_context).await?;
 
@@ -30,6 +30,10 @@ impl Config {
             repos,
             projects,
         })
+    }
+
+    pub async fn make_dns(&self) -> Result<(), super::LoadConfigError> {
+        self.projects.make_dns(&self.service_config).await
     }
 
     pub async fn autostart(

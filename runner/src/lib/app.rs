@@ -26,9 +26,9 @@ struct Args {
 }
 
 pub struct App {
-    context: context::Context,
-    worker_context: Option<worker_lib::context::Context>,
     port: u16,
+    config: PathBuf,
+    worker: bool,
 }
 
 #[derive(Error, Debug)]
@@ -49,53 +49,42 @@ impl App {
 
         let args = Args::parse();
 
-        let worker_context = if args.worker {
+        Ok(App {
+            port: args.port,
+            config: args.config,
+            worker: args.worker,
+        })
+    }
+
+    pub async fn run(self) {
+        match self.run_impl().await {
+            Ok(_) => {}
+            Err(err) => {
+                error!("Failed to run app, exiting: {}", err);
+            }
+        }
+    }
+
+    async fn run_impl(self) -> Result<(), RunnerError> {
+        let worker_context = if self.worker {
             let docker = worker_lib::docker::Docker::init()?;
             Some(worker_lib::context::Context::new(docker))
         } else {
             None
         };
 
-        let app = App {
-            context: context::Context::new(args.config).await?,
-            worker_context,
-            port: args.port,
-        };
+        let context = context::Context::new(self.config).await?;
 
-        Ok(app)
-    }
-
-    pub async fn run(self) {
-        match self.clone_missing_repos().await {
-            Ok(_) => {}
-            Err(err) => {
-                error!("Failed to clone missing repos, exiting: {}", err);
-                return;
-            }
-        }
-
-        match self
-            .context
+        context
             .config()
             .await
-            .autostart(self.worker_context.clone())
+            .autostart(worker_context.clone())
             .await
-        {
-            Ok(_) => {}
-            Err(err) => {
-                error!(
-                    "Failed to autostart services/pipelines, continuing: {}",
-                    err
-                );
-            }
-        }
+            .map_err(|err| Into::<context::ContextError>::into(err))?;
 
-        let api = filters::runner(self.context, self.worker_context);
+        let api = filters::runner(context, worker_context);
         let routes = api.with(warp::log("runner"));
         warp::serve(routes).run(([127, 0, 0, 1], self.port)).await;
-    }
-
-    async fn clone_missing_repos(&self) -> Result<(), RunnerError> {
-        Ok(self.context.clone_missing_repos().await?)
+        Ok(())
     }
 }

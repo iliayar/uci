@@ -25,13 +25,13 @@ pub enum ContextError {
 
 impl Context {
     pub async fn new(config_path: PathBuf) -> Result<Context, ContextError> {
-        let config = config::Config::load(config_path.clone()).await?;
-        info!("Loaded config: {:#?}", config);
-
-        Ok(Context {
-            config_path,
+        let config = load_config_impl(config_path.clone()).await?;
+        let context = Context {
             config: Mutex::new(Arc::new(config)),
-        })
+            config_path,
+        };
+
+        Ok(context)
     }
 
     pub async fn config(&self) -> Arc<config::Config> {
@@ -39,22 +39,21 @@ impl Context {
     }
 
     pub async fn reload_config(&self) -> Result<(), ContextError> {
-        let config = config::Config::load(self.config_path.clone()).await?;
+        let config = load_config_impl(self.config_path.clone()).await?;
         info!("Config reloaded {:#?}", config);
 
         *self.config.lock().await = Arc::new(config);
 
         Ok(())
     }
-
-    pub async fn clone_missing_repos(&self) -> Result<(), ContextError> {
-        self.config.lock().await.clone_missing_repos().await?;
-        Ok(())
-    }
 }
 
-pub enum ContextVar {
-    Object { values: HashMap<String, ContextVar> },
-    Array { values: Vec<ContextVar> },
-    String { value: String },
+async fn load_config_impl(config_path: PathBuf) -> Result<config::Config, ContextError> {
+    let config = config::Config::load(config_path.clone()).await?;
+    info!("Loaded config: {:#?}", config);
+
+    config.clone_missing_repos().await?;
+    config.make_dns().await?;
+
+    Ok(config)
 }

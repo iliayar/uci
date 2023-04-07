@@ -204,7 +204,13 @@ impl Vars {
         substitute_vars(self, text)
     }
 
-    pub fn assign(&mut self, path: Path, value: Vars) -> Result<(), VarsError> {
+    pub fn assign<S: AsRef<str>>(&mut self, path: S, value: Vars) -> Result<(), SubstitutionError> {
+        let path = parse_path_simple(path.as_ref())?;
+	self.assign_path(path, value)?;
+	Ok(())
+    }
+
+    pub fn assign_path(&mut self, path: Path, value: Vars) -> Result<(), VarsError> {
         let mut result: &mut Vars = self;
         for item in path.items.into_iter() {
             result = match item {
@@ -260,7 +266,6 @@ impl Vars {
     pub fn from_list<S: AsRef<str>>(assignes: &[(S, Vars)]) -> Result<Vars, SubstitutionError> {
         let mut vars = Vars::default();
         for (path, value) in assignes {
-            let path = parse_path_simple(path.as_ref())?;
             vars.assign(path, value.clone())?;
         }
         Ok(vars)

@@ -19,7 +19,7 @@ services:
       - test-global-net
 
   ubuntu-nc:
-    autostart: true
+    autostart: false
     build:
       path: ${repos.ubuntu-with-nc.path}
     command: ["nc", "-l", "-p", "8080"]

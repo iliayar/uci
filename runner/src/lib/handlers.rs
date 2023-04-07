@@ -52,7 +52,6 @@ async fn reload_config_impl(
     worker_context: Option<worker_lib::context::Context>,
 ) -> Result<(), anyhow::Error> {
     store.context().reload_config().await?;
-    store.context().clone_missing_repos().await?;
     store
         .context()
         .config()

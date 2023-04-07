@@ -68,6 +68,13 @@ impl Services {
 
         Ok(res)
     }
+
+    pub fn add_bind9_service(
+        &mut self,
+        config: &super::ServiceConfig,
+    ) -> Result<(), LoadConfigError> {
+        Ok(())
+    }
 }
 
 impl Service {
@@ -193,11 +200,16 @@ mod raw {
         type Output = super::Services;
 
         fn load_raw(
-            self,
+            mut self,
             context: &config::LoadContext,
         ) -> Result<Self::Output, config::LoadConfigError> {
             let networks = self.networks.load_raw(context)?;
             let volumes = self.volumes.load_raw(context)?;
+
+            if let Some(service) = try_get_dns_service(context) {
+                self.services
+                    .insert(String::from("microci-bind9-configured"), service);
+            }
 
             let services: Result<HashMap<_, _>, super::LoadConfigError> = self
                 .services
@@ -219,6 +231,25 @@ mod raw {
                 volumes,
             })
         }
+    }
+
+    fn try_get_dns_service(context: &config::LoadContext) -> Option<Service> {
+        if let Err(_) = context.extra("dns") {
+            return None;
+        }
+        let service: Service = serde_yaml::from_str(
+            r#"
+autostart: true
+build:
+  path: ${config.data.path}/__bind9__
+ports:
+  - 3053:53/udp
+restart: always
+global: true
+"#,
+        )
+        .unwrap();
+        Some(service)
     }
 
     impl config::LoadRawSync for Network {
