@@ -6,8 +6,10 @@ use super::{LoadConfigError, LoadContext};
 
 use log::*;
 
-pub const BIND9_DATA_DIR: &str = "__bind9__";
-pub const CADDY_DATA_DIR: &str = "__caddy__";
+pub const INTERNAL_DATA_DIR: &str = "internal";
+pub const BIND9_DATA_DIR: &str = "bind9";
+pub const CADDY_DATA_DIR: &str = "caddy";
+pub const INTERNAL_PROJECT_DATA_DIR: &str = "internal_project";
 
 #[derive(Debug)]
 pub struct Projects {
@@ -21,51 +23,6 @@ impl Projects {
 
     pub fn get(&self, project: &str) -> Option<&super::Project> {
         self.projects.get(project)
-    }
-
-    pub async fn make_dns(&self, config: &super::ServiceConfig) -> Result<(), LoadConfigError> {
-        let mut builder = super::BindBuilder::default();
-        for (project_id, project) in self.projects.iter() {
-            info!("Generating bind9 image source for project {}", project_id);
-            if let Some(bind) = project.bind.as_ref() {
-                builder.add(&bind)?;
-            }
-        }
-
-        let dns_path = config.data_path.join(BIND9_DATA_DIR);
-        reset_dir(dns_path.clone()).await?;
-        builder.build(dns_path).await?;
-
-        Ok(())
-    }
-
-    pub async fn make_caddy(&self, config: &super::ServiceConfig) -> Result<(), LoadConfigError> {
-        let mut builder = super::CaddyBuilder::default();
-        for (project_id, project) in self.projects.iter() {
-            info!("Generating caddy config for project {}", project_id);
-            if let Some(caddy) = project.caddy.as_ref() {
-                builder.add(&caddy)?;
-            }
-        }
-
-        let caddy_path = config.data_path.join(CADDY_DATA_DIR);
-        reset_dir(caddy_path.clone()).await?;
-        builder.build(caddy_path).await?;
-
-        Ok(())
-    }
-
-    pub async fn autorun(
-        &self,
-        config: &super::ServiceConfig,
-        worker_context: Option<worker_lib::context::Context>,
-    ) -> Result<(), super::ExecutionError> {
-        for (project_id, project) in self.projects.iter() {
-            info!("Autorunning service/pipelines in project {}", project_id);
-            project.autorun(config, worker_context.clone()).await?;
-        }
-
-        Ok(())
     }
 
     pub async fn run_matched(
@@ -94,7 +51,7 @@ mod raw {
     use crate::lib::{config, utils};
     use log::*;
 
-    use super::reset_dir;
+    use super::{reset_dir, CADDY_DATA_DIR};
 
     #[derive(Deserialize, Serialize)]
     #[serde(deny_unknown_fields)]
@@ -120,14 +77,8 @@ mod raw {
         ) -> Result<Self::Output, config::LoadConfigError> {
             let mut projects = HashMap::new();
 
-            let (internal_project_id, internal_project_path) =
-                make_internal_project(context).await?;
-            self.projects.insert(
-                internal_project_id,
-                Project {
-                    path: internal_project_path.to_string_lossy().to_string(),
-                },
-            );
+            let mut caddy_builder = config::CaddyBuilder::default();
+            let mut bind_builder = config::BindBuilder::default();
 
             for (id, Project { path }) in self.projects.into_iter() {
                 let project_root = utils::abs_or_rel_to_dir(path, context.configs_root()?.clone());
@@ -139,122 +90,71 @@ mod raw {
                 let mut context = context.clone();
                 context.set_project_id(&id);
                 context.set_project_root(&project_root);
-                projects.insert(id.clone(), config::Project::load(&context).await?);
+
+                let project = config::Project::load(&context).await?;
+
+                if let Some(caddy) = project.caddy.as_ref() {
+                    caddy_builder.add(&caddy)?;
+                }
+
+                if let Some(bind) = project.bind.as_ref() {
+                    bind_builder.add(&bind)?;
+                }
+
+                projects.insert(id.clone(), project);
+            }
+
+            let gen_caddy = caddy_builder.build();
+            let gen_bind = bind_builder.build();
+            let gen_project = config::codegen::project::GenProject {
+                caddy: !gen_caddy.is_empty(),
+                bind: !gen_bind.is_empty(),
+            };
+
+            if !gen_caddy.is_empty() {
+                let path = context
+                    .config()?
+                    .data_dir
+                    .join(super::INTERNAL_DATA_DIR)
+                    .join(super::CADDY_DATA_DIR);
+                super::reset_dir(path.clone()).await?;
+                info!("Generating caddy in {:?}", path);
+                gen_caddy.gen(path).await?;
+            }
+
+            if !gen_bind.is_empty() {
+                let path = context
+                    .config()?
+                    .data_dir
+                    .join(super::INTERNAL_DATA_DIR)
+                    .join(super::BIND9_DATA_DIR);
+                super::reset_dir(path.clone()).await?;
+                info!("Generating bind in {:?}", path);
+                gen_bind.gen(path).await?;
+            }
+
+            if !gen_project.is_empty() {
+                let project_id = String::from("__internal_project__");
+                let project_root = context
+                    .config()?
+                    .data_dir
+                    .join(super::INTERNAL_DATA_DIR)
+                    .join(super::INTERNAL_PROJECT_DATA_DIR);
+                super::reset_dir(project_root.clone()).await?;
+                info!("Generating internal project in {:?}", project_root);
+                gen_project.gen(project_root.clone()).await?;
+
+                let mut context = context.clone();
+                context.set_project_id(&project_id);
+                context.set_project_root(&project_root);
+
+                let project = config::Project::load(&context).await?;
+
+                projects.insert(project_id, project);
             }
 
             Ok(super::Projects { projects })
         }
-    }
-
-    async fn make_internal_project<'a>(
-        context: &config::LoadContext<'a>,
-    ) -> Result<(String, PathBuf), config::LoadConfigError> {
-        let project_id = String::from("__internal_project__");
-        let project_root = context.config()?.data_dir.join("__internal_project__");
-        super::reset_dir(project_root.clone()).await?;
-
-        write_services_config(project_root.clone(), context).await?;
-        write_actions_config(project_root.clone(), context).await?;
-
-        let mut context = context.clone();
-        context.set_project_id(&project_id);
-        context.set_project_root(&project_root);
-
-        Ok((project_id, project_root))
-    }
-
-    async fn write_services_config<'a>(
-        project_root: PathBuf,
-        context: &config::LoadContext<'a>,
-    ) -> Result<(), config::LoadConfigError> {
-        let mut services =
-            tokio::fs::File::create(project_root.join(config::SERVICES_CONFIG)).await?;
-        let mut raw_services = Vec::new();
-
-        if let Ok(_) = context.extra("dns") {
-            raw_services.push(String::from(
-                r#"
-  microci-bind9-configured:
-    autostart: true
-    build:
-      path: ${{config.data.path}}/__bind9__
-    ports:
-      - 3053:53/udp
-    restart: always
-    global: true
-"#,
-            ))
-        }
-
-        if raw_services.is_empty() {
-            services
-                .write_all(
-                    r#"
-services: {}
-"#
-                    .as_bytes(),
-                )
-                .await?;
-        } else {
-            services
-                .write_all(
-                    r#"
-services:
-"#
-                    .as_bytes(),
-                )
-                .await?;
-            for raw_service in raw_services.into_iter() {
-                services.write_all(raw_service.as_bytes()).await?;
-            }
-        }
-        Ok(())
-    }
-
-    async fn write_actions_config<'a>(
-        project_root: PathBuf,
-        context: &config::LoadContext<'a>,
-    ) -> Result<(), config::LoadConfigError> {
-        let mut actions =
-            tokio::fs::File::create(project_root.join(config::ACTIONS_CONFIG)).await?;
-        let mut raw_actions = Vec::new();
-
-        if let Ok(_) = context.extra("dns") {
-            raw_actions.push(String::from(
-                r#"
-  __autostart_bind9__:
-    conditions:
-      - type: on_config_reload
-        services:
-          microci-bind9-configured: deploy
-"#,
-            ))
-        }
-
-        if raw_actions.is_empty() {
-            actions
-                .write_all(
-                    r#"
-actions: {}
-"#
-                    .as_bytes(),
-                )
-                .await?;
-        } else {
-            actions
-                .write_all(
-                    r#"
-actions:
-"#
-                    .as_bytes(),
-                )
-                .await?;
-            for raw_action in raw_actions.into_iter() {
-                actions.write_all(raw_action.as_bytes()).await?;
-            }
-        }
-
-        Ok(())
     }
 
     pub async fn load<'a>(

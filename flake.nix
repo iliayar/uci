@@ -32,7 +32,7 @@
             ] ++ (if system == "x86_64-darwin" then
               [ pkgs.darwin.apple_sdk.frameworks.Security ]
             else
-              { });
+              []);
         };
       });
 }

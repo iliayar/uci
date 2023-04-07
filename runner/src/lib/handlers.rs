@@ -20,8 +20,8 @@ pub async fn run(
     }
 
     let trigger = super::config::ActionTrigger::DirectCall {
-	project_id: project_id.clone(),
-	action_id: action_id.clone(),
+        project_id: project_id.clone(),
+        action_id: action_id.clone(),
     };
     trigger_projects_impl(trigger, store, worker_context).await;
 
@@ -59,11 +59,14 @@ pub async fn trigger_projects_impl(
     worker_context: Option<worker_lib::context::Context>,
 ) {
     tokio::spawn(async move {
-        if let Err(err) = store.context().config().await.run_project_actions(worker_context, trigger).await {
-            error!(
-                "Failed to execute actions: {}", err
-            );
+        if let Err(err) = store
+            .context()
+            .config()
+            .await
+            .run_project_actions(worker_context, trigger)
+            .await
+        {
+            error!("Failed to execute actions: {}", err);
         }
     });
-
 }

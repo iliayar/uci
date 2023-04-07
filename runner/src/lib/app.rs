@@ -23,12 +23,17 @@ struct Args {
     /// Do not use external worker, run pipelines in the same process
     #[arg(long, default_value_t = false)]
     worker: bool,
+
+    /// Environment identifier to use for parameters
+    #[arg(long, default_value_t = String::from("default"))]
+    env: String,
 }
 
 pub struct App {
     port: u16,
     config: PathBuf,
     worker: bool,
+    env: String,
 }
 
 #[derive(Error, Debug)]
@@ -53,6 +58,7 @@ impl App {
             port: args.port,
             config: args.config,
             worker: args.worker,
+            env: args.env,
         })
     }
 
@@ -73,16 +79,10 @@ impl App {
             None
         };
 
-        let context = context::Context::new(self.config).await?;
+        let context = context::Context::new(self.config, self.env).await?;
         let context_store = super::filters::ContextStore::new(context);
 
         let trigger = super::config::ActionTrigger::ConfigReloaded;
-        super::handlers::trigger_projects_impl(
-            trigger,
-            context_store.clone(),
-            worker_context.clone(),
-        )
-        .await;
 
         let api = filters::runner(context_store, worker_context);
         let routes = api.with(warp::log("runner"));

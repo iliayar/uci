@@ -1,5 +1,7 @@
 use std::{collections::HashMap, iter::Peekable, str::Chars};
 
+use log::*;
+
 #[derive(Debug, thiserror::Error)]
 pub enum SubstitutionError {
     #[error("Missing closed bracket")]
@@ -29,8 +31,8 @@ pub enum VarsError {
     #[error("Not a string")]
     NotAString,
 
-    #[error("Not a custom value")]
-    NotACustom,
+    #[error("Not a string")]
+    NotABool,
 
     #[error("Cannot set, unmatched types")]
     InvalidSet,
@@ -45,11 +47,12 @@ pub enum VarsError {
     GetCustomVarNotImplemented,
 }
 
-#[derive(serde::Deserialize, serde::Serialize, Clone)]
+#[derive(serde::Deserialize, serde::Serialize, Clone, Debug)]
 pub enum Vars {
     Object { values: HashMap<String, Vars> },
     List { values: Vec<Vars> },
     String(String),
+    Bool(bool),
     None,
 }
 
@@ -106,6 +109,12 @@ impl<E: Into<Vars>> From<Vec<E>> for Vars {
 impl From<String> for Vars {
     fn from(s: String) -> Self {
         Vars::String(s)
+    }
+}
+
+impl From<bool> for Vars {
+    fn from(v: bool) -> Self {
+        Vars::Bool(v)
     }
 }
 
@@ -193,21 +202,21 @@ impl Vars {
     }
 
     pub fn get_string(&self, path: Path) -> Result<String, VarsError> {
-        if let Vars::String(s) = self.get(path)? {
-            Ok(s.to_string())
-        } else {
-            Err(VarsError::NotAString)
+        match self.get(path)? {
+            Vars::String(s) => Ok(s.to_string()),
+	    Vars::Bool(v) => Ok(v.to_string()),
+            _ => Err(VarsError::NotAString),
         }
     }
-
+	
     pub fn eval(&self, text: &str) -> Result<String, SubstitutionError> {
         substitute_vars(self, text)
     }
 
     pub fn assign<S: AsRef<str>>(&mut self, path: S, value: Vars) -> Result<(), SubstitutionError> {
         let path = parse_path_simple(path.as_ref())?;
-	self.assign_path(path, value)?;
-	Ok(())
+        self.assign_path(path, value)?;
+        Ok(())
     }
 
     pub fn assign_path(&mut self, path: Path, value: Vars) -> Result<(), VarsError> {
@@ -283,6 +292,7 @@ impl Vars {
 }
 
 pub fn substitute_vars(vars: &Vars, text: &str) -> Result<String, SubstitutionError> {
+    trace!("Substituting vars: {:?} into {}", vars, text);
     let mut chars = text.chars().peekable();
     parse_raw(vars, &mut chars)
 }

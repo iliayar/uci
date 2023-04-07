@@ -15,12 +15,6 @@ actions:
           test-service: deploy
           common-service: deploy
 
-  __autostart__:
-    conditions:
-      - type: on_config_reload
-        services:
-          microci-bind9-configured: deploy
-
   test:
     conditions:
       - type: always

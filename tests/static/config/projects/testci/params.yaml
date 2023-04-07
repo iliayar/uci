@@ -1,0 +1,11 @@
+__default__:
+  param: pampam
+default:
+  param1: 123
+  param2: 456
+dev:
+  param1: aobba
+  param: pumpum
+prod:
+  param2: booba
+  param3: ${secrets.token1}

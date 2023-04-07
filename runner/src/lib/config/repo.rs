@@ -198,9 +198,10 @@ mod raw {
             context: &config::LoadContext,
         ) -> Result<Self::Output, config::LoadConfigError> {
             let default_path = context.config()?.repos_path.join(context.extra("_id")?);
+            let configs_root = context.configs_root()?;
             let path = self
                 .path
-                .map(|path| utils::try_expand_home(path))
+                .map(|path| utils::abs_or_rel_to_dir(path, configs_root.clone()))
                 .unwrap_or(default_path);
             if !self.manual.unwrap_or(false) {
                 Ok(super::Repo::Regular {

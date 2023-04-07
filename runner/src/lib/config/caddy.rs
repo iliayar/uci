@@ -26,13 +26,10 @@ impl CaddyBuilder {
         Ok(())
     }
 
-    pub async fn build(&self, path: PathBuf) -> Result<(), LoadConfigError> {
-        if let Some(config) = self.config.as_ref() {
-            let mut caddyfile = tokio::fs::File::create(path.join("Caddyfile")).await?;
-            caddyfile.write_all(config.as_bytes()).await?;
+    pub fn build(self) -> super::codegen::caddy::GenCaddy {
+        super::codegen::caddy::GenCaddy {
+            config: self.config,
         }
-
-        Ok(())
     }
 }
 
@@ -100,8 +97,8 @@ mod raw {
                     Ok(None)
                 }
             } else {
-		Ok(None)
-	    }
+                Ok(None)
+            }
         } else {
             Ok(None)
         }

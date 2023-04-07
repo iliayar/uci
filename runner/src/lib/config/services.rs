@@ -31,7 +31,6 @@ pub struct Service {
     networks: Vec<String>,
     ports: Vec<common::PortMapping>,
     command: Option<Vec<String>>,
-    autostart: bool,
     restart: String,
     env: HashMap<String, String>,
 }
@@ -51,24 +50,6 @@ impl Services {
 
     pub fn get(&self, service: &str) -> Option<&Service> {
         self.services.get(service)
-    }
-
-    pub async fn autorun(&self) -> Result<HashMap<String, common::Job>, super::ExecutionError> {
-        let mut res = HashMap::new();
-        for (service_id, service) in self.services.iter() {
-            if !service.autostart {
-                continue;
-            }
-
-            info!("Autorunning service {}", service_id);
-            let job = service.get_deploy_job().ok_or(anyhow!(
-                "Cannot construct config for service {} autorun",
-                service_id
-            ))?;
-            res.insert(format!("deploy_{}", service_id), job);
-        }
-
-        Ok(res)
     }
 }
 
@@ -143,13 +124,13 @@ mod raw {
     #[derive(Serialize, Deserialize)]
     #[serde(deny_unknown_fields)]
     struct Services {
-        #[serde(default = "Default::default")]
+        #[serde(default)]
         services: HashMap<String, Service>,
 
-        #[serde(default = "Default::default")]
+        #[serde(default)]
         networks: HashMap<String, Network>,
 
-        #[serde(default = "Default::default")]
+        #[serde(default)]
         volumes: HashMap<String, Volume>,
     }
 
@@ -160,10 +141,15 @@ mod raw {
         global: bool,
         build: Option<Build>,
         image: Option<String>,
-        volumes: Option<HashMap<String, String>>,
-        networks: Option<Vec<String>>,
-        autostart: Option<bool>,
-        ports: Option<Vec<String>>,
+
+        #[serde(default)]
+        volumes: HashMap<String, String>,
+
+        #[serde(default)]
+        networks: Vec<String>,
+
+        #[serde(default)]
+        ports: Vec<String>,
         command: Option<Vec<String>>,
         restart: Option<String>,
 
@@ -267,17 +253,14 @@ mod raw {
                 None
             };
 
-            let networks =
-                config::utils::get_networks_names(context, self.networks.unwrap_or_default())?;
-            let volumes =
-                config::utils::get_volumes_names(context, self.volumes.unwrap_or_default())?;
+            let networks = config::utils::get_networks_names(context, self.networks)?;
+            let volumes = config::utils::get_volumes_names(context, self.volumes)?;
 
             Ok(super::Service {
                 image: get_image_name(context, self.image, self.global)?,
                 container: get_container_name(context, self.global)?,
-                autostart: self.autostart.unwrap_or(false),
                 command: self.command,
-                ports: parse_port_mapping(self.ports.unwrap_or_default())?,
+                ports: parse_port_mapping(self.ports)?,
                 restart: self.restart.unwrap_or(String::from("on_failure")),
                 env: config::utils::substitute_vars_dict(context, self.env)?,
                 networks,

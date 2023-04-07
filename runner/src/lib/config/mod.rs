@@ -35,6 +35,9 @@ pub enum LoadConfigError {
     #[error("Failed to substitute vars: {0}")]
     SubstitutionError(#[from] common::vars::SubstitutionError),
 
+    #[error("Codegen error: {0}")]
+    CodegenError(#[from] codegen::CodegenError),
+
     #[error(transparent)]
     Other(#[from] anyhow::Error),
 }

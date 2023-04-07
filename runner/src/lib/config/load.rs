@@ -4,6 +4,7 @@ use anyhow::anyhow;
 
 #[derive(Default, Clone)]
 pub struct LoadContext<'a> {
+    env: Option<&'a str>,
     configs_root: Option<&'a PathBuf>,
     config: Option<&'a super::ServiceConfig>,
     project_id: Option<&'a str>,
@@ -14,6 +15,7 @@ pub struct LoadContext<'a> {
     volumes: Option<&'a HashMap<String, super::Volume>>,
 
     repos: Option<&'a super::Repos>,
+    params: Option<&'a HashMap<String, String>>,
 
     extra: HashMap<String, &'a str>,
 }
@@ -67,6 +69,14 @@ impl<'a> LoadContext<'a> {
         getter_impl(self.service_id, "service_id")
     }
 
+    pub fn set_env(&mut self, env: &'a str) {
+        self.env = Some(env);
+    }
+
+    pub fn env(&self) -> Result<&str, super::LoadConfigError> {
+        getter_impl(self.env, "env")
+    }
+
     pub fn set_networks(&mut self, networks: &'a HashMap<String, super::Network>) {
         self.networks = Some(networks);
     }
@@ -89,6 +99,14 @@ impl<'a> LoadContext<'a> {
 
     pub fn repos(&self) -> Result<&super::Repos, super::LoadConfigError> {
         getter_impl(self.repos, "repos")
+    }
+
+    pub fn set_params(&mut self, params: &'a HashMap<String, String>) {
+        self.params = Some(params);
+    }
+
+    pub fn params(&self) -> Result<&HashMap<String, String>, super::LoadConfigError> {
+        getter_impl(self.params, "params")
     }
 
     pub fn set_extra(&mut self, key: String, value: &'a str) {
@@ -119,13 +137,28 @@ impl<'a> Into<common::vars::Vars> for &LoadContext<'a> {
                 vars.assign(
                     "project.data.path",
                     data_path.to_string_lossy().to_string().into(),
-                ).ok();
+                )
+                .ok();
             }
-	    let data = config.data_path.to_string_lossy().to_string();
-	    vars.assign("config.data.path", data.into()).ok();
+            let data = config.data_path.to_string_lossy().to_string();
+            vars.assign("config.data.path", data.into()).ok();
+            let internal = config.internal_path.to_string_lossy().to_string();
+            vars.assign("config.internal.path", internal.into()).ok();
+
+            for (key, value) in config.secrets.iter() {
+                vars.assign(&format!("secrets.{}", key), value.clone().into())
+                    .ok();
+            }
+
+            if let Some(params) = self.params {
+                for (key, value) in params.iter() {
+                    vars.assign(&format!("params.{}", key), value.clone().into())
+                        .ok();
+                }
+            }
         }
 
-	vars
+        vars
     }
 }
 

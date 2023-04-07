@@ -9,6 +9,7 @@ use tokio::sync::Mutex;
 pub struct Context {
     config_path: PathBuf,
     config: Mutex<Arc<config::Config>>,
+    env: String,
 }
 
 #[derive(Debug, Error)]
@@ -24,11 +25,12 @@ pub enum ContextError {
 }
 
 impl Context {
-    pub async fn new(config_path: PathBuf) -> Result<Context, ContextError> {
-        let config = load_config_impl(config_path.clone()).await?;
+    pub async fn new(config_path: PathBuf, env: String) -> Result<Context, ContextError> {
+        let config = load_config_impl(config_path.clone(), &env).await?;
         let context = Context {
             config: Mutex::new(Arc::new(config)),
             config_path,
+            env,
         };
 
         Ok(context)
@@ -39,7 +41,7 @@ impl Context {
     }
 
     pub async fn reload_config(&self) -> Result<(), ContextError> {
-        let config = load_config_impl(self.config_path.clone()).await?;
+        let config = load_config_impl(self.config_path.clone(), &self.env).await?;
         info!("Config reloaded {:#?}", config);
 
         *self.config.lock().await = Arc::new(config);
@@ -48,13 +50,11 @@ impl Context {
     }
 }
 
-async fn load_config_impl(config_path: PathBuf) -> Result<config::Config, ContextError> {
-    let config = config::Config::load(config_path.clone()).await?;
+async fn load_config_impl(config_path: PathBuf, env: &str) -> Result<config::Config, ContextError> {
+    let config = config::Config::load(config_path.clone(), env).await?;
     info!("Loaded config: {:#?}", config);
 
     config.clone_missing_repos().await?;
-    config.make_dns().await?;
-    config.make_caddy().await?;
 
     Ok(config)
 }

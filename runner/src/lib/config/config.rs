@@ -22,11 +22,12 @@ pub enum ActionTrigger {
 }
 
 impl Config {
-    pub async fn load(configs_root: PathBuf) -> Result<Config, super::LoadConfigError> {
+    pub async fn load(configs_root: PathBuf, env: &str) -> Result<Config, super::LoadConfigError> {
         info!("Loading config");
 
         let mut load_context = super::LoadContext::default();
         load_context.set_configs_root(&configs_root);
+        load_context.set_env(env);
 
         let service_config = super::ServiceConfig::load(&load_context).await?;
         load_context.set_config(&service_config);
@@ -41,23 +42,6 @@ impl Config {
             repos,
             projects,
         })
-    }
-
-    pub async fn make_dns(&self) -> Result<(), super::LoadConfigError> {
-        self.projects.make_dns(&self.service_config).await
-    }
-
-    pub async fn make_caddy(&self) -> Result<(), super::LoadConfigError> {
-        self.projects.make_caddy(&self.service_config).await
-    }
-
-    pub async fn autostart(
-        &self,
-        worker_context: Option<worker_lib::context::Context>,
-    ) -> Result<(), super::ExecutionError> {
-        self.projects
-            .autorun(&self.service_config, worker_context)
-            .await
     }
 
     pub async fn has_project_action(&self, project_id: &str, action_id: &str) -> bool {
@@ -90,12 +74,12 @@ impl Config {
                 let diffs = action.get_diffs(&self.service_config, &self.repos).await?;
                 super::Trigger::RepoUpdate(diffs)
             }
-            ActionTrigger::ConfigReloaded => {
-		super::Trigger::ConfigReloaded
-            }
+            ActionTrigger::ConfigReloaded => super::Trigger::ConfigReloaded,
         };
 
-	self.projects.run_matched(&self.service_config, worker_context, &trigger).await?;
+        self.projects
+            .run_matched(&self.service_config, worker_context, &trigger)
+            .await?;
 
         Ok(())
     }
