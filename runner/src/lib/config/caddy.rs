@@ -92,7 +92,11 @@ mod raw {
         let path = context.project_config()?.clone();
 
         if path.exists() {
-            if let Some(caddy) = config::load_sync::<Config>(path, context).await?.caddy {
+            let config: Result<Config, super::LoadConfigError> =
+                config::load_sync::<Config>(path.clone(), context)
+                    .await
+                    .map_err(|err| anyhow!("Failed to load caddy from {:?}: {}", path, err).into());
+            if let Some(caddy) = config?.caddy {
                 if caddy.enabled.clone().load_raw(context)?.unwrap_or(true) {
                     Ok(Some(caddy.load_raw(context)?))
                 } else {

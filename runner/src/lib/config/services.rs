@@ -370,6 +370,10 @@ mod raw {
         if !path.exists() {
             return Ok(Default::default());
         }
-        config::load_sync::<Services>(path, context).await
+        config::load_sync::<Services>(path.clone(), context)
+            .await
+            .map_err(|err| {
+                anyhow::anyhow!("Failed to load services from {:?}: {}", path, err).into()
+            })
     }
 }

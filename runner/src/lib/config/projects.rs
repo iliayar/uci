@@ -270,7 +270,12 @@ mod raw {
     pub async fn load<'a>(
         context: &config::LoadContext<'a>,
     ) -> Result<super::Projects, super::LoadConfigError> {
-        config::load::<Projects>(context.configs_root()?.join(PROJECTS_CONFIG), context).await
+        let path = context.configs_root()?.join(PROJECTS_CONFIG);
+        config::load::<Projects>(path.clone(), context)
+            .await
+            .map_err(|err| {
+                anyhow::anyhow!("Failed to load pipeline from {:?}: {}", path, err).into()
+            })
     }
 }
 

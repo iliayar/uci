@@ -217,6 +217,11 @@ mod raw {
     pub async fn load<'a>(
         context: &config::LoadContext<'a>,
     ) -> Result<super::Repos, super::LoadConfigError> {
-        config::load_sync::<Repos>(context.configs_root()?.join(REPO_CONFIG), context).await
+        let path = context.configs_root()?.join(REPO_CONFIG);
+        config::load_sync::<Repos>(path.clone(), context)
+            .await
+            .map_err(|err| {
+                anyhow::anyhow!("Failed to load repos from {:?}: {}", path, err).into()
+            })
     }
 }

@@ -114,6 +114,8 @@ mod raw {
 
     use serde::{Deserialize, Serialize};
 
+    use anyhow::anyhow;
+
     use crate::lib::{
         config::{self, LoadRawSync},
         utils,
@@ -175,7 +177,13 @@ mod raw {
         let path = context.project_config()?.clone();
 
         if path.exists() {
-            if let Some(bind9) = config::load_sync::<Config>(path, context).await?.bind9 {
+            let config: Result<Config, super::LoadConfigError> =
+                config::load_sync::<Config>(path.clone(), context)
+                    .await
+                    .map_err(|err| {
+                        anyhow::anyhow!("Failed to load bind from {:?}: {}", path, err).into()
+                    });
+            if let Some(bind9) = config?.bind9 {
                 if bind9.enabled.unwrap_or(true) {
                     Ok(Some(bind9.load_raw(context)?))
                 } else {

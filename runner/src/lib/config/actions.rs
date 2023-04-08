@@ -4,6 +4,7 @@ use std::collections::{HashMap, HashSet};
 
 use std::path::PathBuf;
 
+use anyhow::anyhow;
 use log::*;
 
 use super::LoadConfigError;
@@ -313,6 +314,8 @@ mod raw {
         if !path.exists() {
             return Ok(Default::default());
         }
-        config::load_sync::<Actions>(path, context).await
+        config::load_sync::<Actions>(path.clone(), context)
+            .await
+            .map_err(|err| anyhow!("Failed to load actions from {:?}: {}", path, err).into())
     }
 }

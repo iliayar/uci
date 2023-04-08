@@ -81,6 +81,11 @@ mod raw {
     pub async fn load<'a>(
         context: &config::LoadContext<'a>,
     ) -> Result<super::ServiceConfig, super::LoadConfigError> {
-        config::load::<ServiceConfig>(context.configs_root()?.join(SERVICE_CONFIG), context).await
+        let path = context.configs_root()?.join(SERVICE_CONFIG);
+        config::load::<ServiceConfig>(path.clone(), context)
+            .await
+            .map_err(|err| {
+                anyhow::anyhow!("Failed to load service_config from {:?}: {}", path, err).into()
+            })
     }
 }

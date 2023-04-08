@@ -2,6 +2,8 @@ use std::collections::HashMap;
 
 use super::LoadConfigError;
 
+use anyhow::anyhow;
+
 #[derive(Debug, Default)]
 pub struct Pipelines {
     pipelines: HashMap<String, common::Pipeline>,
@@ -9,7 +11,9 @@ pub struct Pipelines {
 
 impl Pipelines {
     pub async fn load<'a>(context: &super::LoadContext<'a>) -> Result<Pipelines, LoadConfigError> {
-        raw::load(context).await
+        raw::load(context)
+            .await
+            .map_err(|err| anyhow!("Failed to pipelines: {}", err).into())
     }
 
     pub fn get(&self, pipeline: &str) -> Option<&common::Pipeline> {
@@ -83,11 +87,17 @@ mod raw {
             self,
             context: &config::LoadContext,
         ) -> Result<Self::Output, config::LoadConfigError> {
-            let mut pipelines = HashMap::new();
+            let mut pipelines: HashMap<String, common::Pipeline> = HashMap::new();
             for (id, PipelineLocation { path }) in self.pipelines.into_iter() {
                 let pipeline_path = utils::abs_or_rel_to_dir(path, context.project_root()?.clone());
-                let pipeline = config::load_sync::<Pipeline>(pipeline_path, context).await?;
-                pipelines.insert(id, pipeline);
+                let pipeline: Result<common::Pipeline, super::LoadConfigError> =
+                    config::load_sync::<Pipeline>(pipeline_path.clone(), context)
+                        .await
+                        .map_err(|err| {
+                            anyhow!("Failed to load pipeline from {:?}: {}", pipeline_path, err)
+                                .into()
+                        });
+                pipelines.insert(id, pipeline?);
             }
 
             Ok(super::Pipelines { pipelines })
@@ -185,10 +195,12 @@ mod raw {
     pub async fn load<'a>(
         context: &config::LoadContext<'a>,
     ) -> Result<super::Pipelines, super::LoadConfigError> {
-	let path = context.project_root()?.join(super::PIPELINES_CONFIG);
-	if !path.exists() {
-	    return Ok(Default::default());
-	}
-        config::load::<Pipelines>(path, context).await
+        let path = context.project_root()?.join(super::PIPELINES_CONFIG);
+        if !path.exists() {
+            return Ok(Default::default());
+        }
+        config::load::<Pipelines>(path.clone(), context)
+            .await
+            .map_err(|err| anyhow!("Failed to load pipelines from {:?}: {}", path, err).into())
     }
 }
