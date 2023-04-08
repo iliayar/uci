@@ -5,23 +5,32 @@ use warp::hyper::StatusCode;
 
 use super::{context::Context, filters::ContextStore};
 
-pub async fn run(
+pub async fn call(
     project_id: String,
-    action_id: String,
+    trigger_id: String,
     store: ContextStore,
     worker_context: Option<worker_lib::context::Context>,
 ) -> Result<impl warp::Reply, Infallible> {
-    info!("Running hook {} for project {}", action_id, project_id);
+    info!("Running trigger {} for project {}", trigger_id, project_id);
     let config = store.context().config().await;
 
-    // TODO: Respond with error messages
-    if !config.has_project_action(&project_id, &action_id).await {
-        return Ok(StatusCode::NOT_FOUND);
-    }
-
-    let trigger = super::config::ActionTrigger::DirectCall {
+    let trigger = super::config::ActionEvent::DirectCall {
         project_id: project_id.clone(),
-        action_id: action_id.clone(),
+        trigger_id: trigger_id.clone(),
+    };
+    trigger_projects_impl(trigger, store, worker_context).await;
+
+    Ok(StatusCode::OK)
+}
+
+pub async fn update_repo(
+    repo: String,
+    store: ContextStore,
+    worker_context: Option<worker_lib::context::Context>,
+) -> Result<impl warp::Reply, Infallible> {
+    info!("Running repo {}", repo);
+    let trigger = super::config::ActionEvent::UpdateRepos {
+        repos: vec![repo],
     };
     trigger_projects_impl(trigger, store, worker_context).await;
 
@@ -47,26 +56,73 @@ async fn reload_config_impl(
 ) -> Result<(), anyhow::Error> {
     store.context().reload_config().await?;
 
-    let trigger = super::config::ActionTrigger::ConfigReloaded;
+    let trigger = super::config::ActionEvent::ConfigReloaded;
     trigger_projects_impl(trigger, store, worker_context).await;
 
     Ok(())
 }
 
 pub async fn trigger_projects_impl(
-    trigger: super::config::ActionTrigger,
+    trigger: super::config::ActionEvent,
     store: ContextStore,
     worker_context: Option<worker_lib::context::Context>,
 ) {
     tokio::spawn(async move {
-        if let Err(err) = store
+        match trigger_projects_impl_result(trigger, store, worker_context).await {
+            Result::Err(err) => {
+                error!("Failed to match actions: {}", err);
+            }
+            Result::Ok(_) => {}
+        }
+    });
+}
+
+pub async fn trigger_projects_impl_result(
+    trigger: super::config::ActionEvent,
+    store: ContextStore,
+    worker_context: Option<worker_lib::context::Context>,
+) -> Result<(), anyhow::Error> {
+    let mut matched = store
+        .context()
+        .config()
+        .await
+        .get_projects_actions(trigger)
+        .await?;
+
+    // FIXME: Do it separately
+    if matched.reload_config || !matched.reload_projects.is_empty() {
+        store.context().reload_config().await?;
+        let new_matched = store
             .context()
             .config()
             .await
-            .run_project_actions(worker_context, trigger)
+            .get_projects_actions(super::config::ActionEvent::ConfigReloaded)
+            .await?;
+        matched.merge(new_matched);
+    }
+
+    let mut new_matcheds = Vec::new();
+    for project_id in matched.reload_projects.iter() {
+        let new_matched = store
+            .context()
+            .config()
             .await
-        {
-            error!("Failed to execute actions: {}", err);
-        }
-    });
+            .get_projects_actions(super::config::ActionEvent::ProjectReloaded {
+                project_id: project_id.clone(),
+            })
+            .await?;
+	new_matcheds.push(new_matched);
+    }
+    for new_matched in new_matcheds.into_iter() {
+	matched.merge(new_matched);
+    }
+
+    store
+        .context()
+        .config()
+        .await
+        .run_project_actions(worker_context, matched)
+        .await?;
+
+    Ok(())
 }

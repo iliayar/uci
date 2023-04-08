@@ -41,11 +41,11 @@ pub fn run(
     context: ContextStore,
     worker_context: Option<worker_lib::context::Context>,
 ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
-    warp::path!(String / "run_action" / String)
+    warp::path!("call" / String / String)
         .and(warp::post())
         .and(with_context(context))
         .and(with_worker_context(worker_context))
-        .and_then(handlers::run)
+        .and_then(handlers::call)
 }
 
 pub fn reload_config(
@@ -57,6 +57,17 @@ pub fn reload_config(
         .and(with_context(context))
         .and(with_worker_context(worker_context))
         .and_then(handlers::reload_config)
+}
+
+pub fn update_repo(
+    context: ContextStore,
+    worker_context: Option<worker_lib::context::Context>,
+) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
+    warp::path!("update" / String)
+        .and(warp::post())
+        .and(with_context(context))
+        .and(with_worker_context(worker_context))
+        .and_then(handlers::update_repo)
 }
 
 pub fn with_context(

@@ -51,10 +51,11 @@ impl Context {
 }
 
 async fn load_config_impl(config_path: PathBuf, env: &str) -> Result<config::Config, ContextError> {
-    let config = config::Config::load(config_path.clone(), env).await?;
-    info!("Loaded config: {:#?}", config);
+    let preloaded_config = config::Config::preload(config_path.clone(), env).await?;
+    preloaded_config.clone_missing_repos().await?;
 
-    config.clone_missing_repos().await?;
+    let config = preloaded_config.load().await?;
+    info!("Loaded config: {:#?}", config);
 
     Ok(config)
 }

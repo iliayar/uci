@@ -1,22 +1,15 @@
 actions:
   main:
-    update_repos:
-      - test
-    conditions:
-      - type: always
-        run_pipelines:
-          - echo
+    - on: call
+      run_pipelines:
+        - echo
   deploy:
-    update_repos:
-      - test
-    conditions:
-      - type: always
-        services:
-          test-service: deploy
-          common-service: deploy
+    - on: call
+      services:
+        test-service: deploy
+        common-service: deploy
 
   test:
-    conditions:
-      - type: always
-        run_pipelines:
-          - test-needs
+    - on: call
+      run_pipelines:
+        - test-needs

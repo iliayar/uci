@@ -51,8 +51,10 @@ mod raw {
 
     use serde::{Deserialize, Serialize};
 
+    use anyhow::anyhow;
+
     use crate::lib::{
-        config::{self, LoadRawSync},
+        config::{self, LoadContext, LoadRawSync},
         utils,
     };
 
@@ -64,7 +66,7 @@ mod raw {
     #[derive(Serialize, Deserialize)]
     #[serde(deny_unknown_fields)]
     pub struct Caddy {
-        enabled: Option<bool>,
+        enabled: Option<config::utils::Enabled>,
         config: String,
     }
 
@@ -91,7 +93,7 @@ mod raw {
 
         if path.exists() {
             if let Some(caddy) = config::load_sync::<Config>(path, context).await?.caddy {
-                if caddy.enabled.unwrap_or(true) {
+                if caddy.enabled.clone().load_raw(context)?.unwrap_or(true) {
                     Ok(Some(caddy.load_raw(context)?))
                 } else {
                     Ok(None)

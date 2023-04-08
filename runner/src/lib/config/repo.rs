@@ -106,19 +106,16 @@ impl Repos {
     pub async fn pull_all(
         &self,
         config: &super::ServiceConfig,
-        repos: &[String],
+        repos: Option<HashSet<String>>,
     ) -> Result<ReposDiffs, super::ExecutionError> {
         info!("Pulling repos");
 
         let mut repo_diffs = ReposDiffs::new();
-        for repo_id in repos.iter() {
-            let repo = self
-                .repos
-                .get(repo_id)
-                .ok_or(anyhow!("No such repo: {}", repo_id))?;
-            info!("Pulling repo {}", repo_id);
-
-            repo_diffs.insert(repo_id.clone(), repo.pull(config).await?);
+        for (repo_id, repo) in self.repos.iter() {
+            if repos.is_none() || repos.as_ref().unwrap().contains(repo_id) {
+                info!("Pulling repo {}", repo_id);
+                repo_diffs.insert(repo_id.clone(), repo.pull(config).await?);
+            }
         }
         debug!("Repos diffs: {:?}", repo_diffs);
 

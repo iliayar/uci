@@ -15,7 +15,7 @@ bind9:
       cnames:
         - 'some-service'
 caddy:
-  enabled: true
+  enabled: false
   config: |
     ilyay.space {
       file_server

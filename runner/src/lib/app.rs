@@ -82,7 +82,12 @@ impl App {
         let context = context::Context::new(self.config, self.env).await?;
         let context_store = super::filters::ContextStore::new(context);
 
-        let trigger = super::config::ActionTrigger::ConfigReloaded;
+        let trigger = super::config::ActionEvent::ConfigReloaded;
+        super::handlers::trigger_projects_impl(
+            trigger,
+            context_store.clone(),
+            worker_context.clone(),
+        ).await;
 
         let api = filters::runner(context_store, worker_context);
         let routes = api.with(warp::log("runner"));

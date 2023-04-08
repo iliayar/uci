@@ -10,19 +10,16 @@ pub struct GenProject {
 }
 
 impl GenProject {
-    pub async fn gen(
-        &self,
-        path: PathBuf,
-    ) -> Result<(), config::LoadConfigError> {
+    pub async fn gen(&self, path: PathBuf) -> Result<(), config::LoadConfigError> {
         self.write_services_config(path.clone()).await?;
         self.write_actions_config(path.clone()).await?;
+	self.write_pipelines(path.clone()).await?;
         Ok(())
     }
 
     pub fn is_empty(&self) -> bool {
-	!self.caddy && !self.bind
+        !self.caddy && !self.bind
     }
-
 
     async fn write_services_config<'a>(
         &self,
@@ -84,10 +81,22 @@ services:
             raw_actions.push(String::from(
                 r#"
   __autostart_bind9__:
-    conditions:
-      - type: on_config_reload
-        services:
-          microci-bind9-configured: deploy
+    - on: config_reload
+      services:
+        microci-bind9-configured: deploy
+
+"#,
+            ))
+        }
+
+        if self.caddy {
+            raw_actions.push(String::from(
+                r#"
+  __reload_caddy__:
+    - on: config_reload
+      run_pipelines:
+        - caddy_reload_pipeline
+
 "#,
             ))
         }
@@ -114,6 +123,78 @@ actions:
                 actions.write_all(raw_action.as_bytes()).await?;
             }
         }
+
+        Ok(())
+    }
+
+    async fn write_pipelines<'a>(
+        &self,
+        project_root: PathBuf,
+    ) -> Result<(), config::LoadConfigError> {
+        let mut pipelines =
+            tokio::fs::File::create(project_root.join(config::PIPELINES_CONFIG)).await?;
+        let mut raw_pipelines = Vec::new();
+
+        if self.caddy {
+            self.write_caddy_reload_pipeline(project_root.clone())
+                .await?;
+            raw_pipelines.push(String::from(
+                r#"
+  caddy_reload_pipeline:
+    path: caddy_reload_pipeline.yaml
+ 
+"#,
+            ));
+        }
+
+        if raw_pipelines.is_empty() {
+            pipelines
+                .write_all(
+                    r#"
+pipelines: {}
+"#
+                    .as_bytes(),
+                )
+                .await?;
+        } else {
+            pipelines
+                .write_all(
+                    r#"
+pipelines:
+"#
+                    .as_bytes(),
+                )
+                .await?;
+            for raw_pipeline in raw_pipelines.into_iter() {
+                pipelines.write_all(raw_pipeline.as_bytes()).await?;
+            }
+        }
+
+        Ok(())
+    }
+
+    async fn write_caddy_reload_pipeline<'a>(
+        &self,
+        project_root: PathBuf,
+    ) -> Result<(), config::LoadConfigError> {
+        let mut pipeline =
+            tokio::fs::File::create(project_root.join("caddy_reload_pipeline.yaml")).await?;
+
+        pipeline
+            .write_all(
+                r#"
+jobs:
+  run_script:
+    steps:
+      - script: |
+          cd caddy
+          caddy reload
+links:
+  'caddy': ${config.internal.path}/caddy
+"#
+                .as_bytes(),
+            )
+            .await?;
 
         Ok(())
     }

@@ -17,6 +17,8 @@ impl Pipelines {
     }
 }
 
+pub const PIPELINES_CONFIG: &str = "pipelines.yaml";
+
 mod raw {
     use std::collections::HashMap;
 
@@ -26,8 +28,6 @@ mod raw {
 
     use anyhow::anyhow;
     use log::*;
-
-    const PIPELINES_CONFIG: &str = "pipelines.yaml";
 
     #[derive(Deserialize, Serialize)]
     #[serde(deny_unknown_fields)]
@@ -185,7 +185,7 @@ mod raw {
     pub async fn load<'a>(
         context: &config::LoadContext<'a>,
     ) -> Result<super::Pipelines, super::LoadConfigError> {
-	let path = context.project_root()?.join(PIPELINES_CONFIG);
+	let path = context.project_root()?.join(super::PIPELINES_CONFIG);
 	if !path.exists() {
 	    return Ok(Default::default());
 	}

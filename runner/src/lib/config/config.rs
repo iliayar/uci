@@ -13,17 +13,55 @@ pub struct Config {
     pub projects: super::Projects,
 }
 
-pub enum ActionTrigger {
+pub struct ConfigPreload<'a> {
+    pub service_config: super::ServiceConfig,
+    pub repos: super::Repos,
+    configs_root: PathBuf,
+    env: &'a str,
+}
+
+pub enum ActionEvent {
     ConfigReloaded,
+    ProjectReloaded {
+        project_id: String,
+    },
     DirectCall {
         project_id: String,
-        action_id: String,
+        trigger_id: String,
+    },
+    UpdateRepos {
+        repos: Vec<String>,
     },
 }
 
+impl<'a> ConfigPreload<'a> {
+    pub async fn load(self) -> Result<Config, super::LoadConfigError> {
+        let mut load_context = super::LoadContext::default();
+        load_context.set_configs_root(&self.configs_root);
+        load_context.set_env(self.env);
+        load_context.set_config(&self.service_config);
+        load_context.set_repos(&self.repos);
+
+        let projects = super::Projects::load(&load_context).await?;
+
+        Ok(Config {
+            service_config: self.service_config,
+            repos: self.repos,
+            projects,
+        })
+    }
+
+    pub async fn clone_missing_repos(&self) -> Result<(), super::ExecutionError> {
+        self.repos.clone_missing_repos(&self.service_config).await
+    }
+}
+
 impl Config {
-    pub async fn load(configs_root: PathBuf, env: &str) -> Result<Config, super::LoadConfigError> {
-        info!("Loading config");
+    pub async fn preload<'a>(
+        configs_root: PathBuf,
+        env: &'a str,
+    ) -> Result<ConfigPreload, super::LoadConfigError> {
+        info!("Preloading config");
 
         let mut load_context = super::LoadContext::default();
         load_context.set_configs_root(&configs_root);
@@ -35,56 +73,45 @@ impl Config {
         let repos = super::Repos::load(&load_context).await?;
         load_context.set_repos(&repos);
 
-        let projects = super::Projects::load(&load_context).await?;
-
-        Ok(Config {
+        Ok(ConfigPreload {
             service_config,
             repos,
-            projects,
+            configs_root,
+            env,
         })
     }
 
-    pub async fn has_project_action(&self, project_id: &str, action_id: &str) -> bool {
-        self.projects
-            .get(project_id)
-            .map(|p| p.actions.get(action_id).is_some())
-            .unwrap_or(false)
+    pub async fn get_projects_actions(
+        &self,
+        event: ActionEvent,
+    ) -> Result<super::MatchedActions, super::ExecutionError> {
+        let event = match event {
+            ActionEvent::DirectCall {
+                project_id,
+                trigger_id,
+            } => super::Event::Call {
+                project_id,
+                trigger_id,
+            },
+            ActionEvent::ConfigReloaded => super::Event::ConfigReloaded,
+            ActionEvent::ProjectReloaded { project_id } => {
+                super::Event::ProjectReloaded { project_id }
+            }
+        };
+
+        self.projects.get_matched(&event).await
     }
 
     pub async fn run_project_actions(
         &self,
         worker_context: Option<worker_lib::context::Context>,
-        trigger: ActionTrigger,
+        matched: super::MatchedActions,
     ) -> Result<(), super::ExecutionError> {
-        let trigger = match trigger {
-            ActionTrigger::DirectCall {
-                project_id,
-                action_id,
-            } => {
-                let project = self
-                    .projects
-                    .get(&project_id)
-                    .ok_or(anyhow!("Should only be called for existing project"))?;
-                let action = project
-                    .actions
-                    .get(&action_id)
-                    .ok_or(anyhow!("Should only be called for existing action"))?;
-                info!("Running action {} on project {}", action_id, project_id);
-
-                let diffs = action.get_diffs(&self.service_config, &self.repos).await?;
-                super::Trigger::RepoUpdate(diffs)
-            }
-            ActionTrigger::ConfigReloaded => super::Trigger::ConfigReloaded,
-        };
-
+        info!("Running actions: {:#?}", matched);
         self.projects
-            .run_matched(&self.service_config, worker_context, &trigger)
+            .run_matched(&self.service_config, worker_context, matched)
             .await?;
 
         Ok(())
-    }
-
-    pub async fn clone_missing_repos(&self) -> Result<(), super::ExecutionError> {
-        self.repos.clone_missing_repos(&self.service_config).await
     }
 }
