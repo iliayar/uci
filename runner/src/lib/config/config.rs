@@ -97,6 +97,13 @@ impl Config {
             ActionEvent::ProjectReloaded { project_id } => {
                 super::Event::ProjectReloaded { project_id }
             }
+            ActionEvent::UpdateRepos { repos } => {
+                let diffs = self
+                    .repos
+                    .pull_all(&self.service_config, Some(repos.into_iter().collect()))
+                    .await?;
+                super::Event::RepoUpdate { diffs }
+            }
         };
 
         self.projects.get_matched(&event).await

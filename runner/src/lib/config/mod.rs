@@ -38,6 +38,9 @@ pub enum LoadConfigError {
     #[error("Codegen error: {0}")]
     CodegenError(#[from] codegen::CodegenError),
 
+    #[error("Invalid regex: {0}")]
+    InvalidRegex(#[from] regex::Error),
+
     #[error(transparent)]
     Other(#[from] anyhow::Error),
 }

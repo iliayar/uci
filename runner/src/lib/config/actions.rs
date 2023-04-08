@@ -37,6 +37,9 @@ pub enum TriggerType {
     ProjectReload {
         project_id: String,
     },
+    ReposUpdated {
+        patterns: HashMap<String, Vec<regex::Regex>>,
+    },
 }
 
 pub enum Event {
@@ -48,7 +51,9 @@ pub enum Event {
         project_id: String,
         trigger_id: String,
     },
-    RepoUpdate(super::ReposDiffs),
+    RepoUpdate {
+        diffs: super::ReposDiffs,
+    },
 }
 
 pub const ACTIONS_CONFIG: &str = "actions.yaml";
@@ -136,6 +141,23 @@ impl TriggerType {
                 } => project_id == event_project_id,
                 _ => false,
             },
+            TriggerType::ReposUpdated { patterns } => match event {
+                Event::RepoUpdate { diffs } => {
+                    for (repo_id, patterns) in patterns.iter() {
+                        if let Some(repo_diffs) = diffs.get(repo_id) {
+                            for diff in repo_diffs.iter() {
+                                for pattern in patterns.iter() {
+                                    if pattern.is_match(diff) {
+                                        return true;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    return false;
+                }
+                _ => false,
+            },
         }
     }
 }
@@ -166,6 +188,9 @@ mod raw {
 
         #[serde(rename = "project_reload")]
         ProjectReload,
+
+        #[serde(rename = "changed")]
+        FileChanged,
     }
 
     #[derive(Deserialize, Serialize)]
@@ -184,6 +209,7 @@ mod raw {
         services: Option<HashMap<String, ServiceAction>>,
         reload_config: Option<serde_yaml::Value>,
         reload_project: Option<serde_yaml::Value>,
+        changes: Option<HashMap<String, Vec<String>>>,
     }
 
     impl config::LoadRawSync for Actions {
@@ -195,26 +221,6 @@ mod raw {
         ) -> Result<Self::Output, config::LoadConfigError> {
             Ok(super::Actions {
                 actions: self.actions.load_raw(context)?,
-            })
-        }
-    }
-
-    impl config::LoadRawSync for TriggerType {
-        type Output = super::TriggerType;
-
-        fn load_raw(
-            self,
-            context: &config::LoadContext,
-        ) -> Result<Self::Output, config::LoadConfigError> {
-            Ok(match self {
-                TriggerType::Call => super::TriggerType::Call {
-                    project_id: context.project_id()?.to_string(),
-                    trigger_id: context.extra("_id")?.to_string(),
-                },
-                TriggerType::ProjectReload => super::TriggerType::ProjectReload {
-                    project_id: context.project_id()?.to_string(),
-                },
-                TriggerType::ConfigReload => super::TriggerType::ConfigReload,
             })
         }
     }
@@ -253,12 +259,36 @@ mod raw {
 
             let project_id = context.project_id()?.to_string();
 
+            let on = match self.on {
+                TriggerType::Call => super::TriggerType::Call {
+                    project_id: project_id.clone(),
+                    trigger_id: context.extra("_id")?.to_string(),
+                },
+                TriggerType::ProjectReload => super::TriggerType::ProjectReload {
+                    project_id: project_id.clone(),
+                },
+                TriggerType::ConfigReload => super::TriggerType::ConfigReload,
+                TriggerType::FileChanged => {
+                    let changes: Result<HashMap<_, _>, super::LoadConfigError> = self
+                        .changes
+                        .ok_or(anyhow!("changes field required for on: changed"))?
+                        .into_iter()
+                        .map(|(r, ps)| {
+                            let nps: Result<Vec<_>, super::LoadConfigError> =
+                                ps.into_iter().map(|p| Ok(regex::Regex::new(&p)?)).collect();
+                            Ok((r, nps?))
+                        })
+                        .collect();
+                    super::TriggerType::ReposUpdated { patterns: changes? }
+                }
+            };
+
             Ok(super::Trigger {
-                on: self.on.load_raw(context)?,
                 run_pipelines: self.run_pipelines,
                 services: self.services.load_raw(context)?,
                 reload_config: self.reload_config.is_some(),
                 reload_project: self.reload_project.is_some(),
+                on,
             })
         }
     }
