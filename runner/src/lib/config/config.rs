@@ -54,6 +54,10 @@ impl<'a> ConfigPreload<'a> {
     pub async fn clone_missing_repos(&self) -> Result<(), super::ExecutionError> {
         self.repos.clone_missing_repos(&self.service_config).await
     }
+
+    pub async fn has_missing_repos(&self) -> Result<bool, super::ExecutionError> {
+        self.repos.has_missing_repos().await
+    }
 }
 
 impl Config {
@@ -111,12 +115,20 @@ impl Config {
 
     pub async fn run_project_actions(
         &self,
+        token: Option<String>,
+        check_permissions: bool,
         worker_context: Option<worker_lib::context::Context>,
         matched: super::MatchedActions,
     ) -> Result<(), super::ExecutionError> {
         info!("Running actions: {:#?}", matched);
         self.projects
-            .run_matched(&self.service_config, worker_context, matched)
+            .run_matched(
+                token,
+                check_permissions,
+                &self.service_config,
+                worker_context,
+                matched,
+            )
             .await?;
 
         Ok(())

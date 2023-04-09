@@ -3,5 +3,6 @@ members = [
     "common",
     "runner",
     "worker",
-    "worker_lib"
+    "worker_lib",
+    "uci_cli",
 ]

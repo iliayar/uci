@@ -1,1 +1,2 @@
-POST http://localhost:3002/testci/run_action/deploy
+POST http://localhost:3002/call/testci/deploy
+Authorization: Api-Key HUH

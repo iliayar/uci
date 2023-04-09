@@ -30,6 +30,15 @@ pub struct ProjectMatchedActions {
     pub services: HashMap<String, super::ServiceAction>,
 }
 
+impl ProjectMatchedActions {
+    pub fn is_empty(&self) -> bool {
+        !self.reload_config
+            && !self.reload_project
+            && self.run_pipelines.is_empty()
+            && self.services.is_empty()
+    }
+}
+
 impl Project {
     pub async fn load<'a>(
         context: &super::LoadContext<'a>,
@@ -179,7 +188,7 @@ impl Project {
             reload_config,
             run_pipelines,
             services,
-	    reload_project,
+            reload_project,
         }: ProjectMatchedActions,
     ) -> Result<(), super::ExecutionError> {
         let mut pipeline_tasks = Vec::new();
@@ -187,11 +196,17 @@ impl Project {
 
         info!("Running pipelines {:?}", run_pipelines);
         for pipeline_id in run_pipelines.iter() {
+            if let None = self.pipelines.get(pipeline_id) {
+                warn!("No such pipeline {}, skiping", pipeline_id);
+            }
             pipeline_tasks.push(self.run_pipeline(config, worker_context.clone(), pipeline_id))
         }
 
         info!("Running service actions {:?}", services);
         for (service, action) in services.iter() {
+            if let None = self.services.get(service) {
+                warn!("No such service {}, skiping", service);
+            }
             service_tasks.push(self.run_service_action(
                 config,
                 worker_context.clone(),

@@ -36,6 +36,49 @@ impl Default for MatchedActions {
 }
 
 impl MatchedActions {
+    pub fn is_empty(&self) -> bool {
+        !self.reload_config
+            && self.reload_projects.is_empty()
+            && self.run_pipelines.is_empty()
+            && self.services.is_empty()
+    }
+
+    pub fn check_allowed<S: AsRef<str> + Clone>(
+        &self,
+        token: Option<S>,
+        config: &super::ServiceConfig,
+    ) -> bool {
+        if self.reload_config {
+            if !config.check_allowed::<_, &str>(token.clone(), None, super::ActionType::Write) {
+                return false;
+            }
+        }
+
+        for project_id in self.reload_projects.iter() {
+            if !config.check_allowed::<_, &str>(
+                token.clone(),
+                Some(project_id),
+                super::ActionType::Write,
+            ) {
+                return false;
+            }
+        }
+
+        for (project_id, _) in self.run_pipelines.iter() {
+            if !config.check_allowed(token.clone(), Some(project_id), super::ActionType::Execute) {
+                return false;
+            }
+        }
+
+        for (project_id, _) in self.services.iter() {
+            if !config.check_allowed(token.clone(), Some(project_id), super::ActionType::Execute) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
     pub fn add_project(
         &mut self,
         project_id: &str,
@@ -68,12 +111,18 @@ impl MatchedActions {
         let services = self.services.get(project_id).cloned().unwrap_or_default();
         let reload_project = self.reload_projects.contains(project_id);
 
-        Some(super::ProjectMatchedActions {
+        let res = super::ProjectMatchedActions {
             reload_config: false,
             run_pipelines,
             services,
             reload_project,
-        })
+        };
+
+	if res.is_empty() {
+	    None
+	} else {
+	    Some(res)
+	}
     }
 
     pub fn merge(&mut self, other: MatchedActions) {
@@ -130,6 +179,8 @@ impl Projects {
 
     pub async fn run_matched(
         &self,
+        token: Option<String>,
+        check_permissions: bool,
         config: &super::ServiceConfig,
         worker_context: Option<worker_lib::context::Context>,
         matched: MatchedActions,
@@ -139,6 +190,20 @@ impl Projects {
         for (project_id, project) in self.projects.iter() {
             debug!("Running matched for project {}", project_id);
             if let Some(project_actions) = matched.get_project(project_id) {
+                if check_permissions
+                    && !config.check_allowed(
+                        token.as_ref(),
+                        Some(project_id),
+                        super::ActionType::Execute,
+                    )
+                {
+                    warn!(
+                        "Not allowed to execute actions on project {}, skiping",
+                        project_id
+                    );
+                    continue;
+                }
+
                 tasks.push(project.run_matched_action(
                     config,
                     worker_context.clone(),

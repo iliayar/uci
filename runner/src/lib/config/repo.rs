@@ -60,6 +60,23 @@ impl Repo {
         Ok(())
     }
 
+    async fn is_missing(&self) -> Result<bool, super::ExecutionError> {
+        match self {
+            Repo::Regular {
+                source,
+                branch,
+                path,
+            } => {
+                if !git::check_exists(path.clone()).await? {
+                    Ok(true)
+                } else {
+                    Ok(false)
+                }
+            }
+            Repo::Manual { path } => Ok(false),
+        }
+    }
+
     async fn pull(
         &self,
         config: &super::ServiceConfig,
@@ -136,6 +153,16 @@ impl Repos {
         futures::future::try_join_all(git_tasks).await?;
 
         Ok(())
+    }
+
+    pub async fn has_missing_repos(&self) -> Result<bool, super::ExecutionError> {
+        for (id, repo) in self.repos.iter() {
+            if repo.is_missing().await? {
+                return Ok(true);
+            }
+        }
+
+        Ok(false)
     }
 }
 
@@ -220,8 +247,6 @@ mod raw {
         let path = context.configs_root()?.join(REPO_CONFIG);
         config::load_sync::<Repos>(path.clone(), context)
             .await
-            .map_err(|err| {
-                anyhow::anyhow!("Failed to load repos from {:?}: {}", path, err).into()
-            })
+            .map_err(|err| anyhow::anyhow!("Failed to load repos from {:?}: {}", path, err).into())
     }
 }

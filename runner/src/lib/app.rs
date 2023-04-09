@@ -84,10 +84,13 @@ impl App {
 
         let trigger = super::config::ActionEvent::ConfigReloaded;
         super::handlers::trigger_projects_impl(
+            /* token */ None,
+            /* check_permissions */ false,
             trigger,
             context_store.clone(),
             worker_context.clone(),
-        ).await;
+        )
+        .await;
 
         let api = filters::runner(context_store, worker_context);
         let routes = api.with(warp::log("runner"));

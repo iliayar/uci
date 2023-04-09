@@ -77,8 +77,8 @@ impl Service {
         let networks = self.networks.clone();
 
         Some(common::RunContainerConfig {
-            name: self.image.clone(),
-            image: self.container.clone(),
+            name: self.container.clone(),
+            image: self.image.clone(),
             ports: self.ports.clone(),
             command: self.command.clone(),
             restart_policy: self.restart.clone(),
