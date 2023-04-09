@@ -86,8 +86,7 @@ impl Project {
 
     pub async fn run_pipeline(
         &self,
-        config: &super::ServiceConfig,
-        worker_context: Option<worker_lib::context::Context>,
+        execution_context: &super::ExecutionContext,
         pipeline_id: &str,
     ) -> Result<(), super::ExecutionError> {
         let pipeline = self
@@ -97,8 +96,7 @@ impl Project {
 
         self.run_pipeline_impl(
             Id::Pipeline(pipeline_id),
-            config,
-            worker_context,
+            execution_context,
             pipeline.clone(),
         )
         .await?;
@@ -108,8 +106,7 @@ impl Project {
 
     pub async fn run_service_action(
         &self,
-        config: &super::ServiceConfig,
-        worker_context: Option<worker_lib::context::Context>,
+        execution_context: &super::ExecutionContext,
         service_id: String,
         action: super::ServiceAction,
     ) -> Result<(), super::ExecutionError> {
@@ -135,7 +132,7 @@ impl Project {
             volumes: Default::default(),
         };
 
-        self.run_pipeline_impl(Id::Service(&service_id), config, worker_context, pipeline)
+        self.run_pipeline_impl(Id::Service(&service_id), execution_context, pipeline)
             .await?;
 
         Ok(())
@@ -144,8 +141,7 @@ impl Project {
     async fn run_pipeline_impl<'a>(
         &self,
         id: Id<'a>,
-        config: &super::ServiceConfig,
-        worker_context: Option<worker_lib::context::Context>,
+        execution_context: &super::ExecutionContext,
         pipeline: common::Pipeline,
     ) -> Result<(), super::ExecutionError> {
         match id {
@@ -154,14 +150,18 @@ impl Project {
             Id::Other(id) => info!("Running pipeline for {} action", id),
         };
 
-        if let Some(worker_context) = worker_context {
+        if let Some(worker_context) = execution_context.worker_context.clone() {
             let executor = worker_lib::executor::Executor::new(worker_context)?;
             tokio::spawn(executor.run(pipeline));
         } else {
-            let worker_url = config.worker_url.as_ref().ok_or(anyhow!(
-                "Worker url is not specified in config.
+            let worker_url = execution_context
+                .service_config()
+                .worker_url
+                .as_ref()
+                .ok_or(anyhow!(
+                    "Worker url is not specified in config.
                  Specify it or add '--worker' flag to run pipeline in the same process"
-            ))?;
+                ))?;
             let response = reqwest::Client::new()
                 .post(&format!("{}/run", worker_url))
                 .json(&pipeline)
@@ -182,8 +182,7 @@ impl Project {
 
     pub async fn run_matched_action(
         &self,
-        config: &super::ServiceConfig,
-        worker_context: Option<worker_lib::context::Context>,
+        execution_context: &super::ExecutionContext,
         ProjectMatchedActions {
             reload_config,
             run_pipelines,
@@ -199,7 +198,7 @@ impl Project {
             if let None = self.pipelines.get(pipeline_id) {
                 warn!("No such pipeline {}, skiping", pipeline_id);
             }
-            pipeline_tasks.push(self.run_pipeline(config, worker_context.clone(), pipeline_id))
+            pipeline_tasks.push(self.run_pipeline(execution_context, pipeline_id))
         }
 
         info!("Running service actions {:?}", services);
@@ -208,8 +207,7 @@ impl Project {
                 warn!("No such service {}, skiping", service);
             }
             service_tasks.push(self.run_service_action(
-                config,
-                worker_context.clone(),
+                execution_context,
                 service.to_string(),
                 action.clone(),
             ));

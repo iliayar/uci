@@ -49,10 +49,11 @@ pub fn run(
 ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
     warp::any()
         .and(with_validation())
-        .and(warp::path!("call" / String / String))
-        .and(warp::post())
         .and(with_context(context))
         .and(with_worker_context(worker_context))
+        .map(CallContext::for_handler)
+        .and(warp::path!("call" / String / String))
+        .and(warp::post())
         .and_then(handlers::call)
 }
 
@@ -61,11 +62,9 @@ pub fn reload_config(
     worker_context: Option<worker_lib::context::Context>,
 ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
     warp::any()
-        .and(with_validation())
+        .and(with_call_context(context, worker_context))
         .and(warp::path!("reload"))
         .and(warp::post())
-        .and(with_context(context))
-        .and(with_worker_context(worker_context))
         .and_then(handlers::reload_config)
 }
 
@@ -74,11 +73,9 @@ pub fn reload_project(
     worker_context: Option<worker_lib::context::Context>,
 ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
     warp::any()
-        .and(with_validation())
+        .and(with_call_context(context, worker_context))
         .and(warp::path!("reload" / String))
         .and(warp::post())
-        .and(with_context(context))
-        .and(with_worker_context(worker_context))
         .and_then(handlers::reload_project)
 }
 
@@ -87,12 +84,21 @@ pub fn update_repo(
     worker_context: Option<worker_lib::context::Context>,
 ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
     warp::any()
-        .and(with_validation())
+        .and(with_call_context(context, worker_context))
         .and(warp::path!("update" / String))
         .and(warp::post())
+        .and_then(handlers::update_repo)
+}
+
+pub fn with_call_context(
+    context: ContextStore,
+    worker_context: Option<worker_lib::context::Context>,
+) -> impl Filter<Extract = (CallContext,), Error = warp::Rejection> + Clone {
+    warp::any()
+        .and(with_validation())
         .and(with_context(context))
         .and(with_worker_context(worker_context))
-        .and_then(handlers::update_repo)
+        .map(CallContext::for_handler)
 }
 
 pub fn with_context(
@@ -175,6 +181,77 @@ pub async fn report_rejection(r: Rejection) -> Result<impl warp::Reply, Infallib
                 }),
                 StatusCode::INTERNAL_SERVER_ERROR,
             ))
+        }
+    }
+}
+
+pub struct CallContext {
+    pub token: Option<String>,
+    pub check_permisions: bool,
+    pub worker_context: Option<worker_lib::context::Context>,
+    pub store: ContextStore,
+}
+
+impl CallContext {
+    pub async fn check_authorized<S: AsRef<str>>(
+        &self,
+        project_id: Option<S>,
+        action: super::config::ActionType,
+    ) -> Result<(), warp::Rejection> {
+        if !self.check_allowed(project_id, action).await {
+            Err(warp::reject::custom(Unauthorized::TokenIsUnauthorized))
+        } else {
+            Ok(())
+        }
+    }
+
+    fn for_handler(
+        token: Option<String>,
+        store: ContextStore,
+        worker_context: Option<worker_lib::context::Context>,
+    ) -> CallContext {
+        CallContext {
+            token,
+            check_permisions: true,
+            worker_context,
+            store,
+        }
+    }
+
+    pub async fn check_allowed<S: AsRef<str>>(
+        &self,
+        project_id: Option<S>,
+        action: super::config::ActionType,
+    ) -> bool {
+        if !self.check_permisions {
+            return true;
+        }
+        self.store
+            .context()
+            .config()
+            .await
+            .service_config
+            .check_allowed(self.token.as_ref(), project_id, action)
+    }
+
+    pub async fn get_actions(
+        &self,
+        event: super::config::ActionEvent,
+    ) -> Result<super::config::MatchedActions, super::config::ExecutionError> {
+        self.store
+            .context()
+            .config()
+            .await
+            .get_projects_actions(event)
+            .await
+    }
+
+    pub async fn to_execution_context(self) -> super::config::ExecutionContext {
+        super::config::ExecutionContext {
+            token: self.token,
+            check_permissions: self.check_permisions,
+            worker_context: self.worker_context,
+            config: self.store.context().config().await,
         }
     }
 }

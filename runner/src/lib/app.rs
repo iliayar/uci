@@ -82,13 +82,15 @@ impl App {
         let context = context::Context::new(self.config, self.env).await?;
         let context_store = super::filters::ContextStore::new(context);
 
-        let trigger = super::config::ActionEvent::ConfigReloaded;
+        let call_context = super::filters::CallContext {
+            token: None,
+            check_permisions: false,
+            worker_context: worker_context.clone(),
+            store: context_store.clone(),
+        };
         super::handlers::trigger_projects_impl(
-            /* token */ None,
-            /* check_permissions */ false,
-            trigger,
-            context_store.clone(),
-            worker_context.clone(),
+            call_context,
+            super::config::ActionEvent::ConfigReloaded,
         )
         .await;
 

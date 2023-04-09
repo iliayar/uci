@@ -59,3 +59,32 @@ async fn load_config_impl(config_path: PathBuf, env: &str) -> Result<config::Con
 
     Ok(config)
 }
+
+pub struct ExecutionContext {
+    check_permisions: bool,
+    token: Option<String>,
+    worker_context: Option<worker_lib::context::Context>,
+    config: Arc<super::config::Config>,
+}
+
+impl ExecutionContext {
+    pub fn check_allowed_global(&self, action: super::config::ActionType) -> bool {
+        self.config.service_config.check_allowed::<_, &str>(
+            self.token.as_ref().clone(),
+            None,
+            action,
+        )
+    }
+
+    pub fn check_allowed<S: AsRef<str>>(
+        &self,
+        project: S,
+        action: super::config::ActionType,
+    ) -> bool {
+        self.config.service_config.check_allowed::<_, &str>(
+            self.token.as_ref().clone(),
+            Some(project.as_ref()),
+            action,
+        )
+    }
+}

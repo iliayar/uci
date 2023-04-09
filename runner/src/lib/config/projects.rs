@@ -118,11 +118,11 @@ impl MatchedActions {
             reload_project,
         };
 
-	if res.is_empty() {
-	    None
-	} else {
-	    Some(res)
-	}
+        if res.is_empty() {
+            None
+        } else {
+            Some(res)
+        }
     }
 
     pub fn merge(&mut self, other: MatchedActions) {
@@ -179,10 +179,7 @@ impl Projects {
 
     pub async fn run_matched(
         &self,
-        token: Option<String>,
-        check_permissions: bool,
-        config: &super::ServiceConfig,
-        worker_context: Option<worker_lib::context::Context>,
+        execution_context: &super::ExecutionContext,
         matched: MatchedActions,
     ) -> Result<(), super::ExecutionError> {
         let mut tasks = Vec::new();
@@ -190,13 +187,7 @@ impl Projects {
         for (project_id, project) in self.projects.iter() {
             debug!("Running matched for project {}", project_id);
             if let Some(project_actions) = matched.get_project(project_id) {
-                if check_permissions
-                    && !config.check_allowed(
-                        token.as_ref(),
-                        Some(project_id),
-                        super::ActionType::Execute,
-                    )
-                {
+                if execution_context.check_allowed(Some(project_id), super::ActionType::Execute) {
                     warn!(
                         "Not allowed to execute actions on project {}, skiping",
                         project_id
@@ -205,8 +196,7 @@ impl Projects {
                 }
 
                 tasks.push(project.run_matched_action(
-                    config,
-                    worker_context.clone(),
+		    execution_context,
                     project_actions,
                 ));
             }

@@ -3,69 +3,31 @@ use std::convert::Infallible;
 use log::*;
 use warp::hyper::StatusCode;
 
-use super::{context::Context, filters::ContextStore};
+use crate::lib::config::ActionType;
 
-// fn check_permissions(
-//     token: Option<String>,
-//     actions: &super::config::MatchedActions,
-//     config: &super::config::ServiceConfig,
-// ) -> Result<(), warp::Rejection> {
-//     if actions.check_allowed(token.as_ref(), config) {
-//         Ok(())
-//     } else {
-//         Err(warp::reject::custom(
-//             super::filters::Unauthorized::TokenIsUnauthorized,
-//         ))
-//     }
-// }
-
-async fn check_authorized<S: AsRef<str>, PS: AsRef<str>>(
-    store: &ContextStore,
-    token: Option<S>,
-    project_id: Option<PS>,
-    action: super::config::ActionType,
-) -> Result<(), warp::Rejection> {
-    if !store
-        .context()
-        .config()
-        .await
-        .service_config
-        .check_allowed(token, project_id, action)
-    {
-        Err(warp::reject::custom(
-            super::filters::Unauthorized::TokenIsUnauthorized,
-        ))
-    } else {
-        Ok(())
-    }
-}
+use super::{
+    config::ActionEvent,
+    context::Context,
+    filters::{CallContext, ContextStore},
+};
 
 pub async fn call(
-    token: Option<String>,
+    call_context: CallContext,
     project_id: String,
     trigger_id: String,
-    store: ContextStore,
-    worker_context: Option<worker_lib::context::Context>,
 ) -> Result<impl warp::Reply, warp::Rejection> {
     info!("Running trigger {} for project {}", trigger_id, project_id);
-    check_authorized(
-        &store,
-        token.as_ref(),
-        Some(&project_id),
-        super::config::ActionType::Write,
-    )
-    .await?;
 
-    let trigger = super::config::ActionEvent::DirectCall {
-        project_id: project_id.clone(),
-        trigger_id: trigger_id.clone(),
-    };
+    call_context
+        .check_authorized(Some(&project_id), ActionType::Write)
+        .await?;
+
     trigger_projects_impl(
-        token,
-        /* check_permissions */ true,
-        trigger,
-        store,
-        worker_context,
+        call_context,
+        ActionEvent::DirectCall {
+            project_id: project_id.clone(),
+            trigger_id: trigger_id.clone(),
+        },
     )
     .await;
 
@@ -73,46 +35,20 @@ pub async fn call(
 }
 
 pub async fn update_repo(
-    token: Option<String>,
+    call_context: CallContext,
     repo: String,
-    store: ContextStore,
-    worker_context: Option<worker_lib::context::Context>,
 ) -> Result<impl warp::Reply, warp::Rejection> {
     info!("Running repo {}", repo);
-    let trigger = super::config::ActionEvent::UpdateRepos { repos: vec![repo] };
-    trigger_projects_impl(
-        token,
-        /* check_permissions */ true,
-        trigger,
-        store,
-        worker_context,
-    )
-    .await;
-
+    trigger_projects_impl(call_context, ActionEvent::UpdateRepos { repos: vec![repo] }).await;
     Ok(StatusCode::OK)
 }
 
-pub async fn reload_config(
-    token: Option<String>,
-    store: ContextStore,
-    worker_context: Option<worker_lib::context::Context>,
-) -> Result<impl warp::Reply, warp::Rejection> {
-    check_authorized::<_, &str>(
-        &store,
-        token.as_ref(),
-        None,
-        super::config::ActionType::Write,
-    )
-    .await?;
+pub async fn reload_config(call_context: CallContext) -> Result<impl warp::Reply, warp::Rejection> {
+    call_context
+        .check_authorized::<&str>(None, super::config::ActionType::Write)
+        .await?;
 
-    match reload_config_impl(
-        token,
-        /* check_permissions */ true,
-        store,
-        worker_context,
-    )
-    .await
-    {
+    match reload_config_impl(call_context).await {
         Ok(_) => Ok(warp::reply::with_status(
             warp::reply::json(&common::runner::EmptyResponse {}),
             StatusCode::OK,
@@ -127,28 +63,14 @@ pub async fn reload_config(
 }
 
 pub async fn reload_project(
-    token: Option<String>,
+    call_context: CallContext,
     project_id: String,
-    store: ContextStore,
-    worker_context: Option<worker_lib::context::Context>,
 ) -> Result<impl warp::Reply, warp::Rejection> {
-    check_authorized::<_, &str>(
-        &store,
-        token.as_ref(),
-        Some(&project_id),
-        super::config::ActionType::Write,
-    )
-    .await?;
+    call_context
+        .check_authorized(Some(&project_id), ActionType::Write)
+        .await?;
 
-    match reload_project_impl(
-        token,
-        /* check_permissions */ true,
-        project_id,
-        store,
-        worker_context,
-    )
-    .await
-    {
+    match reload_project_impl(call_context, project_id).await {
         Ok(_) => Ok(warp::reply::with_status(
             warp::reply::json(&common::runner::EmptyResponse {}),
             StatusCode::OK,
@@ -162,46 +84,28 @@ pub async fn reload_project(
     }
 }
 
-async fn reload_config_impl(
-    token: Option<String>,
-    check_permissions: bool,
-    store: ContextStore,
-    worker_context: Option<worker_lib::context::Context>,
-) -> Result<(), anyhow::Error> {
-    store.context().reload_config().await?;
-
-    let trigger = super::config::ActionEvent::ConfigReloaded;
-    trigger_projects_impl(token, check_permissions, trigger, store, worker_context).await;
-
+async fn reload_config_impl(call_context: CallContext) -> Result<(), anyhow::Error> {
+    reload_impl(call_context, ActionEvent::ConfigReloaded).await?;
     Ok(())
 }
 
 async fn reload_project_impl(
-    token: Option<String>,
-    check_permissions: bool,
+    call_context: CallContext,
     project_id: String,
-    store: ContextStore,
-    worker_context: Option<worker_lib::context::Context>,
 ) -> Result<(), anyhow::Error> {
-    store.context().reload_config().await?;
-
-    let trigger = super::config::ActionEvent::ProjectReloaded { project_id };
-    trigger_projects_impl(token, check_permissions, trigger, store, worker_context).await;
-
+    reload_impl(call_context, ActionEvent::ProjectReloaded { project_id }).await?;
     Ok(())
 }
 
-pub async fn trigger_projects_impl(
-    token: Option<String>,
-    check_permissions: bool,
-    trigger: super::config::ActionEvent,
-    store: ContextStore,
-    worker_context: Option<worker_lib::context::Context>,
-) {
+async fn reload_impl(call_context: CallContext, event: ActionEvent) -> Result<(), anyhow::Error> {
+    call_context.store.context().reload_config().await?;
+    trigger_projects_impl(call_context, event).await;
+    Ok(())
+}
+
+pub async fn trigger_projects_impl(call_context: CallContext, trigger: super::config::ActionEvent) {
     tokio::spawn(async move {
-        match trigger_projects_impl_result(token, check_permissions, trigger, store, worker_context)
-            .await
-        {
+        match trigger_projects_impl_result(call_context, trigger).await {
             Result::Err(err) => {
                 error!("Failed to match actions: {}", err);
             }
@@ -211,27 +115,15 @@ pub async fn trigger_projects_impl(
 }
 
 pub async fn trigger_projects_impl_result(
-    token: Option<String>,
-    check_permissions: bool,
-    trigger: super::config::ActionEvent,
-    store: ContextStore,
-    worker_context: Option<worker_lib::context::Context>,
+    call_context: CallContext,
+    event: super::config::ActionEvent,
 ) -> Result<(), anyhow::Error> {
-    let mut matched = store
-        .context()
-        .config()
-        .await
-        .get_projects_actions(trigger)
-        .await?;
+    let mut matched = call_context.get_actions(event).await?;
 
     if matched.reload_config {
-        if check_permissions
-            && !store
-                .context()
-                .config()
-                .await
-                .service_config
-                .check_allowed::<_, &str>(token.as_ref(), None, super::config::ActionType::Write)
+        if call_context
+            .check_allowed::<&str>(None, super::config::ActionType::Write)
+            .await
         {
             return Err(anyhow::anyhow!(
                 "Reloading config is not allowed, do nothing"
@@ -241,48 +133,40 @@ pub async fn trigger_projects_impl_result(
 
     // FIXME: Do it separately?
     if matched.reload_config || !matched.reload_projects.is_empty() {
-        store.context().reload_config().await?;
-        let new_matched = store
-            .context()
-            .config()
-            .await
-            .get_projects_actions(super::config::ActionEvent::ConfigReloaded)
-            .await?;
-        matched.merge(new_matched);
+        call_context.store.context().reload_config().await?;
+        matched.merge(
+            call_context
+                .get_actions(super::config::ActionEvent::ConfigReloaded)
+                .await?,
+        );
     }
 
     let mut new_matcheds = Vec::new();
     for project_id in matched.reload_projects.iter() {
-        if check_permissions
-            && !store.context().config().await.service_config.check_allowed(
-                token.as_ref(),
-                Some(&project_id),
-                super::config::ActionType::Write,
-            )
+        if !call_context
+            .check_allowed(Some(&project_id), ActionType::Write)
+            .await
         {
             warn!("Not allowed to reload project {}, do nothing", project_id);
             continue;
         }
 
-        let new_matched = store
-            .context()
-            .config()
-            .await
-            .get_projects_actions(super::config::ActionEvent::ProjectReloaded {
-                project_id: project_id.clone(),
-            })
-            .await?;
-        new_matcheds.push(new_matched);
+        new_matcheds.push(
+            call_context
+                .get_actions(super::config::ActionEvent::ProjectReloaded {
+                    project_id: project_id.clone(),
+                })
+                .await?,
+        );
     }
     for new_matched in new_matcheds.into_iter() {
         matched.merge(new_matched);
     }
 
-    store
-        .context()
+    let execution_context = call_context.to_execution_context().await;
+    execution_context
         .config()
-        .await
-        .run_project_actions(token, check_permissions, worker_context, matched)
+        .run_project_actions(&execution_context, matched)
         .await?;
 
     Ok(())

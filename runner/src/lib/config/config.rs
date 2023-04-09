@@ -1,10 +1,13 @@
 use std::{
     collections::{HashMap, HashSet},
     path::PathBuf,
+    sync::Arc,
 };
 
 use anyhow::anyhow;
 use log::*;
+
+use crate::lib::filters::CallContext;
 
 #[derive(Debug)]
 pub struct Config {
@@ -32,6 +35,34 @@ pub enum ActionEvent {
     UpdateRepos {
         repos: Vec<String>,
     },
+}
+
+pub struct ExecutionContext {
+    pub token: Option<String>,
+    pub check_permissions: bool,
+    pub worker_context: Option<worker_lib::context::Context>,
+    pub config: Arc<Config>,
+}
+
+impl ExecutionContext {
+    pub fn config(&self) -> &Config {
+        self.config.as_ref()
+    }
+    pub fn service_config(&self) -> &super::ServiceConfig {
+        &self.config().service_config
+    }
+    pub fn check_allowed<S: AsRef<str>>(
+        &self,
+        project_id: Option<S>,
+        action: super::ActionType,
+    ) -> bool {
+        if !self.check_permissions {
+            return true;
+        }
+        self.config()
+            .service_config
+            .check_allowed(self.token.as_ref(), project_id, action)
+    }
 }
 
 impl<'a> ConfigPreload<'a> {
@@ -115,20 +146,12 @@ impl Config {
 
     pub async fn run_project_actions(
         &self,
-        token: Option<String>,
-        check_permissions: bool,
-        worker_context: Option<worker_lib::context::Context>,
+        execution_context: &ExecutionContext,
         matched: super::MatchedActions,
     ) -> Result<(), super::ExecutionError> {
         info!("Running actions: {:#?}", matched);
         self.projects
-            .run_matched(
-                token,
-                check_permissions,
-                &self.service_config,
-                worker_context,
-                matched,
-            )
+            .run_matched(execution_context, matched)
             .await?;
 
         Ok(())
