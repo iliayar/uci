@@ -156,10 +156,10 @@ impl Repos {
     }
 
     pub async fn get_missing_repos(&self) -> Result<HashSet<String>, super::ExecutionError> {
-	let mut res = HashSet::new();
+        let mut res = HashSet::new();
         for (id, repo) in self.repos.iter() {
             if repo.is_missing().await? {
-		res.insert(id.clone());
+                res.insert(id.clone());
             }
         }
 
@@ -177,6 +177,10 @@ impl Into<common::vars::Vars> for &Repos {
     }
 }
 
+pub mod repos_raw {
+    pub use super::raw::Repo;
+}
+
 mod raw {
     use std::{collections::HashMap, path::PathBuf};
 
@@ -189,7 +193,7 @@ mod raw {
 
     #[derive(Deserialize, Serialize)]
     #[serde(deny_unknown_fields)]
-    struct Repo {
+    pub struct Repo {
         source: Option<String>,
         branch: Option<String>,
         manual: Option<bool>,
@@ -222,7 +226,12 @@ mod raw {
             self,
             context: &config::LoadContext,
         ) -> Result<Self::Output, config::LoadConfigError> {
-            let default_path = context.config()?.repos_path.join(context.extra("_id")?);
+            let repo_id = context.extra("_id")?;
+            let project_id = context.project_id();
+            let default_path = context
+                .config()?
+                .repos_path
+                .join(format!("{}_{}", project_id, repo_id));
             let configs_root = context.configs_root()?;
             let path = self
                 .path

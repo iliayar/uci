@@ -6,11 +6,12 @@ mod config;
 mod load;
 mod pipelines;
 mod project;
-mod projects;
+mod static_projects;
 mod repo;
 mod service_config;
 mod services;
 mod utils;
+mod projects;
 
 pub use actions::*;
 pub use bind::*;
@@ -19,10 +20,11 @@ pub use config::*;
 pub use load::*;
 pub use pipelines::*;
 pub use project::*;
-pub use projects::*;
+pub use static_projects::*;
 pub use repo::*;
 pub use service_config::*;
 pub use services::*;
+pub use projects::*;
 
 #[derive(Debug, thiserror::Error)]
 pub enum LoadConfigError {

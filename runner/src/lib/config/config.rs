@@ -10,13 +10,13 @@ use log::*;
 use crate::lib::filters::CallContext;
 
 #[derive(Debug)]
-pub struct Config {
+pub struct Config<P: super::ProjectsStore> {
     pub service_config: super::ServiceConfig,
     pub repos: super::Repos,
-    pub projects: super::Projects,
+    pub projects: P,
 }
 
-pub struct ConfigPreload {
+pub struct ConfigPreload<P: super::ProjectsStore> {
     pub service_config: super::ServiceConfig,
     pub repos: super::Repos,
     configs_root: PathBuf,

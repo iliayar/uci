@@ -2,3 +2,11 @@ projects:
   testci:
     # TODO: Maybe make possible to store project configs in Repo
     path: projects/testci
+    repos:
+      test:
+        source: ssh://git@gitlab.com:iliayar/testci.git
+        branch: main
+      ubuntu-with-nc:
+        manual: true
+      test-manual:
+        manual: true
