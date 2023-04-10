@@ -5,6 +5,7 @@ use super::{config, git};
 use log::*;
 use thiserror::Error;
 use tokio::sync::Mutex;
+use tokio::sync::mpsc;
 
 pub struct Context {
     config_path: PathBuf,
@@ -26,7 +27,11 @@ pub enum ContextError {
 
 impl Context {
     pub async fn new(config_path: PathBuf, env: String) -> Result<Context, ContextError> {
-        let config = load_config_impl(config_path.clone(), &env).await?;
+        let config = config::Config::preload(config_path.clone(), env.clone()).await?;
+        config.clone_missing_repos().await?;
+        let config = config.load().await?;
+        info!("Loaded config: {:#?}", config);
+
         let context = Context {
             config: Mutex::new(Arc::new(config)),
             config_path,
@@ -40,24 +45,23 @@ impl Context {
         return self.config.lock().await.clone();
     }
 
-    pub async fn reload_config(&self) -> Result<(), ContextError> {
-        let config = load_config_impl(self.config_path.clone(), &self.env).await?;
-        info!("Config reloaded {:#?}", config);
+    pub async fn preload_config(&self) -> Result<super::config::ConfigPreload, ContextError> {
+        Ok(config::Config::preload(self.config_path.clone(), self.env.clone()).await?)
+    }
+
+    pub async fn load_config(
+        &self,
+        config: config::ConfigPreload,
+    ) -> Result<(), ContextError> {
+        config.clone_missing_repos().await?;
+
+        let config = config.load().await?;
+        info!("Loaded config: {:#?}", config);
 
         *self.config.lock().await = Arc::new(config);
 
         Ok(())
     }
-}
-
-async fn load_config_impl(config_path: PathBuf, env: &str) -> Result<config::Config, ContextError> {
-    let preloaded_config = config::Config::preload(config_path.clone(), env).await?;
-    preloaded_config.clone_missing_repos().await?;
-
-    let config = preloaded_config.load().await?;
-    info!("Loaded config: {:#?}", config);
-
-    Ok(config)
 }
 
 pub struct ExecutionContext {

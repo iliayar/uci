@@ -16,11 +16,11 @@ pub struct Config {
     pub projects: super::Projects,
 }
 
-pub struct ConfigPreload<'a> {
+pub struct ConfigPreload {
     pub service_config: super::ServiceConfig,
     pub repos: super::Repos,
     configs_root: PathBuf,
-    env: &'a str,
+    env: String,
 }
 
 pub enum ActionEvent {
@@ -65,11 +65,11 @@ impl ExecutionContext {
     }
 }
 
-impl<'a> ConfigPreload<'a> {
+impl ConfigPreload {
     pub async fn load(self) -> Result<Config, super::LoadConfigError> {
         let mut load_context = super::LoadContext::default();
         load_context.set_configs_root(&self.configs_root);
-        load_context.set_env(self.env);
+        load_context.set_env(&self.env);
         load_context.set_config(&self.service_config);
         load_context.set_repos(&self.repos);
 
@@ -86,21 +86,21 @@ impl<'a> ConfigPreload<'a> {
         self.repos.clone_missing_repos(&self.service_config).await
     }
 
-    pub async fn has_missing_repos(&self) -> Result<bool, super::ExecutionError> {
-        self.repos.has_missing_repos().await
+    pub async fn get_missing_repos(&self) -> Result<HashSet<String>, super::ExecutionError> {
+        self.repos.get_missing_repos().await
     }
 }
 
 impl Config {
-    pub async fn preload<'a>(
+    pub async fn preload(
         configs_root: PathBuf,
-        env: &'a str,
+        env: String,
     ) -> Result<ConfigPreload, super::LoadConfigError> {
         info!("Preloading config");
 
         let mut load_context = super::LoadContext::default();
         load_context.set_configs_root(&configs_root);
-        load_context.set_env(env);
+        load_context.set_env(&env);
 
         let service_config = super::ServiceConfig::load(&load_context).await?;
         load_context.set_config(&service_config);
@@ -155,5 +155,13 @@ impl Config {
             .await?;
 
         Ok(())
+    }
+
+    pub async fn reload_project<'a>(
+        &self,
+        configs_root: PathBuf,
+        env: &'a str,
+    ) -> Result<(), super::LoadConfigError> {
+        todo!()
     }
 }

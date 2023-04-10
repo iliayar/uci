@@ -155,14 +155,15 @@ impl Repos {
         Ok(())
     }
 
-    pub async fn has_missing_repos(&self) -> Result<bool, super::ExecutionError> {
+    pub async fn get_missing_repos(&self) -> Result<HashSet<String>, super::ExecutionError> {
+	let mut res = HashSet::new();
         for (id, repo) in self.repos.iter() {
             if repo.is_missing().await? {
-                return Ok(true);
+		res.insert(id.clone());
             }
         }
 
-        Ok(false)
+        Ok(res)
     }
 }
 

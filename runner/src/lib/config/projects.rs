@@ -166,6 +166,10 @@ impl Projects {
         self.projects.get(project)
     }
 
+    pub fn list_projects(&self) -> HashSet<String> {
+        self.projects.keys().cloned().collect()
+    }
+
     pub async fn get_matched(
         &self,
         event: &super::Event,
@@ -195,10 +199,7 @@ impl Projects {
                     continue;
                 }
 
-                tasks.push(project.run_matched_action(
-		    execution_context,
-                    project_actions,
-                ));
+                tasks.push(project.run_matched_action(execution_context, project_actions));
             }
         }
 

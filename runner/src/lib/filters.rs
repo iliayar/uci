@@ -1,4 +1,7 @@
-use std::{convert::Infallible, sync::Arc};
+use futures::{FutureExt, StreamExt};
+use std::{collections::HashMap, convert::Infallible, sync::Arc};
+use tokio::sync::{mpsc, Mutex};
+use tokio_stream::wrappers::UnboundedReceiverStream;
 use warp::{Filter, Rejection};
 
 use super::{
@@ -7,15 +10,64 @@ use super::{
 };
 use warp::hyper::StatusCode;
 
+use log::*;
+
 #[derive(Clone)]
 pub struct ContextStore {
     context: Arc<Context>,
+    ws_clients: Arc<Mutex<HashMap<String, WsClient>>>,
+}
+
+pub struct WsClient {
+    rx: mpsc::UnboundedReceiver<Result<warp::ws::Message, warp::Error>>,
+}
+
+pub struct WsResult {
+    pub client_id: String,
+    pub ws_output: WsOutput,
+}
+
+pub struct WsOutput {
+    tx: mpsc::UnboundedSender<Result<warp::ws::Message, warp::Error>>,
+}
+
+impl WsOutput {
+    pub async fn send<T: serde::Serialize>(&self, msg: T) {
+        let content = match serde_json::to_string(&msg) {
+            Err(err) => {
+                error!("Failed to encode msg for ws: {}", err);
+                return;
+            }
+            Ok(content) => content,
+        };
+        if let Err(err) = self.tx.send(Ok(warp::ws::Message::text(content))) {
+            error!("Failed to send ws message {}", err);
+        }
+    }
+}
+
+impl ContextStore {
+    pub async fn create_ws(&self) -> WsResult {
+        let client_id = uuid::Uuid::new_v4().to_string();
+        let (tx, rx) = mpsc::unbounded_channel();
+        let client = WsClient { rx };
+        self.ws_clients
+            .lock()
+            .await
+            .insert(client_id.clone(), client);
+        debug!("New ws client registerd: {}", client_id);
+        WsResult {
+            client_id,
+            ws_output: WsOutput { tx },
+        }
+    }
 }
 
 impl ContextStore {
     pub fn new(context: Context) -> ContextStore {
         ContextStore {
             context: Arc::new(context),
+            ws_clients: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 
@@ -29,13 +81,27 @@ pub fn runner(
     worker_context: Option<worker_lib::context::Context>,
 ) -> impl Filter<Extract = impl warp::Reply, Error = Infallible> + Clone {
     ping()
-        .or(run(context_store.clone(), worker_context.clone()))
-        .or(reload_config(context_store.clone(), worker_context.clone()))
-        .or(reload_project(
+        .or(handlers::call::filter(
             context_store.clone(),
             worker_context.clone(),
         ))
-        .or(update_repo(context_store.clone(), worker_context.clone()))
+        .or(handlers::reload_project::filter(
+            context_store.clone(),
+            worker_context.clone(),
+        ))
+        .or(handlers::reload_config::filter(
+            context_store.clone(),
+            worker_context.clone(),
+        ))
+        .or(handlers::update_repo::filter(
+            context_store.clone(),
+            worker_context.clone(),
+        ))
+        .or(handlers::list_projects::filter(
+            context_store.clone(),
+            worker_context.clone(),
+        ))
+        .or(ws(context_store.clone()))
         .recover(report_rejection)
 }
 
@@ -43,51 +109,38 @@ pub fn ping() -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection
     warp::path("ping").and(warp::get()).map(|| StatusCode::OK)
 }
 
-pub fn run(
+pub fn ws(
     context: ContextStore,
-    worker_context: Option<worker_lib::context::Context>,
 ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
-    warp::any()
-        .and(with_validation())
+    warp::path!("ws" / String)
+        .and(warp::ws())
         .and(with_context(context))
-        .and(with_worker_context(worker_context))
-        .map(CallContext::for_handler)
-        .and(warp::path!("call" / String / String))
-        .and(warp::post())
-        .and_then(handlers::call)
+        .and_then(ws_client)
 }
 
-pub fn reload_config(
-    context: ContextStore,
-    worker_context: Option<worker_lib::context::Context>,
-) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
-    warp::any()
-        .and(with_call_context(context, worker_context))
-        .and(warp::path!("reload"))
-        .and(warp::post())
-        .and_then(handlers::reload_config)
+async fn ws_client(
+    client_id: String,
+    ws: warp::ws::Ws,
+    store: ContextStore,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    debug!("Handling ws client {}", client_id);
+    let client = store.ws_clients.lock().await.remove(&client_id);
+    match client {
+        Some(client) => Ok(ws.on_upgrade(move |socket| ws_client_connection(socket, client))),
+        None => Err(warp::reject::not_found()),
+    }
 }
 
-pub fn reload_project(
-    context: ContextStore,
-    worker_context: Option<worker_lib::context::Context>,
-) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
-    warp::any()
-        .and(with_call_context(context, worker_context))
-        .and(warp::path!("reload" / String))
-        .and(warp::post())
-        .and_then(handlers::reload_project)
-}
-
-pub fn update_repo(
-    context: ContextStore,
-    worker_context: Option<worker_lib::context::Context>,
-) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
-    warp::any()
-        .and(with_call_context(context, worker_context))
-        .and(warp::path!("update" / String))
-        .and(warp::post())
-        .and_then(handlers::update_repo)
+async fn ws_client_connection(socket: warp::ws::WebSocket, client: WsClient) {
+    // NOTE: Do not care of receiving messages
+    let (client_ws_sender, _) = socket.split();
+    let client_rcv = UnboundedReceiverStream::new(client.rx);
+    debug!("Running ws sending");
+    tokio::task::spawn(client_rcv.forward(client_ws_sender).map(|result| {
+        if let Err(e) = result {
+            error!("Error sending websocket msg: {}", e);
+        }
+    }));
 }
 
 pub fn with_call_context(
@@ -119,7 +172,6 @@ pub enum Unauthorized {
     MethodIsNotSepcified,
     TokenIsNotSpecified,
     TokenIsUnauthorized,
-    MissingAuthorizationHeader,
 }
 
 impl warp::reject::Reject for Unauthorized {}
@@ -160,7 +212,6 @@ pub async fn report_rejection(r: Rejection) -> Result<impl warp::Reply, Infallib
             Unauthorized::TokenIsUnauthorized => {
                 format!("Specified token is unauthrized for this action")
             }
-            Unauthorized::MissingAuthorizationHeader => format!("Authorization header is missing"),
         };
         Ok(warp::reply::with_status(
             warp::reply::json(&common::runner::ErrorResponse { message }),
@@ -190,6 +241,7 @@ pub struct CallContext {
     pub check_permisions: bool,
     pub worker_context: Option<worker_lib::context::Context>,
     pub store: ContextStore,
+    pub ws: Option<WsOutput>,
 }
 
 impl CallContext {
@@ -215,6 +267,7 @@ impl CallContext {
             check_permisions: true,
             worker_context,
             store,
+            ws: None,
         }
     }
 
@@ -252,6 +305,12 @@ impl CallContext {
             check_permissions: self.check_permisions,
             worker_context: self.worker_context,
             config: self.store.context().config().await,
+        }
+    }
+
+    pub async fn send<T: serde::Serialize>(&self, msg: T) {
+        if let Some(ws_output) = self.ws.as_ref() {
+            ws_output.send(msg).await;
         }
     }
 }

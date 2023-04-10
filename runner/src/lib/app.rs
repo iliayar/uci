@@ -50,7 +50,7 @@ pub enum RunnerError {
 
 impl App {
     pub async fn init() -> Result<App, RunnerError> {
-        pretty_env_logger::init();
+        pretty_env_logger::init_timed();
 
         let args = Args::parse();
 
@@ -87,12 +87,12 @@ impl App {
             check_permisions: false,
             worker_context: worker_context.clone(),
             store: context_store.clone(),
+	    ws: None,
         };
-        super::handlers::trigger_projects_impl(
+        tokio::spawn(super::handlers::trigger_projects_impl(
             call_context,
             super::config::ActionEvent::ConfigReloaded,
-        )
-        .await;
+        ));
 
         let api = filters::runner(context_store, worker_context);
         let routes = api.with(warp::log("runner"));
