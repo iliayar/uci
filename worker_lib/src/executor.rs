@@ -44,6 +44,10 @@ impl Executor {
         }
     }
 
+    pub async fn run_result(self, config: Pipeline) -> Result<(), ExecutorError> {
+        self.run_impl(config).await
+    }
+
     async fn make_task_context(
         &self,
         config: &Pipeline,

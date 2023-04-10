@@ -25,7 +25,7 @@ pub async fn reload_project_impl(
 }
 
 async fn reload_impl(
-    call_context: CallContext,
+    mut call_context: CallContext,
     event: ActionEvent,
 ) -> Result<ReloadResult, anyhow::Error> {
     let config = call_context.store.context().preload_config().await?;
@@ -40,16 +40,14 @@ async fn reload_impl(
             missing_repos: None,
         })
     } else {
-        let mut call_context = call_context;
-        let ws = call_context.store.create_ws().await;
-        call_context.ws = Some(ws.ws_output);
+        let client_id = call_context.init_ws().await;
         tokio::spawn(clone_repos_trigger_projects_impl(
             call_context,
             config,
             event,
         ));
         Ok(ReloadResult {
-            client_id: Some(ws.client_id),
+            client_id: Some(client_id),
             done: false,
             missing_repos: Some(missing_repos),
         })

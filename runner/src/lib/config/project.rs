@@ -152,7 +152,7 @@ impl Project {
 
         if let Some(worker_context) = execution_context.worker_context.clone() {
             let executor = worker_lib::executor::Executor::new(worker_context)?;
-            tokio::spawn(executor.run(pipeline));
+            executor.run_result(pipeline).await?;
         } else {
             let worker_url = execution_context
                 .service_config()

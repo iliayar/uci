@@ -22,12 +22,9 @@ pub struct WsClient {
     rx: mpsc::UnboundedReceiver<Result<warp::ws::Message, warp::Error>>,
 }
 
-pub struct WsResult {
-    pub client_id: String,
-    pub ws_output: WsOutput,
-}
-
+#[derive(Clone)]
 pub struct WsOutput {
+    pub client_id: String,
     tx: mpsc::UnboundedSender<Result<warp::ws::Message, warp::Error>>,
 }
 
@@ -47,7 +44,7 @@ impl WsOutput {
 }
 
 impl ContextStore {
-    pub async fn create_ws(&self) -> WsResult {
+    async fn create_ws(&self) -> WsOutput {
         let client_id = uuid::Uuid::new_v4().to_string();
         let (tx, rx) = mpsc::unbounded_channel();
         let client = WsClient { rx };
@@ -56,10 +53,11 @@ impl ContextStore {
             .await
             .insert(client_id.clone(), client);
         debug!("New ws client registerd: {}", client_id);
-        WsResult {
-            client_id,
-            ws_output: WsOutput { tx },
-        }
+        WsOutput { client_id, tx }
+    }
+
+    async fn delete_ws(&self, client_id: String) {
+        self.ws_clients.lock().await.remove(&client_id);
     }
 }
 
@@ -311,6 +309,19 @@ impl CallContext {
     pub async fn send<T: serde::Serialize>(&self, msg: T) {
         if let Some(ws_output) = self.ws.as_ref() {
             ws_output.send(msg).await;
+        }
+    }
+
+    pub async fn init_ws(&mut self) -> String {
+        let ws = self.store.create_ws().await;
+        let client_id = ws.client_id.clone();
+        self.ws = Some(ws);
+        client_id
+    }
+
+    pub async fn finish_ws(&mut self) {
+        if let Some(ws) = self.ws.take() {
+            self.store.delete_ws(ws.client_id).await;
         }
     }
 }
