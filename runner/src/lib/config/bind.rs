@@ -174,7 +174,7 @@ mod raw {
     pub async fn load<'a>(
         context: &config::LoadContext<'a>,
     ) -> Result<Option<super::Bind>, super::LoadConfigError> {
-        let path = context.project_config()?.clone();
+        let path: PathBuf = context.get_named("project_config").cloned()?;
 
         if path.exists() {
             let config: Result<Config, super::LoadConfigError> =

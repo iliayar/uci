@@ -2,7 +2,7 @@ mod actions;
 mod bind;
 mod caddy;
 mod codegen;
-mod config;
+// mod config;
 mod load;
 mod pipelines;
 mod project;
@@ -12,11 +12,13 @@ mod service_config;
 mod services;
 mod utils;
 mod projects;
+mod permissions;
+mod secrets;
 
 pub use actions::*;
 pub use bind::*;
 pub use caddy::*;
-pub use config::*;
+// pub use config::*;
 pub use load::*;
 pub use pipelines::*;
 pub use project::*;
@@ -25,6 +27,8 @@ pub use repo::*;
 pub use service_config::*;
 pub use services::*;
 pub use projects::*;
+pub use permissions::*;
+pub use secrets::*;
 
 #[derive(Debug, thiserror::Error)]
 pub enum LoadConfigError {

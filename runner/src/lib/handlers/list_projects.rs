@@ -1,36 +1,57 @@
 use std::collections::HashSet;
 
 use crate::lib::{
-    config::{ActionEvent, ActionType},
-    filters::{with_call_context, CallContext, ContextStore},
+    config::{self, ActionEvent, ActionType},
+    filters::{with_call_context, CallContext, ContextPtr, InternalServerError},
 };
 
+use reqwest::StatusCode;
 use warp::Filter;
 
-pub fn filter(
-    context: ContextStore,
-    worker_context: Option<worker_lib::context::Context>,
+pub fn filter<PM: config::ProjectsManager>(
+    context: ContextPtr<PM>,
 ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
     warp::any()
-        .and(with_call_context(context, worker_context))
+        .and(with_call_context(context))
         .and(warp::path!("projects" / "list"))
         .and(warp::get())
         .and_then(list_projects)
 }
 
-async fn list_projects(call_context: CallContext) -> Result<impl warp::Reply, warp::Rejection> {
-    let execution_context = call_context.to_execution_context().await;
+async fn list_projects<PM: config::ProjectsManager>(
+    call_context: CallContext<PM>,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    match list_projects_impl(call_context).await {
+        Ok(resp) => Ok(warp::reply::with_status(
+            warp::reply::json(&resp),
+            StatusCode::OK,
+        )),
+        Err(err) => Err(warp::reject::custom(InternalServerError::Error(
+            err.to_string(),
+        ))),
+    }
+}
 
-    let projects: HashSet<String> = execution_context
-        .config()
-        .projects
-        .list_projects()
+async fn list_projects_impl<PM: config::ProjectsManager>(
+    call_context: CallContext<PM>,
+) -> Result<common::runner::ProjectsListResponse, anyhow::Error> {
+    let projects: HashSet<String> = call_context
+        .context
+        .projects_store
+        .get_projects_info()
+        .await?
         .into_iter()
-        .filter(|project_id| execution_context.check_allowed(Some(project_id), ActionType::Read))
+        .filter_map(|project| {
+            if project
+                .tokens
+                .check_allowed(call_context.token.as_ref(), ActionType::Read)
+            {
+                Some(project.id)
+            } else {
+                None
+            }
+        })
         .collect();
 
-    let response = common::runner::ProjectsListResponse {
-	projects
-    };
-    Ok(warp::reply::json(&response))
+    Ok(common::runner::ProjectsListResponse { projects })
 }

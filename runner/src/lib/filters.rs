@@ -5,101 +5,27 @@ use tokio_stream::wrappers::UnboundedReceiverStream;
 use warp::{Filter, Rejection};
 
 use super::{
-    context::{Context, ContextError},
+    config,
+    context::{self, Context, ContextError},
     handlers,
 };
 use warp::hyper::StatusCode;
 
 use log::*;
 
-#[derive(Clone)]
-pub struct ContextStore {
-    context: Arc<Context>,
-    ws_clients: Arc<Mutex<HashMap<String, WsClient>>>,
-}
+pub type ContextPtr<PM: config::ProjectsManager> = Arc<Context<PM>>;
 
-pub struct WsClient {
-    rx: mpsc::UnboundedReceiver<Result<warp::ws::Message, warp::Error>>,
-}
-
-#[derive(Clone)]
-pub struct WsOutput {
-    pub client_id: String,
-    tx: mpsc::UnboundedSender<Result<warp::ws::Message, warp::Error>>,
-}
-
-impl WsOutput {
-    pub async fn send<T: serde::Serialize>(&self, msg: T) {
-        let content = match serde_json::to_string(&msg) {
-            Err(err) => {
-                error!("Failed to encode msg for ws: {}", err);
-                return;
-            }
-            Ok(content) => content,
-        };
-        if let Err(err) = self.tx.send(Ok(warp::ws::Message::text(content))) {
-            error!("Failed to send ws message {}", err);
-        }
-    }
-}
-
-impl ContextStore {
-    async fn create_ws(&self) -> WsOutput {
-        let client_id = uuid::Uuid::new_v4().to_string();
-        let (tx, rx) = mpsc::unbounded_channel();
-        let client = WsClient { rx };
-        self.ws_clients
-            .lock()
-            .await
-            .insert(client_id.clone(), client);
-        debug!("New ws client registerd: {}", client_id);
-        WsOutput { client_id, tx }
-    }
-
-    async fn delete_ws(&self, client_id: String) {
-        self.ws_clients.lock().await.remove(&client_id);
-    }
-}
-
-impl ContextStore {
-    pub fn new(context: Context) -> ContextStore {
-        ContextStore {
-            context: Arc::new(context),
-            ws_clients: Arc::new(Mutex::new(HashMap::new())),
-        }
-    }
-
-    pub fn context(&self) -> &Context {
-        self.context.as_ref()
-    }
-}
-
-pub fn runner(
-    context_store: ContextStore,
-    worker_context: Option<worker_lib::context::Context>,
+pub fn runner<PM: config::ProjectsManager>(
+    context: Context<PM>,
 ) -> impl Filter<Extract = impl warp::Reply, Error = Infallible> + Clone {
+    let context = Arc::new(context);
     ping()
-        .or(handlers::call::filter(
-            context_store.clone(),
-            worker_context.clone(),
-        ))
-        .or(handlers::reload_project::filter(
-            context_store.clone(),
-            worker_context.clone(),
-        ))
-        .or(handlers::reload_config::filter(
-            context_store.clone(),
-            worker_context.clone(),
-        ))
-        .or(handlers::update_repo::filter(
-            context_store.clone(),
-            worker_context.clone(),
-        ))
-        .or(handlers::list_projects::filter(
-            context_store.clone(),
-            worker_context.clone(),
-        ))
-        .or(ws(context_store.clone()))
+        .or(handlers::call::filter(context.clone()))
+        .or(handlers::reload_project::filter(context.clone()))
+        .or(handlers::reload_config::filter(context.clone()))
+        .or(handlers::update_repo::filter(context.clone()))
+        .or(handlers::list_projects::filter(context.clone()))
+        .or(ws(context.clone()))
         .recover(report_rejection)
 }
 
@@ -107,8 +33,8 @@ pub fn ping() -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection
     warp::path("ping").and(warp::get()).map(|| StatusCode::OK)
 }
 
-pub fn ws(
-    context: ContextStore,
+pub fn ws<PM: config::ProjectsManager>(
+    context: ContextPtr<PM>,
 ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
     warp::path!("ws" / String)
         .and(warp::ws())
@@ -116,20 +42,20 @@ pub fn ws(
         .and_then(ws_client)
 }
 
-async fn ws_client(
+async fn ws_client<PM: config::ProjectsManager>(
     client_id: String,
     ws: warp::ws::Ws,
-    store: ContextStore,
+    context: ContextPtr<PM>,
 ) -> Result<impl warp::Reply, warp::Rejection> {
     debug!("Handling ws client {}", client_id);
-    let client = store.ws_clients.lock().await.remove(&client_id);
+    let client = context.ws_clients.lock().await.remove(&client_id);
     match client {
         Some(client) => Ok(ws.on_upgrade(move |socket| ws_client_connection(socket, client))),
         None => Err(warp::reject::not_found()),
     }
 }
 
-async fn ws_client_connection(socket: warp::ws::WebSocket, client: WsClient) {
+async fn ws_client_connection(socket: warp::ws::WebSocket, client: context::WsClient) {
     // NOTE: Do not care of receiving messages
     let (client_ws_sender, _) = socket.split();
     let client_rcv = UnboundedReceiverStream::new(client.rx);
@@ -141,27 +67,19 @@ async fn ws_client_connection(socket: warp::ws::WebSocket, client: WsClient) {
     }));
 }
 
-pub fn with_call_context(
-    context: ContextStore,
-    worker_context: Option<worker_lib::context::Context>,
-) -> impl Filter<Extract = (CallContext,), Error = warp::Rejection> + Clone {
+pub fn with_call_context<PM: config::ProjectsManager>(
+    context: ContextPtr<PM>,
+) -> impl Filter<Extract = (CallContext<PM>,), Error = warp::Rejection> + Clone {
     warp::any()
         .and(with_validation())
         .and(with_context(context))
-        .and(with_worker_context(worker_context))
         .map(CallContext::for_handler)
 }
 
-pub fn with_context(
-    context: ContextStore,
-) -> impl Filter<Extract = (ContextStore,), Error = Infallible> + Clone {
+pub fn with_context<PM: config::ProjectsManager>(
+    context: ContextPtr<PM>,
+) -> impl Filter<Extract = (ContextPtr<PM>,), Error = Infallible> + Clone {
     warp::any().map(move || context.clone())
-}
-
-pub fn with_worker_context(
-    worker_context: Option<worker_lib::context::Context>,
-) -> impl Filter<Extract = (Option<worker_lib::context::Context>,), Error = Infallible> + Clone {
-    warp::any().map(move || worker_context.clone())
 }
 
 #[derive(Debug)]
@@ -173,6 +91,13 @@ pub enum Unauthorized {
 }
 
 impl warp::reject::Reject for Unauthorized {}
+
+#[derive(Debug)]
+pub enum InternalServerError {
+    Error(String),
+}
+
+impl warp::reject::Reject for InternalServerError {}
 
 pub fn with_validation() -> impl Filter<Extract = (Option<String>,), Error = Rejection> + Clone {
     warp::header::optional("Authorization").and_then(|auth: Option<String>| async move {
@@ -215,6 +140,14 @@ pub async fn report_rejection(r: Rejection) -> Result<impl warp::Reply, Infallib
             warp::reply::json(&common::runner::ErrorResponse { message }),
             StatusCode::UNAUTHORIZED,
         ))
+    } else if let Some(internal_server_error) = r.find::<InternalServerError>() {
+        let message = match internal_server_error {
+            InternalServerError::Error(err) => err.clone(),
+        };
+        Ok(warp::reply::with_status(
+            warp::reply::json(&common::runner::ErrorResponse { message }),
+            StatusCode::INTERNAL_SERVER_ERROR,
+        ))
     } else {
         if r.is_not_found() {
             Ok(warp::reply::with_status(
@@ -234,86 +167,34 @@ pub async fn report_rejection(r: Rejection) -> Result<impl warp::Reply, Infallib
     }
 }
 
-pub struct CallContext {
+pub struct CallContext<PM: config::ProjectsManager> {
     pub token: Option<String>,
     pub check_permisions: bool,
-    pub worker_context: Option<worker_lib::context::Context>,
-    pub store: ContextStore,
-    pub ws: Option<WsOutput>,
+    pub context: ContextPtr<PM>,
+    pub ws: Option<super::context::WsOutput>,
 }
 
-impl CallContext {
-    pub async fn check_authorized<S: AsRef<str>>(
-        &self,
-        project_id: Option<S>,
-        action: super::config::ActionType,
-    ) -> Result<(), warp::Rejection> {
-        if !self.check_allowed(project_id, action).await {
-            Err(warp::reject::custom(Unauthorized::TokenIsUnauthorized))
-        } else {
-            Ok(())
-        }
-    }
-
-    fn for_handler(
-        token: Option<String>,
-        store: ContextStore,
-        worker_context: Option<worker_lib::context::Context>,
-    ) -> CallContext {
+impl<PM: config::ProjectsManager> CallContext<PM> {
+    fn for_handler(token: Option<String>, context: ContextPtr<PM>) -> CallContext<PM> {
         CallContext {
             token,
             check_permisions: true,
-            worker_context,
-            store,
+            context,
             ws: None,
         }
     }
 
-    pub async fn check_allowed<S: AsRef<str>>(
-        &self,
-        project_id: Option<S>,
-        action: super::config::ActionType,
-    ) -> bool {
-        if !self.check_permisions {
-            return true;
-        }
-        self.store
-            .context()
-            .config()
-            .await
-            .service_config
-            .check_allowed(self.token.as_ref(), project_id, action)
-    }
-
-    pub async fn get_actions(
-        &self,
-        event: super::config::ActionEvent,
-    ) -> Result<super::config::MatchedActions, super::config::ExecutionError> {
-        self.store
-            .context()
-            .config()
-            .await
-            .get_projects_actions(event)
-            .await
-    }
-
-    pub async fn to_execution_context(self) -> super::config::ExecutionContext {
-        super::config::ExecutionContext {
-            token: self.token,
-            check_permissions: self.check_permisions,
-            worker_context: self.worker_context,
-            config: self.store.context().config().await,
-        }
-    }
-
-    pub async fn send<T: serde::Serialize>(&self, msg: T) {
-        if let Some(ws_output) = self.ws.as_ref() {
-            ws_output.send(msg).await;
-        }
-    }
-
     pub async fn init_ws(&mut self) -> String {
-        let ws = self.store.create_ws().await;
+        let client_id = uuid::Uuid::new_v4().to_string();
+        let (tx, rx) = mpsc::unbounded_channel();
+        let client = context::WsClient { rx };
+        self.context
+            .ws_clients
+            .lock()
+            .await
+            .insert(client_id.clone(), client);
+        debug!("New ws client registerd: {}", client_id);
+        let ws = context::WsOutput { client_id, tx };
         let client_id = ws.client_id.clone();
         self.ws = Some(ws);
         client_id
@@ -321,7 +202,7 @@ impl CallContext {
 
     pub async fn finish_ws(&mut self) {
         if let Some(ws) = self.ws.take() {
-            self.store.delete_ws(ws.client_id).await;
+            self.context.ws_clients.lock().await.remove(&ws.client_id);
         }
     }
 }

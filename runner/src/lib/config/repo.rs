@@ -12,7 +12,7 @@ use log::*;
 
 #[derive(Debug)]
 pub struct Repos {
-    repos: HashMap<String, Repo>,
+    pub repos: HashMap<String, Repo>,
 }
 
 #[derive(Debug)]
@@ -116,10 +116,6 @@ impl Into<common::vars::Vars> for &Repo {
 }
 
 impl Repos {
-    pub async fn load<'a>(context: &super::LoadContext<'a>) -> Result<Repos, LoadConfigError> {
-        raw::load(context).await
-    }
-
     pub async fn pull_all(
         &self,
         config: &super::ServiceConfig,
@@ -226,17 +222,17 @@ mod raw {
             self,
             context: &config::LoadContext,
         ) -> Result<Self::Output, config::LoadConfigError> {
-            let repo_id = context.extra("_id")?;
-            let project_id = context.project_id();
-            let default_path = context
-                .config()?
+            let repo_id: String = context.get_named("_id").cloned()?;
+            let project_id: String = context.get_named("project_id").cloned()?;
+            let service_config: &config::ServiceConfig = context.get()?;
+            let default_path = service_config
                 .repos_path
                 .join(format!("{}_{}", project_id, repo_id));
-            let configs_root = context.configs_root()?;
-            let path = self
-                .path
-                .map(|path| utils::abs_or_rel_to_dir(path, configs_root.clone()))
-                .unwrap_or(default_path);
+	    let path = if let Some(path) = self.path {
+		utils::eval_abs_path(context, path)?
+	    } else {
+		default_path
+	    };
             if !self.manual.unwrap_or(false) {
                 Ok(super::Repo::Regular {
                     source: self
@@ -249,14 +245,5 @@ mod raw {
                 Ok(super::Repo::Manual { path })
             }
         }
-    }
-
-    pub async fn load<'a>(
-        context: &config::LoadContext<'a>,
-    ) -> Result<super::Repos, super::LoadConfigError> {
-        let path = context.configs_root()?.join(REPO_CONFIG);
-        config::load_sync::<Repos>(path.clone(), context)
-            .await
-            .map_err(|err| anyhow::anyhow!("Failed to load repos from {:?}: {}", path, err).into())
     }
 }

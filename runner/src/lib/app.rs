@@ -12,9 +12,13 @@ use super::{config, context, filters, git};
 #[derive(Parser, Debug)]
 #[command(about)]
 struct Args {
-    /// Path to directory with configs
+    /// Path to config file
     #[arg(short, long)]
     config: PathBuf,
+
+    /// Path to projects file
+    #[arg(long)]
+    projects: Option<PathBuf>,
 
     /// TCP port to run on
     #[arg(short, long, default_value_t = 3002)]
@@ -32,6 +36,7 @@ struct Args {
 pub struct App {
     port: u16,
     config: PathBuf,
+    projects: Option<PathBuf>,
     worker: bool,
     env: String,
 }
@@ -46,6 +51,9 @@ pub enum RunnerError {
 
     #[error("Failed to init docker: {0}")]
     DockerError(#[from] worker_lib::docker::DockerError),
+
+    #[error(transparent)]
+    Other(#[from] anyhow::Error),
 }
 
 impl App {
@@ -57,6 +65,7 @@ impl App {
         Ok(App {
             port: args.port,
             config: args.config,
+            projects: args.projects,
             worker: args.worker,
             env: args.env,
         })
@@ -79,22 +88,29 @@ impl App {
             None
         };
 
-        let context = context::Context::new(self.config, self.env).await?;
-        let context_store = super::filters::ContextStore::new(context);
-
-        let call_context = super::filters::CallContext {
-            token: None,
-            check_permisions: false,
-            worker_context: worker_context.clone(),
-            store: context_store.clone(),
-	    ws: None,
+        let context = if let Some(projects) = self.projects {
+            let mut context = config::LoadContext::default();
+            context.set_named("projects_config", &projects);
+            let manager = config::StaticProjects::default();
+            let projects_store = config::ProjectsStore::with_manager(manager).await?;
+            context::Context::new(projects_store, worker_context, self.config, self.env).await?
+        } else {
+            unimplemented!()
         };
-        tokio::spawn(super::handlers::trigger_projects_impl(
-            call_context,
-            super::config::ActionEvent::ConfigReloaded,
-        ));
 
-        let api = filters::runner(context_store, worker_context);
+        // let call_context = super::filters::CallContext {
+        //     token: None,
+        //     check_permisions: false,
+        //     worker_context: worker_context.clone(),
+        //     store: context_store.clone(),
+        //     ws: None,
+        // };
+        // tokio::spawn(super::handlers::trigger_projects_impl(
+        //     call_context,
+        //     super::config::ActionEvent::ConfigReloaded,
+        // ));
+
+        let api = filters::runner(context);
         let routes = api.with(warp::log("runner"));
         warp::serve(routes).run(([127, 0, 0, 1], self.port)).await;
         Ok(())

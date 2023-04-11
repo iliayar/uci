@@ -1,5 +1,7 @@
-
-use std::{path::PathBuf, collections::{HashMap, HashSet}};
+use std::{
+    collections::{HashMap, HashSet},
+    path::PathBuf,
+};
 
 use tokio::io::AsyncWriteExt;
 
@@ -17,7 +19,7 @@ pub struct GenZone {
 
 impl GenBind {
     pub fn is_empty(&self) -> bool {
-	self.zones.is_empty()
+        self.zones.is_empty()
     }
 
     pub async fn gen(&self, path: PathBuf) -> Result<(), super::CodegenError> {
@@ -158,7 +160,11 @@ impl GenZone {
         ))
     }
 
-    fn get_db_zone_cname(&self, subdomain: &str, zone: &str) -> Result<String, super::CodegenError> {
+    fn get_db_zone_cname(
+        &self,
+        subdomain: &str,
+        zone: &str,
+    ) -> Result<String, super::CodegenError> {
         Ok(format!(
             r#"
 {subdomain}.{zone}.       IN    CNAME       {zone}.

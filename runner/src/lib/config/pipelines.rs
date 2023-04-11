@@ -24,7 +24,7 @@ impl Pipelines {
 pub const PIPELINES_CONFIG: &str = "pipelines.yaml";
 
 mod raw {
-    use std::collections::HashMap;
+    use std::{collections::HashMap, path::PathBuf};
 
     use serde::{Deserialize, Serialize};
 
@@ -89,7 +89,8 @@ mod raw {
         ) -> Result<Self::Output, config::LoadConfigError> {
             let mut pipelines: HashMap<String, common::Pipeline> = HashMap::new();
             for (id, PipelineLocation { path }) in self.pipelines.into_iter() {
-                let pipeline_path = utils::abs_or_rel_to_dir(path, context.project_root()?.clone());
+                let project_root: PathBuf = context.get_named("project_root").cloned()?;
+                let pipeline_path = utils::eval_rel_path(context, path, project_root)?;
                 let pipeline: Result<common::Pipeline, super::LoadConfigError> =
                     config::load_sync::<Pipeline>(pipeline_path.clone(), context)
                         .await
@@ -195,7 +196,8 @@ mod raw {
     pub async fn load<'a>(
         context: &config::LoadContext<'a>,
     ) -> Result<super::Pipelines, super::LoadConfigError> {
-        let path = context.project_root()?.join(super::PIPELINES_CONFIG);
+        let project_root: PathBuf = context.get_named("project_root").cloned()?;
+        let path = project_root.join(super::PIPELINES_CONFIG);
         if !path.exists() {
             return Ok(Default::default());
         }

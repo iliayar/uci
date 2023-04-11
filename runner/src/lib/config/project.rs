@@ -45,36 +45,40 @@ impl Project {
     ) -> Result<Project, super::LoadConfigError> {
         let mut context = context.clone();
 
-        let params = load_params(context.project_root()?.join(PARAMS_CONFIG), &context)
+        let project_id: String = context.get_named("project_id").cloned()?;
+        let project_root: PathBuf = context.get_named("project_root").cloned()?;
+
+        let params = load_params(project_root.join(PARAMS_CONFIG), &context)
             .await?
             .unwrap_or_default();
-        context.set_params(&params);
+        let params_binding = super::binding::Params { value: &params };
+        context.set(&params);
 
-        let project_config = context.project_root()?.join(PROJECT_CONFIG);
-        context.set_project_config(&project_config);
+        let project_config = project_root.join(PROJECT_CONFIG);
+        context.set_named("project_config", &project_config);
 
         let bind = super::Bind::load(&context).await?;
         let caddy = super::Caddy::load(&context).await?;
 
-        if bind.is_some() {
-            context.set_extra(String::from("dns"), "");
-        }
-
-        if caddy.is_some() {
-            context.set_extra(String::from("caddy"), "");
-        }
-
         let services = super::Services::load(&context).await?;
+
+        let mut context = context.clone();
+        let networks_binding = super::binding::Networks {
+            value: &services.networks,
+        };
+        let volumes_binding = super::binding::Volumes {
+            value: &services.volumes,
+        };
+        context.set(&services.networks);
+        context.set(&services.volumes);
 
         let actions = super::Actions::load(&context).await?;
 
-        context.set_networks(&services.networks);
-        context.set_volumes(&services.volumes);
         let pipelines = super::Pipelines::load(&context).await?;
 
         Ok(Project {
-            id: context.project_id()?.to_string(),
-            path: context.project_root()?.clone(),
+            id: project_id,
+            path: project_root,
             params,
             actions,
             services,
@@ -154,14 +158,10 @@ impl Project {
             let executor = worker_lib::executor::Executor::new(worker_context)?;
             executor.run_result(pipeline).await?;
         } else {
-            let worker_url = execution_context
-                .service_config()
-                .worker_url
-                .as_ref()
-                .ok_or(anyhow!(
-                    "Worker url is not specified in config.
+            let worker_url = execution_context.worker_url.as_ref().ok_or(anyhow!(
+                "Worker url is not specified in config.
                  Specify it or add '--worker' flag to run pipeline in the same process"
-                ))?;
+            ))?;
             let response = reqwest::Client::new()
                 .post(&format!("{}/run", worker_url))
                 .json(&pipeline)
@@ -237,12 +237,12 @@ pub async fn load_params<'a>(
 
     let vars: common::vars::Vars = context.into();
 
-    let env = context.env()?;
+    let env: String = context.get_named("env").cloned()?;
     let content = tokio::fs::read_to_string(params_file).await?;
     let params: HashMap<String, HashMap<String, String>> = serde_yaml::from_str(&content)?;
 
     let default_params = params.get("__default__").cloned().unwrap_or_default();
-    let env_params = params.get(env).cloned().unwrap_or_default();
+    let env_params = params.get(&env).cloned().unwrap_or_default();
 
     let mut result = HashMap::new();
 

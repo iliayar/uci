@@ -51,6 +51,31 @@ impl Services {
     pub fn get(&self, service: &str) -> Option<&Service> {
         self.services.get(service)
     }
+
+    pub fn get_network_name<S: AsRef<str>>(
+        &self,
+        project_id: S,
+        network: String,
+    ) -> Result<String, super::LoadConfigError> {
+        let global = self
+            .networks
+            .get(&network)
+            .ok_or(anyhow!("No such network {}", network))?
+            .global;
+        Ok(get_resource_name(project_id.as_ref(), network, global))
+    }
+
+    pub fn get_volume_name<S: AsRef<str>>(
+        &self,
+        project_id: S,
+        volume: String,
+    ) -> Result<String, super::LoadConfigError> {
+        if let Some(v) = self.volumes.get(&volume) {
+            Ok(get_resource_name(project_id.as_ref(), volume, v.global))
+        } else {
+            Ok(volume)
+        }
+    }
 }
 
 impl Service {
@@ -113,7 +138,7 @@ impl Service {
 }
 
 mod raw {
-    use std::collections::HashMap;
+    use std::{collections::HashMap, path::PathBuf};
 
     use serde::{Deserialize, Serialize};
 
@@ -197,9 +222,9 @@ mod raw {
                 .into_iter()
                 .map(|(id, service)| {
                     let mut context = context.clone();
-                    context.set_service_id(&id);
-                    context.set_networks(&networks);
-                    context.set_volumes(&volumes);
+                    context.set_named("service_id", &id);
+                    context.set(&networks);
+                    context.set(&volumes);
                     let service = service.load_raw(&context)?;
                     Ok((id, service))
                 })
@@ -320,14 +345,12 @@ mod raw {
             Ok(String::from(image))
         } else if global {
             // Image name is service name
-            Ok(String::from(context.service_id()?))
+            Ok(context.get_named("service_id").cloned()?)
         } else {
             // Image name is scoped under project
-            Ok(format!(
-                "{}_{}",
-                context.project_id()?,
-                context.service_id()?
-            ))
+            let project_id: String = context.get_named("project_id").cloned()?;
+            let service_id: String = context.get_named("service_id").cloned()?;
+            Ok(format!("{}_{}", project_id, service_id,))
         }
     }
 
@@ -337,14 +360,12 @@ mod raw {
     ) -> Result<String, super::LoadConfigError> {
         if global {
             // Container name is service name
-            Ok(String::from(context.service_id()?))
+            Ok(context.get_named("service_id").cloned()?)
         } else {
             // Container name is scoped under project
-            Ok(format!(
-                "{}_{}",
-                context.project_id()?,
-                context.service_id()?
-            ))
+            let project_id: String = context.get_named("project_id").cloned()?;
+            let service_id: String = context.get_named("service_id").cloned()?;
+            Ok(format!("{}_{}", project_id, service_id,))
         }
     }
 
@@ -366,7 +387,8 @@ mod raw {
     pub async fn load<'a>(
         context: &config::LoadContext<'a>,
     ) -> Result<super::Services, super::LoadConfigError> {
-        let path = context.project_root()?.join(super::SERVICES_CONFIG);
+        let project_root: PathBuf = context.get_named("project_root").cloned()?;
+        let path = project_root.join(super::SERVICES_CONFIG);
         if !path.exists() {
             return Ok(Default::default());
         }
@@ -375,5 +397,13 @@ mod raw {
             .map_err(|err| {
                 anyhow::anyhow!("Failed to load services from {:?}: {}", path, err).into()
             })
+    }
+}
+
+fn get_resource_name(project_id: &str, name: String, global: bool) -> String {
+    if global {
+        name
+    } else {
+        format!("{}_{}", project_id, name)
     }
 }

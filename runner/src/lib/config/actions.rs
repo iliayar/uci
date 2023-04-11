@@ -34,7 +34,6 @@ pub enum TriggerType {
         project_id: String,
         trigger_id: String,
     },
-    ConfigReload,
     ProjectReload {
         project_id: String,
     },
@@ -44,7 +43,6 @@ pub enum TriggerType {
 }
 
 pub enum Event {
-    ConfigReloaded,
     ProjectReloaded {
         project_id: String,
     },
@@ -133,9 +131,6 @@ impl TriggerType {
                 } => project_id == event_project_id && trigger_id == event_trigger_id,
                 _ => false,
             },
-            TriggerType::ConfigReload => {
-                matches!(Event::ConfigReloaded, event)
-            }
             TriggerType::ProjectReload { project_id } => match event {
                 Event::ProjectReloaded {
                     project_id: event_project_id,
@@ -164,7 +159,7 @@ impl TriggerType {
 }
 
 mod raw {
-    use std::collections::HashMap;
+    use std::{collections::HashMap, path::PathBuf};
 
     use serde::{Deserialize, Serialize};
 
@@ -183,9 +178,6 @@ mod raw {
     enum TriggerType {
         #[serde(rename = "call")]
         Call,
-
-        #[serde(rename = "config_reload")]
-        ConfigReload,
 
         #[serde(rename = "project_reload")]
         ProjectReload,
@@ -233,15 +225,6 @@ mod raw {
             self,
             context: &config::LoadContext,
         ) -> Result<Self::Output, config::LoadConfigError> {
-            if let TriggerType::ConfigReload = self.on {
-                if self.reload_config.is_some() {
-                    return Err(anyhow!(
-                        "Trigger on config_reload is disallowed with reload_config action"
-                    )
-                    .into());
-                }
-            }
-
             if let TriggerType::ProjectReload = self.on {
                 if self.reload_config.is_some() {
                     return Err(anyhow!(
@@ -258,17 +241,17 @@ mod raw {
                 }
             }
 
-            let project_id = context.project_id()?.to_string();
+            let project_id: String = context.get_named("project_id").cloned()?;
+            let trigger_id: String = context.get_named("_id").cloned()?;
 
             let on = match self.on {
                 TriggerType::Call => super::TriggerType::Call {
                     project_id: project_id.clone(),
-                    trigger_id: context.extra("_id")?.to_string(),
+                    trigger_id: trigger_id.clone(),
                 },
                 TriggerType::ProjectReload => super::TriggerType::ProjectReload {
                     project_id: project_id.clone(),
                 },
-                TriggerType::ConfigReload => super::TriggerType::ConfigReload,
                 TriggerType::FileChanged => {
                     let changes: Result<HashMap<_, _>, super::LoadConfigError> = self
                         .changes
@@ -310,7 +293,8 @@ mod raw {
     pub async fn load<'a>(
         context: &config::LoadContext<'a>,
     ) -> Result<super::Actions, super::LoadConfigError> {
-        let path = context.project_root()?.join(super::ACTIONS_CONFIG);
+        let project_root: PathBuf = context.get_named("project_root").cloned()?;
+        let path = project_root.join(super::ACTIONS_CONFIG);
         if !path.exists() {
             return Ok(Default::default());
         }

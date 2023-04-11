@@ -13,7 +13,7 @@ impl GenProject {
     pub async fn gen(&self, path: PathBuf) -> Result<(), config::LoadConfigError> {
         self.write_services_config(path.clone()).await?;
         self.write_actions_config(path.clone()).await?;
-	self.write_pipelines(path.clone()).await?;
+        self.write_pipelines(path.clone()).await?;
         Ok(())
     }
 

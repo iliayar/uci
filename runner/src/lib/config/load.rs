@@ -4,121 +4,70 @@ use anyhow::anyhow;
 
 #[derive(Default, Clone)]
 pub struct LoadContext<'a> {
-    env: Option<&'a str>,
-    configs_root: Option<&'a PathBuf>,
-    config: Option<&'a super::ServiceConfig>,
-    project_id: Option<&'a str>,
-    project_root: Option<&'a PathBuf>,
-    project_config: Option<&'a PathBuf>,
-    service_id: Option<&'a str>,
-    networks: Option<&'a HashMap<String, super::Network>>,
-    volumes: Option<&'a HashMap<String, super::Volume>>,
+    typed: HashMap<std::any::TypeId, &'a (dyn std::any::Any + Sync)>,
+    named: HashMap<String, &'a (dyn std::any::Any + Sync)>,
+}
 
-    repos: Option<&'a super::Repos>,
-    params: Option<&'a HashMap<String, String>>,
+pub mod binding {
+    use std::collections::HashMap;
 
-    extra: HashMap<String, &'a str>,
+    use crate::lib::config;
+
+    pub struct Params<'a> {
+        pub value: &'a HashMap<String, String>,
+    }
+
+    pub struct Networks<'a> {
+        pub value: &'a HashMap<String, config::Network>,
+    }
+
+    pub struct Volumes<'a> {
+        pub value: &'a HashMap<String, config::Volume>,
+    }
 }
 
 impl<'a> LoadContext<'a> {
-    pub fn set_config(&mut self, config: &'a super::ServiceConfig) {
-        self.config = Some(config);
+    pub fn set<T: std::any::Any + Sync>(&mut self, value: &'a T) {
+        self.typed.insert(
+            std::any::TypeId::of::<T>(),
+            value as &(dyn std::any::Any + Sync),
+        );
+    }
+    pub fn get<T: std::any::Any + Sync>(&self) -> Result<&T, super::LoadConfigError> {
+        let type_id = std::any::TypeId::of::<T>();
+        match self.typed.get(&type_id) {
+            Some(v) => match (*v as &dyn std::any::Any).downcast_ref::<T>() {
+                Some(v) => Ok(v),
+                // By this key there is only one type
+                None => unreachable!(),
+            },
+            None => Err(anyhow!("No type {} in load context", std::any::type_name::<T>()).into()),
+        }
     }
 
-    pub fn config(&self) -> Result<&super::ServiceConfig, super::LoadConfigError> {
-        getter_impl(self.config, "config")
+    pub fn set_named<T: std::any::Any + Sync, S: AsRef<str>>(&mut self, key: S, value: &'a T) {
+        self.named.insert(
+            key.as_ref().to_string(),
+            value as &(dyn std::any::Any + Sync),
+        );
     }
-
-    pub fn set_configs_root(&mut self, configs_root: &'a PathBuf) {
-        self.configs_root = Some(configs_root);
-    }
-
-    pub fn configs_root(&self) -> Result<&PathBuf, super::LoadConfigError> {
-        getter_impl(self.configs_root, "configs_root")
-    }
-
-    pub fn set_project_id(&mut self, project_id: &'a str) {
-        self.project_id = Some(project_id);
-    }
-
-    pub fn project_id(&self) -> Result<&str, super::LoadConfigError> {
-        getter_impl(self.project_id, "project_id")
-    }
-
-    pub fn set_project_root(&mut self, project_root: &'a PathBuf) {
-        self.project_root = Some(project_root);
-    }
-
-    pub fn project_root(&self) -> Result<&PathBuf, super::LoadConfigError> {
-        getter_impl(self.project_root, "project_root")
-    }
-
-    pub fn set_project_config(&mut self, project_config: &'a PathBuf) {
-        self.project_config = Some(project_config);
-    }
-
-    pub fn project_config(&self) -> Result<&PathBuf, super::LoadConfigError> {
-        getter_impl(self.project_config, "project_config")
-    }
-
-    pub fn set_service_id(&mut self, service_id: &'a str) {
-        self.service_id = Some(service_id);
-    }
-
-    pub fn service_id(&self) -> Result<&str, super::LoadConfigError> {
-        getter_impl(self.service_id, "service_id")
-    }
-
-    pub fn set_env(&mut self, env: &'a str) {
-        self.env = Some(env);
-    }
-
-    pub fn env(&self) -> Result<&str, super::LoadConfigError> {
-        getter_impl(self.env, "env")
-    }
-
-    pub fn set_networks(&mut self, networks: &'a HashMap<String, super::Network>) {
-        self.networks = Some(networks);
-    }
-
-    pub fn networks(&self) -> Result<&HashMap<String, super::Network>, super::LoadConfigError> {
-        getter_impl(self.networks, "networks")
-    }
-
-    pub fn set_volumes(&mut self, volumes: &'a HashMap<String, super::Volume>) {
-        self.volumes = Some(volumes);
-    }
-
-    pub fn volumes(&self) -> Result<&HashMap<String, super::Volume>, super::LoadConfigError> {
-        getter_impl(self.volumes, "volumes")
-    }
-
-    pub fn set_repos(&mut self, repos: &'a super::Repos) {
-        self.repos = Some(repos);
-    }
-
-    pub fn repos(&self) -> Result<&super::Repos, super::LoadConfigError> {
-        getter_impl(self.repos, "repos")
-    }
-
-    pub fn set_params(&mut self, params: &'a HashMap<String, String>) {
-        self.params = Some(params);
-    }
-
-    pub fn params(&self) -> Result<&HashMap<String, String>, super::LoadConfigError> {
-        getter_impl(self.params, "params")
-    }
-
-    pub fn set_extra(&mut self, key: String, value: &'a str) {
-        self.extra.insert(key, value);
-    }
-
-    pub fn extra(&self, key: &str) -> Result<&str, super::LoadConfigError> {
-        self.extra
-            .get(key)
-            .map(|k| *k)
-            .ok_or(anyhow!("No such extra key: {}", key))
-            .map_err(Into::into)
+    pub fn get_named<T: std::any::Any, S: AsRef<str>>(
+        &self,
+        key: S,
+    ) -> Result<&T, super::LoadConfigError> {
+        let type_id = std::any::TypeId::of::<T>();
+        match self.named.get(key.as_ref()) {
+            Some(v) => match (*v as &dyn std::any::Any).downcast_ref::<T>() {
+                Some(v) => Ok(v),
+                None => Err(anyhow!(
+                    "Value for {} has type different from {}",
+                    key.as_ref(),
+                    std::any::type_name::<T>()
+                )
+                .into()),
+            },
+            None => Err(anyhow!("No value for {:?} in load context", key.as_ref()).into()),
+        }
     }
 }
 
@@ -127,35 +76,8 @@ impl<'a> Into<common::vars::Vars> for &LoadContext<'a> {
         use common::vars::*;
         let mut vars = Vars::default();
 
-        if let Some(repos) = self.repos {
+        if let Ok(repos) = self.get::<super::Repos>() {
             vars.assign("repos", repos.into()).ok();
-        }
-
-        if let Some(config) = self.config {
-            if let Some(project_id) = self.project_id {
-                let data_path = config.data_path.join(project_id);
-                vars.assign(
-                    "project.data.path",
-                    data_path.to_string_lossy().to_string().into(),
-                )
-                .ok();
-            }
-            let data = config.data_path.to_string_lossy().to_string();
-            vars.assign("config.data.path", data.into()).ok();
-            let internal = config.internal_path.to_string_lossy().to_string();
-            vars.assign("config.internal.path", internal.into()).ok();
-
-            for (key, value) in config.secrets.iter() {
-                vars.assign(&format!("secrets.{}", key), value.clone().into())
-                    .ok();
-            }
-
-            if let Some(params) = self.params {
-                for (key, value) in params.iter() {
-                    vars.assign(&format!("params.{}", key), value.clone().into())
-                        .ok();
-                }
-            }
         }
 
         vars
@@ -227,11 +149,30 @@ impl<T: LoadRawSync> LoadRawSync for HashMap<String, T> {
         self.into_iter()
             .map(|(id, value)| {
                 let mut context = context.clone();
-                context.set_extra(String::from("_id"), &id);
+                context.set_named("_id", &id);
                 let value = value.load_raw(&context)?;
                 Ok((id, value))
             })
             .collect()
+    }
+}
+
+#[async_trait::async_trait]
+impl<T: LoadRaw + Send> LoadRaw for HashMap<String, T>
+where
+    <T as LoadRaw>::Output: Send,
+{
+    type Output = HashMap<String, <T as LoadRaw>::Output>;
+
+    async fn load_raw(self, context: &LoadContext) -> Result<Self::Output, super::LoadConfigError> {
+        let mut res = HashMap::new();
+        for (id, value) in self.into_iter() {
+            let mut context = context.clone();
+            context.set_named("_id", &id);
+            let value = value.load_raw(&context).await?;
+            res.insert(id, value);
+        }
+        Ok(res)
     }
 }
 

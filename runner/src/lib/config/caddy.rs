@@ -12,15 +12,17 @@ use anyhow::anyhow;
 
 #[derive(Default)]
 pub struct CaddyBuilder {
-    config: Option<String>,
+    hostnames: HashMap<String, String>,
 }
 
 impl CaddyBuilder {
     pub fn add(&mut self, other: &Caddy) -> Result<(), LoadConfigError> {
-        if let Some(cur_config) = self.config.as_mut() {
-            cur_config.push_str(&other.config);
-        } else {
-            self.config = Some(other.config.clone());
+        for (hostname, config) in other.hostnames.iter() {
+            if let Some(current_config) = self.hostnames.get_mut(hostname) {
+                current_config.push_str(config);
+            } else {
+                self.hostnames.insert(hostname.clone(), config.clone());
+            }
         }
 
         Ok(())
@@ -28,14 +30,14 @@ impl CaddyBuilder {
 
     pub fn build(self) -> super::codegen::caddy::GenCaddy {
         super::codegen::caddy::GenCaddy {
-            config: self.config,
+            hostnames: self.hostnames,
         }
     }
 }
 
 #[derive(Debug)]
 pub struct Caddy {
-    config: String,
+    hostnames: HashMap<String, String>,
 }
 
 impl Caddy {
@@ -67,7 +69,7 @@ mod raw {
     #[serde(deny_unknown_fields)]
     pub struct Caddy {
         enabled: Option<config::utils::Enabled>,
-        config: String,
+        hostnames: HashMap<String, String>,
     }
 
     impl config::LoadRawSync for Caddy {
@@ -78,8 +80,13 @@ mod raw {
             context: &config::LoadContext,
         ) -> Result<Self::Output, config::LoadConfigError> {
             let vars: common::vars::Vars = context.into();
+            let hostnames: Result<HashMap<_, _>, config::LoadConfigError> = self
+                .hostnames
+                .into_iter()
+                .map(|(hostname, config)| Ok((hostname, vars.eval(&config)?)))
+                .collect();
             Ok(super::Caddy {
-                config: vars.eval(&self.config)?,
+                hostnames: hostnames?,
             })
         }
     }
@@ -89,8 +96,7 @@ mod raw {
     pub async fn load<'a>(
         context: &config::LoadContext<'a>,
     ) -> Result<Option<super::Caddy>, super::LoadConfigError> {
-        let path = context.project_config()?.clone();
-
+        let path: PathBuf = context.get_named("project_config").cloned()?;
         if path.exists() {
             let config: Result<Config, super::LoadConfigError> =
                 config::load_sync::<Config>(path.clone(), context)

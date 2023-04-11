@@ -40,9 +40,11 @@ pub fn get_networks_names(
     context: &super::LoadContext,
     networks: Vec<String>,
 ) -> Result<Vec<String>, super::LoadConfigError> {
+    let services: &super::Services = context.get()?;
+    let project_id: String = context.get_named("project_id").cloned()?;
     networks
         .into_iter()
-        .map(|network| get_network_name(context, network))
+        .map(|network| services.get_network_name(&project_id, network))
         .collect()
 }
 
@@ -50,44 +52,15 @@ pub fn get_volumes_names(
     context: &super::LoadContext,
     volumes: HashMap<String, String>,
 ) -> Result<HashMap<String, String>, super::LoadConfigError> {
+    let services: &super::Services = context.get()?;
+    let project_id: String = context.get_named("project_id").cloned()?;
     let volumes: Result<HashMap<_, _>, super::LoadConfigError> =
         substitute_vars_dict(context, volumes)?
             .into_iter()
-            .map(|(k, v)| Ok((get_volume_name(context, v)?, k)))
+            .map(|(k, v)| Ok((services.get_volume_name(&project_id, v)?, k)))
             .collect();
 
     Ok(volumes?)
-}
-
-pub fn get_network_name(
-    context: &super::LoadContext,
-    network: String,
-) -> Result<String, super::LoadConfigError> {
-    let global = context
-        .networks()?
-        .get(&network)
-        .ok_or(anyhow!("No such network {}", network))?
-        .global;
-    Ok(get_resource_name(context.project_id()?, network, global))
-}
-
-pub fn get_volume_name(
-    context: &super::LoadContext,
-    volume: String,
-) -> Result<String, super::LoadConfigError> {
-    if let Some(v) = context.volumes()?.get(&volume) {
-        Ok(get_resource_name(context.project_id()?, volume, v.global))
-    } else {
-        Ok(volume)
-    }
-}
-
-fn get_resource_name(project_id: &str, name: String, global: bool) -> String {
-    if global {
-        name
-    } else {
-        format!("{}_{}", project_id, name)
-    }
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -138,7 +111,7 @@ impl super::LoadRawSync for AsString {
                 let s = vars.eval(&s)?;
                 Ok(s)
             }
-	    AsString::Int(n) => Ok(n.to_string()),
+            AsString::Int(n) => Ok(n.to_string()),
         }
     }
 }
