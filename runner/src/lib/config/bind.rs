@@ -103,7 +103,7 @@ pub struct Zone {
 
 impl Bind {
     pub async fn load<'a>(
-        context: &super::LoadContext<'a>,
+        context: &super::State<'a>,
     ) -> Result<Option<Bind>, LoadConfigError> {
         raw::load(context).await
     }
@@ -146,7 +146,7 @@ mod raw {
 
         fn load_raw(
             self,
-            context: &config::LoadContext,
+            context: &config::State,
         ) -> Result<Self::Output, config::LoadConfigError> {
             Ok(super::Bind {
                 zones: self.zones.load_raw(context)?,
@@ -159,7 +159,7 @@ mod raw {
 
         fn load_raw(
             self,
-            context: &config::LoadContext,
+            context: &config::State,
         ) -> Result<Self::Output, config::LoadConfigError> {
             Ok(super::Zone {
                 ip: self.ip,
@@ -172,7 +172,7 @@ mod raw {
     impl config::AutoLoadRaw for Config {}
 
     pub async fn load<'a>(
-        context: &config::LoadContext<'a>,
+        context: &config::State<'a>,
     ) -> Result<Option<super::Bind>, super::LoadConfigError> {
         let path: PathBuf = context.get_named("project_config").cloned()?;
 

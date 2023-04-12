@@ -2,6 +2,7 @@ use std::{borrow::BorrowMut, collections::HashMap, path::PathBuf, sync::Arc};
 
 use super::{config, git};
 
+use futures::Future;
 use log::*;
 use thiserror::Error;
 use tokio::sync::{mpsc, Mutex};
@@ -50,6 +51,9 @@ pub enum ContextError {
 
     #[error("Git error: {0}")]
     GitError(#[from] git::GitError),
+
+    #[error(transparent)]
+    Other(#[from] anyhow::Error),
 }
 
 impl<PM: config::ProjectsManager> Context<PM> {
@@ -69,6 +73,8 @@ impl<PM: config::ProjectsManager> Context<PM> {
             projects_store,
         };
 
+        context.reload_projects().await?;
+
         Ok(context)
     }
 
@@ -81,13 +87,55 @@ impl<PM: config::ProjectsManager> Context<PM> {
             Arc::new(load_config_impl(self.config_path.clone(), self.env.clone()).await?);
         Ok(())
     }
+
+    pub async fn reload_projects(&self) -> Result<(), ContextError> {
+        let mut state = config::State::default();
+        let config = self.config.lock().await.clone();
+        state.set(config.as_ref());
+        state.set_named("env", &self.env);
+        self.projects_store.reload_projects(&state).await?;
+        Ok(())
+    }
+
+    pub async fn reload_project(&self, project_id: String) -> Result<(), ContextError> {
+        let mut state = config::State::default();
+        let config = self.config.lock().await.clone();
+        state.set(config.as_ref());
+        state.set_named("env", &self.env);
+        self.projects_store
+            .reload_project(&state, project_id)
+            .await?;
+        Ok(())
+    }
+
+    pub async fn list_projects(&self) -> Result<Vec<config::ProjectInfo>, ContextError> {
+        let mut state = config::State::default();
+        let config = self.config.lock().await.clone();
+        state.set(config.as_ref());
+        state.set_named("env", &self.env);
+        Ok(self.projects_store.list_projects(&state).await?)
+    }
+
+    pub async fn get_project_info(
+        &self,
+        project_id: String,
+    ) -> Result<config::ProjectInfo, ContextError> {
+        let mut state = config::State::default();
+        let config = self.config.lock().await.clone();
+        state.set(config.as_ref());
+        state.set_named("env", &self.env);
+        Ok(self
+            .projects_store
+            .get_project_info(&state, project_id)
+            .await?)
+    }
 }
 
 async fn load_config_impl(
     config_path: PathBuf,
     env: String,
 ) -> Result<config::ServiceConfig, ContextError> {
-    let mut context = config::LoadContext::default();
+    let mut context = config::State::default();
     context.set_named("service_config", &config_path);
     let config = config::ServiceConfig::load(&context).await?;
 

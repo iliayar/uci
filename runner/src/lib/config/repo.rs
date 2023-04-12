@@ -10,12 +10,12 @@ use super::LoadConfigError;
 use anyhow::anyhow;
 use log::*;
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Default)]
 pub struct Repos {
     pub repos: HashMap<String, Repo>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Repo {
     Regular {
         path: PathBuf,
@@ -207,7 +207,7 @@ mod raw {
 
         fn load_raw(
             self,
-            context: &config::LoadContext,
+            context: &config::State,
         ) -> Result<Self::Output, config::LoadConfigError> {
             Ok(super::Repos {
                 repos: self.repos.load_raw(context)?,
@@ -220,7 +220,7 @@ mod raw {
 
         fn load_raw(
             self,
-            context: &config::LoadContext,
+            context: &config::State,
         ) -> Result<Self::Output, config::LoadConfigError> {
             let repo_id: String = context.get_named("_id").cloned()?;
             let project_id: String = context.get_named("project_id").cloned()?;

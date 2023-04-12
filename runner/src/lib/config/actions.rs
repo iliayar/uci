@@ -58,7 +58,7 @@ pub enum Event {
 pub const ACTIONS_CONFIG: &str = "actions.yaml";
 
 impl Actions {
-    pub async fn load<'a>(context: &super::LoadContext<'a>) -> Result<Actions, LoadConfigError> {
+    pub async fn load<'a>(context: &super::State<'a>) -> Result<Actions, LoadConfigError> {
         raw::load(context).await
     }
 
@@ -210,7 +210,7 @@ mod raw {
 
         fn load_raw(
             self,
-            context: &config::LoadContext,
+            context: &config::State,
         ) -> Result<Self::Output, config::LoadConfigError> {
             Ok(super::Actions {
                 actions: self.actions.load_raw(context)?,
@@ -223,7 +223,7 @@ mod raw {
 
         fn load_raw(
             self,
-            context: &config::LoadContext,
+            context: &config::State,
         ) -> Result<Self::Output, config::LoadConfigError> {
             if let TriggerType::ProjectReload = self.on {
                 if self.reload_config.is_some() {
@@ -282,7 +282,7 @@ mod raw {
 
         fn load_raw(
             self,
-            context: &config::LoadContext,
+            context: &config::State,
         ) -> Result<Self::Output, config::LoadConfigError> {
             Ok(match self {
                 ServiceAction::Deploy => super::ServiceAction::Deploy,
@@ -291,7 +291,7 @@ mod raw {
     }
 
     pub async fn load<'a>(
-        context: &config::LoadContext<'a>,
+        context: &config::State<'a>,
     ) -> Result<super::Actions, super::LoadConfigError> {
         let project_root: PathBuf = context.get_named("project_root").cloned()?;
         let path = project_root.join(super::ACTIONS_CONFIG);

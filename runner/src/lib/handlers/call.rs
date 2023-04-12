@@ -27,15 +27,11 @@ async fn call<PM: config::ProjectsManager>(
 
     match call_context
         .context
-        .projects_store
         .get_project_info(project_id.clone())
         .await
     {
         Ok(project) => {
-            if !project
-                .tokens
-                .check_allowed(call_context.token, ActionType::Execute)
-            {
+            if !project.check_allowed(call_context.token, ActionType::Execute) {
                 return Err(warp::reject::custom(Unauthorized::TokenIsUnauthorized));
             }
         }

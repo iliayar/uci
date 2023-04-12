@@ -1,6 +1,6 @@
 projects:
   testci:
-    path: projects/testci
+    path: ${projects_config_dir}/projects/testci
     repos:
       test:
         source: ssh://git@gitlab.com:iliayar/testci.git

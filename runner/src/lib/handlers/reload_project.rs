@@ -24,15 +24,11 @@ async fn reload_project<PM: config::ProjectsManager>(
 ) -> Result<impl warp::Reply, warp::Rejection> {
     match call_context
         .context
-        .projects_store
         .get_project_info(project_id.clone())
         .await
     {
         Ok(project) => {
-            if !project
-                .tokens
-                .check_allowed(call_context.token, ActionType::Write)
-            {
+            if !project.check_allowed(call_context.token, ActionType::Write) {
                 return Err(warp::reject::custom(Unauthorized::TokenIsUnauthorized));
             }
         }
@@ -44,12 +40,7 @@ async fn reload_project<PM: config::ProjectsManager>(
     }
 
     // TODO: Trigger actions
-    match call_context
-        .context
-        .projects_store
-        .reload_project(project_id)
-        .await
-    {
+    match call_context.context.reload_project(project_id).await {
         Ok(_) => Ok(warp::reply::with_status(
             warp::reply::json(&common::runner::EmptyResponse {}),
             StatusCode::OK,

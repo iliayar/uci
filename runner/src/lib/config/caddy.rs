@@ -42,7 +42,7 @@ pub struct Caddy {
 
 impl Caddy {
     pub async fn load<'a>(
-        context: &super::LoadContext<'a>,
+        context: &super::State<'a>,
     ) -> Result<Option<Caddy>, LoadConfigError> {
         raw::load(context).await
     }
@@ -56,7 +56,7 @@ mod raw {
     use anyhow::anyhow;
 
     use crate::lib::{
-        config::{self, LoadContext, LoadRawSync},
+        config::{self, State, LoadRawSync},
         utils,
     };
 
@@ -77,7 +77,7 @@ mod raw {
 
         fn load_raw(
             self,
-            context: &config::LoadContext,
+            context: &config::State,
         ) -> Result<Self::Output, config::LoadConfigError> {
             let vars: common::vars::Vars = context.into();
             let hostnames: Result<HashMap<_, _>, config::LoadConfigError> = self
@@ -94,7 +94,7 @@ mod raw {
     impl config::AutoLoadRaw for Config {}
 
     pub async fn load<'a>(
-        context: &config::LoadContext<'a>,
+        context: &config::State<'a>,
     ) -> Result<Option<super::Caddy>, super::LoadConfigError> {
         let path: PathBuf = context.get_named("project_config").cloned()?;
         if path.exists() {

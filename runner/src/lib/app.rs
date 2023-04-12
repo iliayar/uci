@@ -89,9 +89,13 @@ impl App {
         };
 
         let context = if let Some(projects) = self.projects {
-            let mut context = config::LoadContext::default();
-            context.set_named("projects_config", &projects);
-            let manager = config::StaticProjects::default();
+            let projects = match projects.canonicalize() {
+                Ok(path) => path,
+                Err(err) => {
+                    return Err(anyhow::anyhow!("Bad projects config path: {}", err).into());
+                }
+            };
+            let manager = config::StaticProjects::new(projects).await?;
             let projects_store = config::ProjectsStore::with_manager(manager).await?;
             context::Context::new(projects_store, worker_context, self.config, self.env).await?
         } else {

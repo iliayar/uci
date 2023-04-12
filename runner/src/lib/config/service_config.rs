@@ -30,7 +30,7 @@ pub enum ActionEvent {
 
 impl ServiceConfig {
     pub async fn load<'a>(
-        context: &super::LoadContext<'a>,
+        context: &super::State<'a>,
     ) -> Result<ServiceConfig, LoadConfigError> {
         raw::load(context).await
     }
@@ -76,7 +76,7 @@ mod raw {
 
         async fn load_raw(
             self,
-            context: &config::LoadContext,
+            context: &config::State,
         ) -> Result<Self::Output, config::LoadConfigError> {
             let service_config: PathBuf = context.get_named("service_config").cloned()?;
             let data_dir =
@@ -111,7 +111,7 @@ mod raw {
     }
 
     pub async fn load<'a>(
-        context: &config::LoadContext<'a>,
+        context: &config::State<'a>,
     ) -> Result<super::ServiceConfig, super::LoadConfigError> {
         let service_config: PathBuf = context.get_named("service_config").cloned()?;
         config::load::<ServiceConfig>(service_config.clone(), context)

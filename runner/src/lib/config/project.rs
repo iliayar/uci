@@ -40,9 +40,7 @@ impl ProjectMatchedActions {
 }
 
 impl Project {
-    pub async fn load<'a>(
-        context: &super::LoadContext<'a>,
-    ) -> Result<Project, super::LoadConfigError> {
+    pub async fn load<'a>(context: &super::State<'a>) -> Result<Project, super::LoadConfigError> {
         let mut context = context.clone();
 
         let project_id: String = context.get_named("project_id").cloned()?;
@@ -51,8 +49,8 @@ impl Project {
         let params = load_params(project_root.join(PARAMS_CONFIG), &context)
             .await?
             .unwrap_or_default();
-        let params_binding = super::binding::Params { value: &params };
-        context.set(&params);
+        // let params_binding = super::binding::Params { value: &params };
+        // context.set(&params_binding);
 
         let project_config = project_root.join(PROJECT_CONFIG);
         context.set_named("project_config", &project_config);
@@ -63,14 +61,7 @@ impl Project {
         let services = super::Services::load(&context).await?;
 
         let mut context = context.clone();
-        let networks_binding = super::binding::Networks {
-            value: &services.networks,
-        };
-        let volumes_binding = super::binding::Volumes {
-            value: &services.volumes,
-        };
-        context.set(&services.networks);
-        context.set(&services.volumes);
+	context.set(&services);
 
         let actions = super::Actions::load(&context).await?;
 
@@ -88,9 +79,9 @@ impl Project {
         })
     }
 
-    pub async fn run_pipeline(
+    pub async fn run_pipeline<'a>(
         &self,
-        execution_context: &super::ExecutionContext,
+        state: &super::State<'a>,
         pipeline_id: &str,
     ) -> Result<(), super::ExecutionError> {
         let pipeline = self
@@ -98,19 +89,15 @@ impl Project {
             .get(pipeline_id)
             .ok_or(anyhow!("Now such pipeline to run {}", pipeline_id))?;
 
-        self.run_pipeline_impl(
-            Id::Pipeline(pipeline_id),
-            execution_context,
-            pipeline.clone(),
-        )
-        .await?;
+        self.run_pipeline_impl(Id::Pipeline(pipeline_id), state, pipeline.clone())
+            .await?;
 
         Ok(())
     }
 
-    pub async fn run_service_action(
+    pub async fn run_service_action<'a>(
         &self,
-        execution_context: &super::ExecutionContext,
+        state: &super::State<'a>,
         service_id: String,
         action: super::ServiceAction,
     ) -> Result<(), super::ExecutionError> {
@@ -136,7 +123,7 @@ impl Project {
             volumes: Default::default(),
         };
 
-        self.run_pipeline_impl(Id::Service(&service_id), execution_context, pipeline)
+        self.run_pipeline_impl(Id::Service(&service_id), state, pipeline)
             .await?;
 
         Ok(())
@@ -145,20 +132,22 @@ impl Project {
     async fn run_pipeline_impl<'a>(
         &self,
         id: Id<'a>,
-        execution_context: &super::ExecutionContext,
+        state: &super::State<'a>,
         pipeline: common::Pipeline,
     ) -> Result<(), super::ExecutionError> {
+        let worker_context: &Option<worker_lib::context::Context> = state.get()?;
         match id {
             Id::Pipeline(id) => info!("Running pipeline {}", id),
             Id::Service(id) => info!("Running service {} action", id),
             Id::Other(id) => info!("Running pipeline for {} action", id),
         };
 
-        if let Some(worker_context) = execution_context.worker_context.clone() {
+        if let Some(worker_context) = worker_context.clone() {
             let executor = worker_lib::executor::Executor::new(worker_context)?;
             executor.run_result(pipeline).await?;
         } else {
-            let worker_url = execution_context.worker_url.as_ref().ok_or(anyhow!(
+            let worker_url: Option<String> = state.get_named("worker_url").cloned().ok();
+            let worker_url = worker_url.as_ref().ok_or(anyhow!(
                 "Worker url is not specified in config.
                  Specify it or add '--worker' flag to run pipeline in the same process"
             ))?;
@@ -180,9 +169,9 @@ impl Project {
         Ok(())
     }
 
-    pub async fn run_matched_action(
+    pub async fn run_matched_action<'a>(
         &self,
-        execution_context: &super::ExecutionContext,
+        state: &super::State<'a>,
         ProjectMatchedActions {
             reload_config,
             run_pipelines,
@@ -198,7 +187,7 @@ impl Project {
             if let None = self.pipelines.get(pipeline_id) {
                 warn!("No such pipeline {}, skiping", pipeline_id);
             }
-            pipeline_tasks.push(self.run_pipeline(execution_context, pipeline_id))
+            pipeline_tasks.push(self.run_pipeline(state, pipeline_id))
         }
 
         info!("Running service actions {:?}", services);
@@ -206,11 +195,7 @@ impl Project {
             if let None = self.services.get(service) {
                 warn!("No such service {}, skiping", service);
             }
-            service_tasks.push(self.run_service_action(
-                execution_context,
-                service.to_string(),
-                action.clone(),
-            ));
+            service_tasks.push(self.run_service_action(state, service.to_string(), action.clone()));
         }
 
         futures::future::try_join_all(pipeline_tasks).await?;
@@ -229,7 +214,7 @@ impl Project {
 
 pub async fn load_params<'a>(
     params_file: PathBuf,
-    context: &super::LoadContext<'a>,
+    context: &super::State<'a>,
 ) -> Result<Option<HashMap<String, String>>, super::LoadConfigError> {
     if !params_file.exists() {
         return Ok(None);

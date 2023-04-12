@@ -41,7 +41,7 @@ fn abs_or_rel_to_file<S: AsRef<str>>(path: S, filepath: PathBuf) -> PathBuf {
 }
 
 pub fn eval_rel_path<S: AsRef<str>>(
-    context: &super::config::LoadContext,
+    context: &super::config::State,
     path: S,
     dirpath: PathBuf,
 ) -> Result<PathBuf, super::config::LoadConfigError> {
@@ -56,7 +56,7 @@ pub fn eval_rel_path<S: AsRef<str>>(
 }
 
 pub fn eval_abs_path<S: AsRef<str>>(
-    context: &super::config::LoadContext,
+    context: &super::config::State,
     path: S,
 ) -> Result<PathBuf, super::config::LoadConfigError> {
     let vars: common::vars::Vars = context.into();
@@ -66,6 +66,11 @@ pub fn eval_abs_path<S: AsRef<str>>(
     if res_path.is_absolute() {
         Ok(res_path)
     } else {
-        Err(anyhow!("Epect path {} to be absolute", path.as_ref()).into())
+        Err(anyhow!(
+            "Expect path {} to be absolute, got {}",
+            path.as_ref(),
+            res_path.display()
+        )
+        .into())
     }
 }

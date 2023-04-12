@@ -33,7 +33,6 @@ impl GenProject {
             raw_services.push(String::from(
                 r#"
   microci-bind9-configured:
-    autostart: true
     build:
       path: ${config.internal.path}/bind9
     ports:

@@ -10,7 +10,7 @@ pub struct Pipelines {
 }
 
 impl Pipelines {
-    pub async fn load<'a>(context: &super::LoadContext<'a>) -> Result<Pipelines, LoadConfigError> {
+    pub async fn load<'a>(context: &super::State<'a>) -> Result<Pipelines, LoadConfigError> {
         raw::load(context)
             .await
             .map_err(|err| anyhow!("Failed to pipelines: {}", err).into())
@@ -85,7 +85,7 @@ mod raw {
 
         async fn load_raw(
             self,
-            context: &config::LoadContext,
+            context: &config::State,
         ) -> Result<Self::Output, config::LoadConfigError> {
             let mut pipelines: HashMap<String, common::Pipeline> = HashMap::new();
             for (id, PipelineLocation { path }) in self.pipelines.into_iter() {
@@ -110,7 +110,7 @@ mod raw {
 
         fn load_raw(
             self,
-            context: &config::LoadContext,
+            context: &config::State,
         ) -> Result<Self::Output, config::LoadConfigError> {
             let links =
                 config::utils::substitute_vars_dict(context, self.links.unwrap_or_default())?;
@@ -129,7 +129,7 @@ mod raw {
 
         fn load_raw(
             self,
-            context: &config::LoadContext,
+            context: &config::State,
         ) -> Result<Self::Output, config::LoadConfigError> {
             Ok(common::Job {
                 needs: self.needs.unwrap_or_default(),
@@ -143,7 +143,7 @@ mod raw {
 
         fn load_raw(
             self,
-            context: &config::LoadContext,
+            context: &config::State,
         ) -> Result<Self::Output, config::LoadConfigError> {
             match get_type(&self)? {
                 Type::Script => {
@@ -194,7 +194,7 @@ mod raw {
     }
 
     pub async fn load<'a>(
-        context: &config::LoadContext<'a>,
+        context: &config::State<'a>,
     ) -> Result<super::Pipelines, super::LoadConfigError> {
         let project_root: PathBuf = context.get_named("project_root").cloned()?;
         let path = project_root.join(super::PIPELINES_CONFIG);

@@ -1,6 +1,6 @@
 use std::{collections::HashMap, path::PathBuf};
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct Secrets {
     secrets: HashMap<String, String>,
 }

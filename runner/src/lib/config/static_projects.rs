@@ -2,7 +2,7 @@ use std::collections::{HashMap, HashSet};
 
 use std::path::PathBuf;
 
-use super::{LoadConfigError, LoadContext};
+use super::{LoadConfigError, State};
 
 use log::*;
 
@@ -11,17 +11,9 @@ pub const BIND9_DATA_DIR: &str = "bind9";
 pub const CADDY_DATA_DIR: &str = "caddy";
 pub const INTERNAL_PROJECT_DATA_DIR: &str = "internal_project";
 
-pub struct StaticProject {
-    pub enabled: bool,
-    pub path: PathBuf,
-    pub repos: super::Repos,
-    pub tokens: super::Tokens,
-    pub secrets: super::Secrets,
-}
-
-#[derive(Default)]
+#[derive(Clone)]
 pub struct StaticProjects {
-    pub static_projects: HashMap<String, StaticProject>,
+    pub projects_config: PathBuf,
 }
 
 #[derive(Debug)]
@@ -45,31 +37,45 @@ impl Default for MatchedActions {
 
 #[async_trait::async_trait]
 impl super::ProjectsManager for StaticProjects {
-    async fn get_project_info(
+    async fn get_project_info<'a>(
         &mut self,
+        state: &super::State<'a>,
         project_id: String,
     ) -> Result<super::ProjectInfo, anyhow::Error> {
-        todo!()
+        if let Some(project) = self.load_projects_info(state).await?.remove(&project_id) {
+            Ok(project)
+        } else {
+            Err(anyhow::anyhow!("No such project {}", project_id).into())
+        }
     }
 
-    async fn list_projects(&mut self) -> Result<Vec<super::ProjectInfo>, anyhow::Error> {
-        todo!()
-    }
-
-    async fn load_project(&mut self, project_id: String) -> Result<super::Project, anyhow::Error> {
-        todo!()
-    }
-
-    async fn reload_projects(&mut self) -> Result<(), anyhow::Error> {
-        todo!()
+    async fn list_projects<'a>(
+        &mut self,
+        state: &super::State<'a>,
+    ) -> Result<Vec<super::ProjectInfo>, anyhow::Error> {
+        Ok(self
+            .load_projects_info(state)
+            .await?
+            .into_iter()
+            .map(|(k, v)| v)
+            .collect())
     }
 }
 
 impl StaticProjects {
-    pub async fn load<'a>(
-        context: &super::LoadContext<'a>,
-    ) -> Result<StaticProjects, super::LoadConfigError> {
-        raw::load(context).await
+    pub async fn new(projects_config: PathBuf) -> Result<StaticProjects, anyhow::Error> {
+        Ok(Self { projects_config })
+    }
+
+    pub async fn load_projects_info<'a>(
+        &self,
+        state: &State<'a>,
+    ) -> Result<HashMap<String, super::ProjectInfo>, super::LoadConfigError> {
+        let mut context = state.clone();
+        context.set_named("projects_config", &self.projects_config);
+        let res = raw::load(&context).await?;
+        debug!("Loaded static projects: {:#?}", res);
+        Ok(res)
     }
 }
 
@@ -271,29 +277,25 @@ mod raw {
         tokens: Option<config::permissions_raw::Tokens>,
     }
 
-    const PROJECTS_CONFIG: &str = "projects.yaml";
-
     #[async_trait::async_trait]
     impl config::LoadRaw for Projects {
-        type Output = super::StaticProjects;
+        type Output = super::HashMap<String, config::ProjectInfo>;
 
         async fn load_raw(
             self,
-            context: &config::LoadContext,
+            context: &config::State,
         ) -> Result<Self::Output, config::LoadConfigError> {
-            Ok(super::StaticProjects {
-                static_projects: self.projects.load_raw(context).await?,
-            })
+            self.projects.load_raw(context).await
         }
     }
 
     #[async_trait::async_trait]
     impl config::LoadRaw for Project {
-        type Output = super::StaticProject;
+        type Output = config::ProjectInfo;
 
         async fn load_raw(
             self,
-            context: &config::LoadContext,
+            context: &config::State,
         ) -> Result<Self::Output, config::LoadConfigError> {
             let project_id: String = context.get_named("_id").cloned()?;
             let mut context = context.clone();
@@ -324,8 +326,10 @@ mod raw {
                 config::Tokens::default()
             };
 
-            Ok(super::StaticProject {
+            Ok(config::ProjectInfo {
+                id: project_id.clone(),
                 enabled: self.enabled.unwrap_or(true),
+		// data_path: se
                 path,
                 repos,
                 secrets,
@@ -335,8 +339,8 @@ mod raw {
     }
 
     pub async fn load<'a>(
-        context: &config::LoadContext<'a>,
-    ) -> Result<super::StaticProjects, super::LoadConfigError> {
+        context: &config::State<'a>,
+    ) -> Result<HashMap<String, config::ProjectInfo>, super::LoadConfigError> {
         let path: PathBuf = context.get_named("projects_config").cloned()?;
         config::load::<Projects>(path.clone(), context)
             .await

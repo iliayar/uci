@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use anyhow::anyhow;
 
 pub fn substitute_vars_dict(
-    context: &super::LoadContext,
+    context: &super::State,
     dict: HashMap<String, String>,
 ) -> Result<HashMap<String, String>, super::LoadConfigError> {
     let vars: common::vars::Vars = context.into();
@@ -18,7 +18,7 @@ pub fn substitute_vars_dict(
 }
 
 pub fn substitute_vars_list(
-    context: &super::LoadContext,
+    context: &super::State,
     list: Vec<String>,
 ) -> Result<Vec<String>, super::LoadConfigError> {
     let vars: common::vars::Vars = context.into();
@@ -29,7 +29,7 @@ pub fn substitute_vars_list(
 }
 
 pub fn substitute_vars(
-    context: &super::LoadContext,
+    context: &super::State,
     s: String,
 ) -> Result<String, super::LoadConfigError> {
     let vars: common::vars::Vars = context.into();
@@ -37,7 +37,7 @@ pub fn substitute_vars(
 }
 
 pub fn get_networks_names(
-    context: &super::LoadContext,
+    context: &super::State,
     networks: Vec<String>,
 ) -> Result<Vec<String>, super::LoadConfigError> {
     let services: &super::Services = context.get()?;
@@ -49,7 +49,7 @@ pub fn get_networks_names(
 }
 
 pub fn get_volumes_names(
-    context: &super::LoadContext,
+    context: &super::State,
     volumes: HashMap<String, String>,
 ) -> Result<HashMap<String, String>, super::LoadConfigError> {
     let services: &super::Services = context.get()?;
@@ -75,7 +75,7 @@ impl super::LoadRawSync for Enabled {
 
     fn load_raw(
         self,
-        context: &super::LoadContext,
+        context: &super::State,
     ) -> Result<Self::Output, super::LoadConfigError> {
         match self {
             Enabled::Bool(v) => Ok(v),
@@ -102,7 +102,7 @@ impl super::LoadRawSync for AsString {
 
     fn load_raw(
         self,
-        context: &super::LoadContext,
+        context: &super::State,
     ) -> Result<Self::Output, super::LoadConfigError> {
         match self {
             AsString::Bool(v) => Ok(v.to_string()),

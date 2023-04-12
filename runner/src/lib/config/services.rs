@@ -44,7 +44,7 @@ struct Build {
 pub const SERVICES_CONFIG: &str = "services.yaml";
 
 impl Services {
-    pub async fn load<'a>(context: &super::LoadContext<'a>) -> Result<Services, LoadConfigError> {
+    pub async fn load<'a>(context: &super::State<'a>) -> Result<Services, LoadConfigError> {
         raw::load(context).await
     }
 
@@ -210,32 +210,29 @@ mod raw {
     impl config::LoadRawSync for Services {
         type Output = super::Services;
 
-        fn load_raw(
-            self,
-            context: &config::LoadContext,
-        ) -> Result<Self::Output, config::LoadConfigError> {
-            let networks = self.networks.load_raw(context)?;
-            let volumes = self.volumes.load_raw(context)?;
+        fn load_raw(self, state: &config::State) -> Result<Self::Output, config::LoadConfigError> {
+            let mut res = super::Services {
+                networks: self.networks.load_raw(state)?,
+                volumes: self.volumes.load_raw(state)?,
+                ..Default::default()
+            };
 
-            let services: Result<HashMap<_, _>, super::LoadConfigError> = self
-                .services
-                .into_iter()
-                .map(|(id, service)| {
-                    let mut context = context.clone();
-                    context.set_named("service_id", &id);
-                    context.set(&networks);
-                    context.set(&volumes);
-                    let service = service.load_raw(&context)?;
-                    Ok((id, service))
-                })
-                .collect();
-            let services = services?;
+            let services: Result<HashMap<_, _>, super::LoadConfigError> = {
+                let mut state = state.clone();
+                state.set(&res);
+                self.services
+                    .into_iter()
+                    .map(|(id, service)| {
+                        let mut state = state.clone();
+                        state.set_named("service_id", &id);
+                        let service = service.load_raw(&state)?;
+                        Ok((id, service))
+                    })
+                    .collect()
+            };
 
-            Ok(super::Services {
-                services,
-                networks,
-                volumes,
-            })
+            res.services = services?;
+            Ok(res)
         }
     }
 
@@ -244,7 +241,7 @@ mod raw {
 
         fn load_raw(
             self,
-            context: &config::LoadContext,
+            context: &config::State,
         ) -> Result<Self::Output, config::LoadConfigError> {
             Ok(super::Network {
                 global: self.global,
@@ -257,7 +254,7 @@ mod raw {
 
         fn load_raw(
             self,
-            context: &config::LoadContext,
+            context: &config::State,
         ) -> Result<Self::Output, config::LoadConfigError> {
             Ok(super::Volume {
                 global: self.global,
@@ -270,7 +267,7 @@ mod raw {
 
         fn load_raw(
             self,
-            context: &config::LoadContext,
+            context: &config::State,
         ) -> Result<Self::Output, config::LoadConfigError> {
             let build = if let Some(build) = self.build {
                 Some(build.load_raw(context)?)
@@ -336,7 +333,7 @@ mod raw {
     }
 
     fn get_image_name(
-        context: &config::LoadContext,
+        context: &config::State,
         image: Option<String>,
         global: bool,
     ) -> Result<String, config::LoadConfigError> {
@@ -355,7 +352,7 @@ mod raw {
     }
 
     fn get_container_name(
-        context: &config::LoadContext,
+        context: &config::State,
         global: bool,
     ) -> Result<String, super::LoadConfigError> {
         if global {
@@ -374,7 +371,7 @@ mod raw {
 
         fn load_raw(
             self,
-            context: &config::LoadContext,
+            context: &config::State,
         ) -> Result<Self::Output, config::LoadConfigError> {
             let path = utils::try_expand_home(config::utils::substitute_vars(context, self.path)?);
             Ok(super::Build {
@@ -385,7 +382,7 @@ mod raw {
     }
 
     pub async fn load<'a>(
-        context: &config::LoadContext<'a>,
+        context: &config::State<'a>,
     ) -> Result<super::Services, super::LoadConfigError> {
         let project_root: PathBuf = context.get_named("project_root").cloned()?;
         let path = project_root.join(super::SERVICES_CONFIG);
