@@ -4,7 +4,6 @@ mod project;
 use super::cli::*;
 
 use log::*;
-use termion::{color, style};
 
 #[derive(Debug, thiserror::Error)]
 pub enum ExecuteError {

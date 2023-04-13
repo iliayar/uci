@@ -2,7 +2,6 @@ use super::task;
 use crate::docker;
 
 use common::RunContainerConfig;
-use log::*;
 
 use anyhow::anyhow;
 

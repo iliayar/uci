@@ -1,7 +1,5 @@
 use std::path::PathBuf;
 
-use anyhow::anyhow;
-
 #[derive(Debug, Default)]
 pub struct Config {
     pub runner_url: Option<String>,

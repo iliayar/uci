@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 mod cli;
 mod config;
 mod execute;
@@ -34,21 +36,18 @@ async fn main() {
     };
     debug!("Loaded config {:?}", config);
 
-    match execute::execute(&config, args.command).await {
-        Err(err) => {
-            match err {
-                execute::ExecuteError::Fatal(err) => {
-                    eprintln!("{}{}{}", color::Fg(color::Red), err, style::Reset)
-                }
-                execute::ExecuteError::Warning(err) => {
-                    eprintln!("{}{}{}", color::Fg(color::Yellow), err, style::Reset)
-                }
-                execute::ExecuteError::Other(err) => {
-                    eprintln!("{}{}{}", color::Fg(color::LightRed), err, style::Reset)
-                }
-            };
+    if let Err(err) = execute::execute(&config, args.command).await {
+        match err {
+            execute::ExecuteError::Fatal(err) => {
+                eprintln!("{}{}{}", color::Fg(color::Red), err, style::Reset)
+            }
+            execute::ExecuteError::Warning(err) => {
+                eprintln!("{}{}{}", color::Fg(color::Yellow), err, style::Reset)
+            }
+            execute::ExecuteError::Other(err) => {
+                eprintln!("{}{}{}", color::Fg(color::LightRed), err, style::Reset)
+            }
         }
-        Ok(_) => {}
     }
 }
 

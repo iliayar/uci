@@ -1,6 +1,5 @@
 use common::RequestConfig;
 
-use anyhow::anyhow;
 use log::*;
 
 use super::task;

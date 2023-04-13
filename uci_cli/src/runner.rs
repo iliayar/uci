@@ -1,7 +1,7 @@
 use reqwest::{header, Url};
 
 use futures_util::StreamExt;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 
 use log::*;
 
@@ -42,15 +42,10 @@ pub async fn json<T: for<'a> Deserialize<'a>>(
         Ok(response) => {
             info!("Get reponse with status {:?}", response.status());
             if response.status().is_success() {
-                Ok(response
-                    .json()
-                    .await
-                    .map_err(|err| Into::<anyhow::Error>::into(err))?)
+                Ok(response.json().await.map_err(Into::<anyhow::Error>::into)?)
             } else {
-                let error_response: common::runner::ErrorResponse = response
-                    .json()
-                    .await
-                    .map_err(|err| Into::<anyhow::Error>::into(err))?;
+                let error_response: common::runner::ErrorResponse =
+                    response.json().await.map_err(Into::<anyhow::Error>::into)?;
                 Err(super::execute::ExecuteError::Fatal(error_response.message))
             }
         }

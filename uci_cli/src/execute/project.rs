@@ -1,7 +1,7 @@
 use crate::cli::*;
 
 use log::*;
-use termion::{color, style};
+use termion::style;
 
 pub async fn execute_project(
     config: &crate::config::Config,

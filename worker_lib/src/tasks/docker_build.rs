@@ -6,7 +6,6 @@ use crate::{
 };
 
 use anyhow::anyhow;
-use log::*;
 
 #[async_trait::async_trait]
 impl super::Task for common::BuildImageConfig {

@@ -1,10 +1,10 @@
 use std::{collections::HashMap, path::PathBuf};
 
 use bollard::{
-    container::{self, CreateContainerOptions, RemoveContainerOptions, WaitContainerOptions},
+    container::{self, CreateContainerOptions, RemoveContainerOptions},
     exec::{CreateExecOptions, StartExecResults},
     image::{BuildImageOptions, CreateImageOptions},
-    models::{ContainerState, HostConfig},
+    models::HostConfig,
     network::{ConnectNetworkOptions, CreateNetworkOptions},
     volume::CreateVolumeOptions,
 };
@@ -221,7 +221,7 @@ impl Docker {
             host_config: Some(host_config),
             cmd: params.command,
             exposed_ports: Some(exposed_ports),
-	    env: Some(get_env(params.env)),
+            env: Some(get_env(params.env)),
             ..Default::default()
         };
 
@@ -270,7 +270,7 @@ impl Docker {
             image: Some(params.image),
             tty: Some(true),
             host_config: Some(host_config),
-	    env: Some(get_env(params.env)),
+            env: Some(get_env(params.env)),
             ..Default::default()
         };
 
@@ -377,7 +377,7 @@ impl Docker {
         let conf = self.con.inspect_image(image).await?;
         let workdir = conf
             .config
-            .ok_or(anyhow!("Image {} has no 'Config'", image))?
+            .ok_or_else(|| anyhow!("Image {} has no 'Config'", image))?
             .working_dir;
 
         if let Some(workdir) = workdir {
@@ -393,7 +393,7 @@ impl Docker {
     }
 
     pub async fn create_network_if_missing(&self, name: &str) -> Result<(), DockerError> {
-        if let Ok(_) = self.con.inspect_network::<&str>(name, None).await {
+        if self.con.inspect_network::<&str>(name, None).await.is_ok() {
             info!("Network {} already exists", name);
             Ok(())
         } else {
@@ -410,7 +410,7 @@ impl Docker {
     }
 
     pub async fn create_volume_if_missing(&self, name: &str) -> Result<(), DockerError> {
-        if let Ok(_) = self.con.inspect_volume(name).await {
+        if self.con.inspect_volume(name).await.is_ok() {
             info!("Volume {} already exists", name);
             Ok(())
         } else {

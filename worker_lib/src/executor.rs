@@ -148,14 +148,14 @@ impl Executor {
         for network in networks {
             self.context
                 .docker()
-                .create_network_if_missing(&network)
+                .create_network_if_missing(network)
                 .await?;
         }
 
         for volume in volumes {
             self.context
                 .docker()
-                .create_network_if_missing(&volume)
+                .create_network_if_missing(volume)
                 .await?;
         }
 
@@ -191,7 +191,7 @@ mod cycles {
             }
         }
 
-        return false;
+        false
     }
 
     fn dfs(
@@ -212,6 +212,6 @@ mod cycles {
         }
         was.insert(cur, State::Visited);
 
-        return false;
+        false
     }
 }

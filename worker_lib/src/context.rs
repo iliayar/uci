@@ -7,12 +7,10 @@ pub struct Context {
 
 impl Context {
     pub fn new(docker: Docker) -> Context {
-	Context {
-	    docker,
-	}
+        Context { docker }
     }
 
     pub fn docker(&self) -> &Docker {
-	&self.docker
+        &self.docker
     }
 }

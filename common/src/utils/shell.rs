@@ -1,6 +1,6 @@
 use std::process::{ExitStatus, Stdio};
 
-use tokio::io::{AsyncBufReadExt, AsyncReadExt, BufReader};
+use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio_stream::{wrappers::LinesStream, StreamExt};
 
 use log::*;
@@ -16,8 +16,8 @@ pub async fn run_command_with_output(
     let stderr = LinesStream::new(BufReader::new(child.stderr.take().unwrap()).lines());
 
     let mut child_out = stdout
-        .map(|e| OutputLine::Out(e))
-        .merge(stderr.map(|e| OutputLine::Err(e)));
+        .map(OutputLine::Out)
+        .merge(stderr.map(OutputLine::Err));
 
     while let Some(line) = child_out.next().await {
         match line {

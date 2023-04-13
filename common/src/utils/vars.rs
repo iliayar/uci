@@ -62,8 +62,8 @@ pub enum Vars {
 impl Vars {
     fn value_name(&self) -> String {
         match self {
-            Vars::Object { values } => "object",
-            Vars::List { values } => "list",
+            Vars::Object { values: _ } => "object",
+            Vars::List { values: _ } => "list",
             Vars::String(_) => "string",
             Vars::Bool(_) => "bool",
             Vars::None => "none",
@@ -85,15 +85,15 @@ impl Default for Vars {
     }
 }
 
-impl Into<Vars> for () {
-    fn into(self) -> Vars {
+impl From<()> for Vars {
+    fn from(_val: ()) -> Self {
         Vars::None
     }
 }
 
-impl<E: Into<Vars>> Into<Vars> for Value<E> {
-    fn into(self) -> Vars {
-        match self {
+impl<E: Into<Vars>> From<Value<E>> for Vars {
+    fn from(val: Value<E>) -> Self {
+        match val {
             Value::Object(m) => Vars::Object {
                 values: m.into_iter().map(|(k, v)| (k, v.into())).collect(),
             },
@@ -184,7 +184,7 @@ pub enum PathItem {
 
 impl Vars {
     pub fn get(&self, path: Path) -> Result<&Vars, VarsError> {
-        let mut result: &Vars = &self;
+        let mut result: &Vars = self;
         for item in path.items.into_iter() {
             result = match item {
                 PathItem::Key(key) => {
@@ -412,16 +412,11 @@ fn try_parse_expr(vars: &Vars, chars: &mut Peekable<Chars>) -> Result<String, Su
     loop {
         st = match st {
             State::Start => match chars.peek() {
-                Some(ch) => match ch {
-                    '$' => {
-                        chars.next().unwrap();
-                        State::WasDollar(1)
-                    }
-                    _ => {
-                        unreachable!("parse_expr should be only called with first dolalr");
-                    }
-                },
-                None => {
+                Some('$') => {
+                    chars.next().unwrap();
+                    State::WasDollar(1)
+                }
+                _ => {
                     unreachable!("parse_expr should be only called with first dolalr");
                 }
             },
@@ -454,16 +449,11 @@ fn try_parse_expr(vars: &Vars, chars: &mut Peekable<Chars>) -> Result<String, Su
                 }
             },
             State::ExprEnd => match chars.peek() {
-                Some(ch) => match ch {
-                    '}' => {
-                        chars.next().unwrap();
-                        State::End
-                    }
-                    _ => {
-                        return Err(SubstitutionError::MissingClosingBracket);
-                    }
-                },
-                None => {
+                Some('}') => {
+                    chars.next().unwrap();
+                    State::End
+                }
+                _ => {
                     return Err(SubstitutionError::MissingClosingBracket);
                 }
             },
@@ -568,7 +558,6 @@ fn parse_path(vars: &Vars, chars: &mut Peekable<Chars>) -> Result<Path, Substitu
 }
 
 mod tests {
-    use std::collections::HashMap;
 
     #[test]
     fn test_vars_from_string() -> Result<(), anyhow::Error> {
@@ -743,19 +732,19 @@ mod tests {
     #[test]
     fn test_assign() -> Result<(), anyhow::Error> {
         let mut vars = super::Vars::default();
-        vars.assign(
+        vars.assign_path(
             super::parse_path_simple("a.b")?,
             super::Value::<()>::String("123".to_string()).into(),
         )?;
-        vars.assign(
+        vars.assign_path(
             super::parse_path_simple("a.g")?,
             super::Value::<()>::String("aboba".to_string()).into(),
         )?;
-        vars.assign(
+        vars.assign_path(
             super::parse_path_simple("b[5]")?,
             super::Value::<()>::String("lol".to_string()).into(),
         )?;
-        vars.assign(
+        vars.assign_path(
             super::parse_path_simple("c")?,
             super::Value::<()>::String("booba".to_string()).into(),
         )?;

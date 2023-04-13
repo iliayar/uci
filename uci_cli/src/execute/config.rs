@@ -8,6 +8,8 @@ pub async fn execute_config(
     config: &crate::config::Config,
     command: ConfigCommands,
 ) -> Result<(), super::ExecuteError> {
+    #[allow(clippy::single_match)]
+    #[allow(unreachable_patterns)]
     match command {
         ConfigCommands::Reload {} => execute_config_reload(config).await?,
         _ => {}

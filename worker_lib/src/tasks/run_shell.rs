@@ -49,11 +49,11 @@ impl task::Task for common::RunShellConfig {
                 mounts.insert(src, dst);
             }
             run_command_builder.mounts(mounts);
-	    run_command_builder.networks(self.networks);
+            run_command_builder.networks(self.networks);
 
             run_command_builder.workdir(Some(task_context_dir));
 
-	    run_command_builder.env(self.env);
+            run_command_builder.env(self.env);
 
             context
                 .docker()
@@ -88,7 +88,9 @@ fn get_interpreter_args(
 ) -> Result<(String, Vec<String>), anyhow::Error> {
     if let Some(command) = interpreter {
         let mut it = command.into_iter();
-        let interpreter = it.next().ok_or(anyhow!("Intepreter is not specified"))?;
+        let interpreter = it
+            .next()
+            .ok_or_else(|| anyhow!("Intepreter is not specified"))?;
         let args = it.collect();
 
         Ok((interpreter, args))

@@ -1,7 +1,4 @@
-use std::{
-    convert::Infallible, env::temp_dir, fs::Permissions, os::unix::prelude::PermissionsExt,
-    path::PathBuf,
-};
+use std::{env::temp_dir, fs::Permissions, os::unix::prelude::PermissionsExt, path::PathBuf};
 
 use tokio::io::AsyncWriteExt;
 use uuid::Uuid;
