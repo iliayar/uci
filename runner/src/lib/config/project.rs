@@ -23,19 +23,19 @@ pub struct Project {
 const PROJECT_CONFIG: &str = "project.yaml";
 const PARAMS_CONFIG: &str = "params.yaml";
 
-pub struct ProjectMatchedActions {
-    pub reload_config: bool,
-    pub reload_project: bool,
+pub struct EventActions {
+    // pub reload_config: bool,
+    // pub reload_project: bool,
     pub run_pipelines: HashSet<String>,
     pub services: HashMap<String, super::ServiceAction>,
 }
 
-impl ProjectMatchedActions {
+impl EventActions {
     pub fn is_empty(&self) -> bool {
-        !self.reload_config
-            && !self.reload_project
-            && self.run_pipelines.is_empty()
-            && self.services.is_empty()
+        // !self.reload_config
+        //     && !self.reload_project
+        //     &&
+        self.run_pipelines.is_empty() && self.services.is_empty()
     }
 }
 
@@ -93,7 +93,7 @@ impl Project {
         &self,
         state: &super::State<'a>,
         pipeline_id: &str,
-    ) -> Result<(), super::ExecutionError> {
+    ) -> Result<(), anyhow::Error> {
         let pipeline = self
             .pipelines
             .get(pipeline_id)
@@ -110,7 +110,7 @@ impl Project {
         state: &super::State<'a>,
         service_id: String,
         action: super::ServiceAction,
-    ) -> Result<(), super::ExecutionError> {
+    ) -> Result<(), anyhow::Error> {
         let service = self
             .services
             .get(&service_id)
@@ -144,7 +144,7 @@ impl Project {
         id: Id<'a>,
         state: &super::State<'a>,
         pipeline: common::Pipeline,
-    ) -> Result<(), super::ExecutionError> {
+    ) -> Result<(), anyhow::Error> {
         let worker_context: &Option<worker_lib::context::Context> = state.get()?;
         match id {
             Id::Pipeline(id) => info!("Running pipeline {}", id),
@@ -179,16 +179,16 @@ impl Project {
         Ok(())
     }
 
-    pub async fn run_matched_action<'a>(
+    pub async fn handle_event<'a>(
         &self,
         state: &super::State<'a>,
-        ProjectMatchedActions {
-            reload_config,
-            reload_project,
+        event: &super::Event,
+    ) -> Result<(), anyhow::Error> {
+        let EventActions {
             run_pipelines,
             services,
-        }: ProjectMatchedActions,
-    ) -> Result<(), super::ExecutionError> {
+        } = self.actions.get_matched_actions(event).await?;
+
         let mut pipeline_tasks = Vec::new();
         let mut service_tasks = Vec::new();
 
@@ -213,19 +213,12 @@ impl Project {
 
         Ok(())
     }
-
-    pub async fn get_matched_actions(
-        &self,
-        event: &super::Event,
-    ) -> Result<ProjectMatchedActions, super::ExecutionError> {
-        Ok(self.actions.get_matched_actions(event).await?)
-    }
 }
 
 pub async fn load_params<'a>(
     params_file: PathBuf,
     context: &super::State<'a>,
-) -> Result<Option<HashMap<String, String>>, super::LoadConfigError> {
+) -> Result<Option<HashMap<String, String>>, anyhow::Error> {
     if !params_file.exists() {
         return Ok(None);
     }

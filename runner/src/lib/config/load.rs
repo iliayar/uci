@@ -95,19 +95,19 @@ impl<'a> Into<common::vars::Vars> for State<'a> {
 pub trait LoadRaw {
     type Output;
 
-    async fn load_raw(self, context: &State) -> Result<Self::Output, super::LoadConfigError>;
+    async fn load_raw(self, context: &State) -> Result<Self::Output, anyhow::Error>;
 }
 
 pub trait LoadRawSync {
     type Output;
 
-    fn load_raw(self, context: &State) -> Result<Self::Output, super::LoadConfigError>;
+    fn load_raw(self, context: &State) -> Result<Self::Output, anyhow::Error>;
 }
 
 pub async fn load<'a, T: LoadRaw>(
     path: PathBuf,
     context: &State<'a>,
-) -> Result<<T as LoadRaw>::Output, super::LoadConfigError>
+) -> Result<<T as LoadRaw>::Output, anyhow::Error>
 where
     T: for<'b> serde::Deserialize<'b>,
 {
@@ -118,7 +118,7 @@ where
 pub async fn load_sync<'a, T: LoadRawSync>(
     path: PathBuf,
     context: &State<'a>,
-) -> Result<<T as LoadRawSync>::Output, super::LoadConfigError>
+) -> Result<<T as LoadRawSync>::Output, anyhow::Error>
 where
     T: for<'b> serde::Deserialize<'b>,
 {
@@ -129,7 +129,7 @@ where
 impl<T: LoadRawSync> LoadRawSync for Vec<T> {
     type Output = Vec<<T as LoadRawSync>::Output>;
 
-    fn load_raw(self, context: &State) -> Result<Self::Output, super::LoadConfigError> {
+    fn load_raw(self, context: &State) -> Result<Self::Output, anyhow::Error> {
         self.into_iter().map(|v| Ok(v.load_raw(context)?)).collect()
     }
 }
@@ -137,7 +137,7 @@ impl<T: LoadRawSync> LoadRawSync for Vec<T> {
 impl<T: LoadRawSync> LoadRawSync for HashMap<String, T> {
     type Output = HashMap<String, <T as LoadRawSync>::Output>;
 
-    fn load_raw(self, context: &State) -> Result<Self::Output, super::LoadConfigError> {
+    fn load_raw(self, context: &State) -> Result<Self::Output, anyhow::Error> {
         self.into_iter()
             .map(|(id, value)| {
                 let mut context = context.clone();
@@ -156,7 +156,7 @@ where
 {
     type Output = HashMap<String, <T as LoadRaw>::Output>;
 
-    async fn load_raw(self, context: &State) -> Result<Self::Output, super::LoadConfigError> {
+    async fn load_raw(self, context: &State) -> Result<Self::Output, anyhow::Error> {
         let mut res = HashMap::new();
         for (id, value) in self.into_iter() {
             let mut context = context.clone();
@@ -171,7 +171,7 @@ where
 impl<T: LoadRawSync> LoadRawSync for Option<T> {
     type Output = Option<<T as LoadRawSync>::Output>;
 
-    fn load_raw(self, context: &State) -> Result<Self::Output, super::LoadConfigError> {
+    fn load_raw(self, context: &State) -> Result<Self::Output, anyhow::Error> {
         if let Some(value) = self {
             Ok(Some(value.load_raw(context)?))
         } else {
@@ -185,7 +185,7 @@ pub trait AutoLoadRaw {}
 impl<T: AutoLoadRaw> LoadRawSync for T {
     type Output = T;
 
-    fn load_raw(self, context: &State) -> Result<Self::Output, super::LoadConfigError> {
+    fn load_raw(self, context: &State) -> Result<Self::Output, anyhow::Error> {
         Ok(self)
     }
 }
@@ -194,7 +194,7 @@ impl<T: AutoLoadRaw> LoadRawSync for T {
 impl<T: AutoLoadRaw + Send> LoadRaw for T {
     type Output = T;
 
-    async fn load_raw(self, context: &State) -> Result<Self::Output, super::LoadConfigError> {
+    async fn load_raw(self, context: &State) -> Result<Self::Output, anyhow::Error> {
         Ok(self)
     }
 }

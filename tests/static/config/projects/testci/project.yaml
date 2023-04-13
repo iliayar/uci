@@ -15,7 +15,7 @@ bind9:
       cnames:
         - 'some-service'
 caddy:
-  enabled: false
+  enabled: true
   hostnames:
     'ilyay.space': |
       file_server
@@ -27,6 +27,7 @@ caddy:
   
       route / {
         redir https://conspects.ilyay.space/README.html
+      }
   
       handle_errors {
         @404 expression `{err.status_code} in [404]`

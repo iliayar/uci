@@ -54,12 +54,6 @@ pub enum Commands {
 pub enum ProjectCommands {
     /// List projects
     List {},
-
-    /// Reload project
-    Reload {
-	#[clap(short, long)]
-	project: String,
-    },
 }
 
 #[derive(Subcommand, Debug)]

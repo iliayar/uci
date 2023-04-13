@@ -1,6 +1,6 @@
 use std::{collections::HashMap, path::PathBuf};
 
-use super::LoadConfigError;
+use anyhow::Error;
 
 #[derive(Debug, Default, Clone)]
 pub struct Tokens {
@@ -98,7 +98,7 @@ mod raw {
         fn load_raw(
             self,
             context: &config::State,
-        ) -> Result<Self::Output, config::LoadConfigError> {
+        ) -> Result<Self::Output, anyhow::Error> {
             let mut result = super::Permissions::default();
 
             for perm in self.into_iter() {
@@ -125,7 +125,7 @@ mod raw {
         fn load_raw(
             self,
             context: &config::State,
-        ) -> Result<Self::Output, config::LoadConfigError> {
+        ) -> Result<Self::Output, anyhow::Error> {
             let mut anon: Option<super::Permissions> = None;
             let mut tokens = HashMap::new();
 

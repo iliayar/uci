@@ -1,6 +1,6 @@
 use crate::lib::{
     config::{self, ActionEvent, ActionType},
-    filters::{with_call_context, CallContext, ContextPtr, InternalServerError, Unauthorized},
+    filters::{with_call_context, ContextPtr, InternalServerError, Unauthorized},
 };
 
 use reqwest::StatusCode;
@@ -17,20 +17,16 @@ pub fn filter<PM: config::ProjectsManager>(
 }
 
 async fn reload_config<PM: config::ProjectsManager>(
-    call_context: CallContext<PM>,
+    call_context: super::CallContext<PM>,
 ) -> Result<impl warp::Reply, warp::Rejection> {
     if !call_context
-        .context
-        .config()
+        .check_permissions(None, ActionType::Write)
         .await
-        .tokens
-        .check_allowed(call_context.token, ActionType::Write)
     {
         return Err(warp::reject::custom(Unauthorized::TokenIsUnauthorized));
     }
 
-    // TODO: Trigger actions
-    match call_context.context.reload_config().await {
+    match call_context.reload_config().await {
         Ok(_) => Ok(warp::reply::with_status(
             warp::reply::json(&common::runner::EmptyResponse {}),
             StatusCode::OK,

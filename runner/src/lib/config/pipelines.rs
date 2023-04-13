@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use super::LoadConfigError;
+use anyhow::Error;
 
 use anyhow::anyhow;
 
@@ -10,7 +10,7 @@ pub struct Pipelines {
 }
 
 impl Pipelines {
-    pub async fn load<'a>(state: &super::State<'a>) -> Result<Pipelines, LoadConfigError> {
+    pub async fn load<'a>(state: &super::State<'a>) -> Result<Pipelines, anyhow::Error> {
         raw::load(state)
             .await
             .map_err(|err| anyhow!("Failed to pipelines: {}", err).into())
@@ -86,12 +86,12 @@ mod raw {
         async fn load_raw(
             self,
             state: &config::State,
-        ) -> Result<Self::Output, config::LoadConfigError> {
+        ) -> Result<Self::Output, anyhow::Error> {
             let mut pipelines: HashMap<String, common::Pipeline> = HashMap::new();
             for (id, PipelineLocation { path }) in self.pipelines.into_iter() {
                 let project_info: &config::ProjectInfo = state.get()?;
                 let pipeline_path = utils::eval_rel_path(state, path, project_info.path.clone())?;
-                let pipeline: Result<common::Pipeline, super::LoadConfigError> =
+                let pipeline: Result<common::Pipeline, anyhow::Error> =
                     config::load_sync::<Pipeline>(pipeline_path.clone(), state)
                         .await
                         .map_err(|err| {
@@ -111,7 +111,7 @@ mod raw {
         fn load_raw(
             self,
             state: &config::State,
-        ) -> Result<Self::Output, config::LoadConfigError> {
+        ) -> Result<Self::Output, anyhow::Error> {
             let links =
                 config::utils::substitute_vars_dict(state, self.links.unwrap_or_default())?;
 
@@ -130,7 +130,7 @@ mod raw {
         fn load_raw(
             self,
             state: &config::State,
-        ) -> Result<Self::Output, config::LoadConfigError> {
+        ) -> Result<Self::Output, anyhow::Error> {
             Ok(common::Job {
                 needs: self.needs.unwrap_or_default(),
                 steps: self.steps.unwrap_or_default().load_raw(state)?,
@@ -144,7 +144,7 @@ mod raw {
         fn load_raw(
             self,
             state: &config::State,
-        ) -> Result<Self::Output, config::LoadConfigError> {
+        ) -> Result<Self::Output, anyhow::Error> {
             match get_type(&self)? {
                 Type::Script => {
                     let networks = config::utils::get_networks_names(
@@ -175,7 +175,7 @@ mod raw {
         }
     }
 
-    fn get_type(step: &Step) -> Result<Type, super::LoadConfigError> {
+    fn get_type(step: &Step) -> Result<Type, anyhow::Error> {
         if let Some(t) = step.t {
             Ok(t)
         } else if let Some(t) = guess_type(step) {
@@ -195,7 +195,7 @@ mod raw {
 
     pub async fn load<'a>(
         state: &config::State<'a>,
-    ) -> Result<super::Pipelines, super::LoadConfigError> {
+    ) -> Result<super::Pipelines, anyhow::Error> {
 	let project_info: &config::ProjectInfo = state.get()?;
         let path = project_info.path.join(super::PIPELINES_CONFIG);
         if !path.exists() {

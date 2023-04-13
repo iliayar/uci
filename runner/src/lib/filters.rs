@@ -5,14 +5,14 @@ use warp::{Filter, Rejection};
 
 use super::{
     config,
-    context::{self, Context, ContextError},
+    context::{self, Context},
     handlers,
 };
 use warp::hyper::StatusCode;
 
 use log::*;
 
-pub type ContextPtr<PM: config::ProjectsManager> = Arc<Context<PM>>;
+pub type ContextPtr<PM> = Arc<Context<PM>>;
 
 pub fn runner<PM: config::ProjectsManager>(
     context: Context<PM>,
@@ -20,7 +20,6 @@ pub fn runner<PM: config::ProjectsManager>(
     let context = Arc::new(context);
     ping()
         .or(handlers::call::filter(context.clone()))
-        .or(handlers::reload_project::filter(context.clone()))
         .or(handlers::reload_config::filter(context.clone()))
         .or(handlers::update_repo::filter(context.clone()))
         .or(handlers::list_projects::filter(context.clone()))
@@ -68,11 +67,11 @@ async fn ws_client_connection(socket: warp::ws::WebSocket, client: context::WsCl
 
 pub fn with_call_context<PM: config::ProjectsManager>(
     context: ContextPtr<PM>,
-) -> impl Filter<Extract = (CallContext<PM>,), Error = warp::Rejection> + Clone {
+) -> impl Filter<Extract = (handlers::CallContext<PM>,), Error = warp::Rejection> + Clone {
     warp::any()
         .and(with_validation())
         .and(with_context(context))
-        .map(CallContext::for_handler)
+        .map(handlers::CallContext::for_handler)
 }
 
 pub fn with_context<PM: config::ProjectsManager>(
@@ -91,6 +90,7 @@ pub enum Unauthorized {
 
 impl warp::reject::Reject for Unauthorized {}
 
+// FIXME: Make one error, meaningfull
 #[derive(Debug)]
 pub enum InternalServerError {
     Error(String),
@@ -162,22 +162,6 @@ pub async fn report_rejection(r: Rejection) -> Result<impl warp::Reply, Infallib
                 }),
                 StatusCode::INTERNAL_SERVER_ERROR,
             ))
-        }
-    }
-}
-
-pub struct CallContext<PM: config::ProjectsManager> {
-    pub token: Option<String>,
-    pub check_permisions: bool,
-    pub context: ContextPtr<PM>,
-}
-
-impl<PM: config::ProjectsManager> CallContext<PM> {
-    fn for_handler(token: Option<String>, context: ContextPtr<PM>) -> CallContext<PM> {
-        CallContext {
-            token,
-            check_permisions: true,
-            context,
         }
     }
 }

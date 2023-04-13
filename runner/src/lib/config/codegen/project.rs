@@ -10,7 +10,7 @@ pub struct GenProject {
 }
 
 impl GenProject {
-    pub async fn gen(&self, path: PathBuf) -> Result<(), config::LoadConfigError> {
+    pub async fn gen(&self, path: PathBuf) -> Result<(), anyhow::Error> {
         self.write_services_config(path.clone()).await?;
         self.write_actions_config(path.clone()).await?;
         self.write_pipelines(path.clone()).await?;
@@ -24,7 +24,7 @@ impl GenProject {
     async fn write_services_config<'a>(
         &self,
         project_root: PathBuf,
-    ) -> Result<(), config::LoadConfigError> {
+    ) -> Result<(), anyhow::Error> {
         let mut services =
             tokio::fs::File::create(project_root.join(config::SERVICES_CONFIG)).await?;
         let mut raw_services = Vec::new();
@@ -71,55 +71,75 @@ services:
     async fn write_actions_config<'a>(
         &self,
         project_root: PathBuf,
-    ) -> Result<(), config::LoadConfigError> {
+    ) -> Result<(), anyhow::Error> {
         let mut actions =
             tokio::fs::File::create(project_root.join(config::ACTIONS_CONFIG)).await?;
-        let mut raw_actions = Vec::new();
+        let mut raw_run_pipelines = Vec::new();
+        let mut raw_services = Vec::new();
+        actions
+            .write_all(
+                r#"
+actions:
+  __restart__:
+    - on: call
+"#
+                .as_bytes(),
+            )
+            .await?;
 
         if self.bind {
-            raw_actions.push(String::from(
-                r#"
-  __autostart_bind9__:
-    - on: config_reload
-      services:
-        microci-bind9-configured: deploy
-
-"#,
-            ))
+            raw_services.push(String::from("microci-bind9-configured: deploy"))
         }
 
         if self.caddy {
-            raw_actions.push(String::from(
-                r#"
-  __reload_caddy__:
-    - on: config_reload
-      run_pipelines:
-        - caddy_reload_pipeline
-
-"#,
-            ))
+            raw_run_pipelines.push(String::from("caddy_reload_pipeline"));
         }
 
-        if raw_actions.is_empty() {
+        if !raw_services.is_empty() {
             actions
                 .write_all(
                     r#"
-actions: {}
+      services:
 "#
                     .as_bytes(),
                 )
                 .await?;
-        } else {
+            for service in raw_services.into_iter() {
+                actions
+                    .write_all(
+                        format!(
+                            r#"
+        {}
+"#,
+                            service
+                        )
+                        .as_bytes(),
+                    )
+                    .await?;
+            }
+        }
+
+        if !raw_run_pipelines.is_empty() {
             actions
                 .write_all(
                     r#"
-actions:
+      run_pipelines:
 "#
                     .as_bytes(),
                 )
                 .await?;
-            for raw_action in raw_actions.into_iter() {
-                actions.write_all(raw_action.as_bytes()).await?;
+            for pipeline in raw_run_pipelines.into_iter() {
+                actions
+                    .write_all(
+                        format!(
+                            r#"
+        - {}
+"#,
+                            pipeline
+                        )
+                        .as_bytes(),
+                    )
+                    .await?;
             }
         }
 
@@ -129,7 +149,7 @@ actions:
     async fn write_pipelines<'a>(
         &self,
         project_root: PathBuf,
-    ) -> Result<(), config::LoadConfigError> {
+    ) -> Result<(), anyhow::Error> {
         let mut pipelines =
             tokio::fs::File::create(project_root.join(config::PIPELINES_CONFIG)).await?;
         let mut raw_pipelines = Vec::new();
@@ -175,7 +195,7 @@ pipelines:
     async fn write_caddy_reload_pipeline<'a>(
         &self,
         project_root: PathBuf,
-    ) -> Result<(), config::LoadConfigError> {
+    ) -> Result<(), anyhow::Error> {
         let mut pipeline =
             tokio::fs::File::create(project_root.join("caddy_reload_pipeline.yaml")).await?;
 

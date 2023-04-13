@@ -7,9 +7,9 @@ use anyhow::anyhow;
 pub fn substitute_vars_dict(
     state: &super::State,
     dict: HashMap<String, String>,
-) -> Result<HashMap<String, String>, super::LoadConfigError> {
+) -> Result<HashMap<String, String>, anyhow::Error> {
     let vars: common::vars::Vars = state.into();
-    let result: Result<_, super::LoadConfigError> = dict
+    let result: Result<_, anyhow::Error> = dict
         .into_iter()
         .map(|(k, v)| Ok((k, vars.eval(&v)?)))
         .collect();
@@ -20,9 +20,9 @@ pub fn substitute_vars_dict(
 pub fn substitute_vars_list(
     state: &super::State,
     list: Vec<String>,
-) -> Result<Vec<String>, super::LoadConfigError> {
+) -> Result<Vec<String>, anyhow::Error> {
     let vars: common::vars::Vars = state.into();
-    let result: Result<_, super::LoadConfigError> =
+    let result: Result<_, anyhow::Error> =
         list.into_iter().map(|v| Ok(vars.eval(&v)?)).collect();
 
     Ok(result?)
@@ -31,7 +31,7 @@ pub fn substitute_vars_list(
 pub fn substitute_vars(
     state: &super::State,
     s: String,
-) -> Result<String, super::LoadConfigError> {
+) -> Result<String, anyhow::Error> {
     let vars: common::vars::Vars = state.into();
     Ok(vars.eval(&s)?)
 }
@@ -39,7 +39,7 @@ pub fn substitute_vars(
 pub fn get_networks_names(
     state: &super::State,
     networks: Vec<String>,
-) -> Result<Vec<String>, super::LoadConfigError> {
+) -> Result<Vec<String>, anyhow::Error> {
     let services: &super::Services = state.get()?;
     let project_info: &super::ProjectInfo = state.get()?;
     networks
@@ -51,10 +51,10 @@ pub fn get_networks_names(
 pub fn get_volumes_names(
     state: &super::State,
     volumes: HashMap<String, String>,
-) -> Result<HashMap<String, String>, super::LoadConfigError> {
+) -> Result<HashMap<String, String>, anyhow::Error> {
     let services: &super::Services = state.get()?;
     let project_info: &super::ProjectInfo = state.get()?;
-    let volumes: Result<HashMap<_, _>, super::LoadConfigError> =
+    let volumes: Result<HashMap<_, _>, anyhow::Error> =
         substitute_vars_dict(state, volumes)?
             .into_iter()
             .map(|(k, v)| Ok((services.get_volume_name(&project_info.id, v)?, k)))
@@ -73,7 +73,7 @@ pub enum Enabled {
 impl super::LoadRawSync for Enabled {
     type Output = bool;
 
-    fn load_raw(self, state: &super::State) -> Result<Self::Output, super::LoadConfigError> {
+    fn load_raw(self, state: &super::State) -> Result<Self::Output, anyhow::Error> {
         match self {
             Enabled::Bool(v) => Ok(v),
             Enabled::String(s) => {
@@ -97,7 +97,7 @@ pub enum AsString {
 impl super::LoadRawSync for AsString {
     type Output = String;
 
-    fn load_raw(self, state: &super::State) -> Result<Self::Output, super::LoadConfigError> {
+    fn load_raw(self, state: &super::State) -> Result<Self::Output, anyhow::Error> {
         match self {
             AsString::Bool(v) => Ok(v.to_string()),
             AsString::String(s) => {

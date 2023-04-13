@@ -1,4 +1,4 @@
-use std::{collections::HashMap, iter::Peekable, str::Chars, path::PathBuf};
+use std::{collections::HashMap, iter::Peekable, path::PathBuf, str::Chars};
 
 use log::*;
 
@@ -329,7 +329,7 @@ impl Vars {
     ) -> Result<Vars, SubstitutionError> {
         let mut nassigned = Vec::new();
         for (path, value) in assignes {
-            nassigned.push((path.clone(), Vars::String(value.to_string())));
+            nassigned.push((path, Vars::String(value.to_string())));
         }
         Vars::from_list(&nassigned)
     }

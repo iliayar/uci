@@ -6,7 +6,7 @@ use std::{
 
 use tokio::io::AsyncWriteExt;
 
-use super::{codegen, LoadConfigError};
+use super::{codegen};
 
 use anyhow::anyhow;
 
@@ -23,7 +23,7 @@ pub struct ZoneBuilder {
 }
 
 impl ZoneBuilder {
-    fn add(&mut self, zone: &Zone) -> Result<(), LoadConfigError> {
+    fn add(&mut self, zone: &Zone) -> Result<(), anyhow::Error> {
         if let Some(ip) = self.ip.as_ref() {
             if ip != &zone.ip {
                 return Err(anyhow!("Zone ip do not match {} != {}", ip, zone.ip).into());
@@ -65,7 +65,7 @@ impl BindBuilder {
         Self { zones }
     }
 
-    pub fn add(&mut self, bind: &Bind) -> Result<(), LoadConfigError> {
+    pub fn add(&mut self, bind: &Bind) -> Result<(), anyhow::Error> {
         for (zone, config) in bind.zones.iter() {
             if let Some(builder) = self.zones.get_mut(zone) {
                 builder.add(config)?;
@@ -104,7 +104,7 @@ pub struct Zone {
 impl Bind {
     pub async fn load<'a>(
         context: &super::State<'a>,
-    ) -> Result<Option<Bind>, LoadConfigError> {
+    ) -> Result<Option<Bind>, anyhow::Error> {
         raw::load(context).await
     }
 }
@@ -147,7 +147,7 @@ mod raw {
         fn load_raw(
             self,
             context: &config::State,
-        ) -> Result<Self::Output, config::LoadConfigError> {
+        ) -> Result<Self::Output, anyhow::Error> {
             Ok(super::Bind {
                 zones: self.zones.load_raw(context)?,
             })
@@ -160,7 +160,7 @@ mod raw {
         fn load_raw(
             self,
             context: &config::State,
-        ) -> Result<Self::Output, config::LoadConfigError> {
+        ) -> Result<Self::Output, anyhow::Error> {
             Ok(super::Zone {
                 ip: self.ip,
                 nameservers: self.nameservers.unwrap_or_default(),
@@ -173,11 +173,11 @@ mod raw {
 
     pub async fn load<'a>(
         context: &config::State<'a>,
-    ) -> Result<Option<super::Bind>, super::LoadConfigError> {
+    ) -> Result<Option<super::Bind>, anyhow::Error> {
         let path: PathBuf = context.get_named("project_config").cloned()?;
 
         if path.exists() {
-            let config: Result<Config, super::LoadConfigError> =
+            let config: Result<Config, anyhow::Error> =
                 config::load_sync::<Config>(path.clone(), context)
                     .await
                     .map_err(|err| {

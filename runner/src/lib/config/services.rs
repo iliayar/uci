@@ -1,6 +1,6 @@
 use std::{collections::HashMap, path::PathBuf};
 
-use super::LoadConfigError;
+use anyhow::Error;
 
 use anyhow::anyhow;
 use log::*;
@@ -44,7 +44,7 @@ struct Build {
 pub const SERVICES_CONFIG: &str = "services.yaml";
 
 impl Services {
-    pub async fn load<'a>(context: &super::State<'a>) -> Result<Services, LoadConfigError> {
+    pub async fn load<'a>(context: &super::State<'a>) -> Result<Services, anyhow::Error> {
         raw::load(context).await
     }
 
@@ -56,7 +56,7 @@ impl Services {
         &self,
         project_id: S,
         network: String,
-    ) -> Result<String, super::LoadConfigError> {
+    ) -> Result<String, anyhow::Error> {
         let global = self
             .networks
             .get(&network)
@@ -69,7 +69,7 @@ impl Services {
         &self,
         project_id: S,
         volume: String,
-    ) -> Result<String, super::LoadConfigError> {
+    ) -> Result<String, anyhow::Error> {
         if let Some(v) = self.volumes.get(&volume) {
             Ok(get_resource_name(project_id.as_ref(), volume, v.global))
         } else {
@@ -210,14 +210,14 @@ mod raw {
     impl config::LoadRawSync for Services {
         type Output = super::Services;
 
-        fn load_raw(self, state: &config::State) -> Result<Self::Output, config::LoadConfigError> {
+        fn load_raw(self, state: &config::State) -> Result<Self::Output, anyhow::Error> {
             let mut res = super::Services {
                 networks: self.networks.load_raw(state)?,
                 volumes: self.volumes.load_raw(state)?,
                 ..Default::default()
             };
 
-            let services: Result<HashMap<_, _>, super::LoadConfigError> = {
+            let services: Result<HashMap<_, _>, anyhow::Error> = {
                 let mut state = state.clone();
                 state.set(&res);
                 self.services
@@ -242,7 +242,7 @@ mod raw {
         fn load_raw(
             self,
             context: &config::State,
-        ) -> Result<Self::Output, config::LoadConfigError> {
+        ) -> Result<Self::Output, anyhow::Error> {
             Ok(super::Network {
                 global: self.global,
             })
@@ -255,7 +255,7 @@ mod raw {
         fn load_raw(
             self,
             context: &config::State,
-        ) -> Result<Self::Output, config::LoadConfigError> {
+        ) -> Result<Self::Output, anyhow::Error> {
             Ok(super::Volume {
                 global: self.global,
             })
@@ -268,7 +268,7 @@ mod raw {
         fn load_raw(
             self,
             context: &config::State,
-        ) -> Result<Self::Output, config::LoadConfigError> {
+        ) -> Result<Self::Output, anyhow::Error> {
             let build = if let Some(build) = self.build {
                 Some(build.load_raw(context)?)
             } else {
@@ -294,7 +294,7 @@ mod raw {
 
     fn parse_port_mapping(
         ports: Vec<String>,
-    ) -> Result<Vec<common::PortMapping>, config::LoadConfigError> {
+    ) -> Result<Vec<common::PortMapping>, anyhow::Error> {
         let res: Result<Vec<_>, anyhow::Error> = ports
             .into_iter()
             .map(|port| {
@@ -336,7 +336,7 @@ mod raw {
         context: &config::State,
         image: Option<String>,
         global: bool,
-    ) -> Result<String, config::LoadConfigError> {
+    ) -> Result<String, anyhow::Error> {
         let service_id = context.get_named("service_id").cloned()?;
         if let Some(image) = image {
             // Will pull specified image
@@ -354,7 +354,7 @@ mod raw {
     fn get_container_name(
         context: &config::State,
         global: bool,
-    ) -> Result<String, super::LoadConfigError> {
+    ) -> Result<String, anyhow::Error> {
         let service_id = context.get_named("service_id").cloned()?;
         if global {
             // Container name is service name
@@ -372,7 +372,7 @@ mod raw {
         fn load_raw(
             self,
             context: &config::State,
-        ) -> Result<Self::Output, config::LoadConfigError> {
+        ) -> Result<Self::Output, anyhow::Error> {
             let path = utils::try_expand_home(config::utils::substitute_vars(context, self.path)?);
             Ok(super::Build {
                 path,
@@ -383,7 +383,7 @@ mod raw {
 
     pub async fn load<'a>(
         context: &config::State<'a>,
-    ) -> Result<super::Services, super::LoadConfigError> {
+    ) -> Result<super::Services, anyhow::Error> {
         let project_info: &config::ProjectInfo = context.get()?;
         let path = project_info.path.join(super::SERVICES_CONFIG);
         if !path.exists() {

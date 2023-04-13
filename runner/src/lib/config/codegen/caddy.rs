@@ -13,15 +13,17 @@ impl GenCaddy {
         self.hostnames.is_empty()
     }
 
-    pub async fn gen(self, path: PathBuf) -> Result<(), super::CodegenError> {
+    pub async fn gen(self, path: PathBuf) -> Result<(), anyhow::Error> {
         let mut caddyfile = tokio::fs::File::create(path.join("Caddyfile")).await?;
         for (hostname, config) in self.hostnames.into_iter() {
             caddyfile
                 .write_all(
                     format!(
-                        "{} {{
+                        r#"
+{} {{
 {}
-}}",
+}}
+"#,
                         hostname, config
                     )
                     .as_bytes(),

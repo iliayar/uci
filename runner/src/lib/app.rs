@@ -41,23 +41,23 @@ pub struct App {
     env: String,
 }
 
-#[derive(Error, Debug)]
-pub enum RunnerError {
-    #[error("Failed to load config: {0}")]
-    ConfigLoadError(#[from] config::LoadConfigError),
+// #[derive(Error, Debug)]
+// pub enum RunnerError {
+//     #[error("Failed to load config: {0}")]
+//     ConfigLoadError(#[from] anyhow::Error),
 
-    #[error("Failed to create context: {0}")]
-    ContextError(#[from] context::ContextError),
+//     #[error("Failed to create context: {0}")]
+//     ContextError(#[from] context::ContextError),
 
-    #[error("Failed to init docker: {0}")]
-    DockerError(#[from] worker_lib::docker::DockerError),
+//     #[error("Failed to init docker: {0}")]
+//     DockerError(#[from] worker_lib::docker::DockerError),
 
-    #[error(transparent)]
-    Other(#[from] anyhow::Error),
-}
+//     #[error(transparent)]
+//     Other(#[from] anyhow::Error),
+// }
 
 impl App {
-    pub async fn init() -> Result<App, RunnerError> {
+    pub async fn init() -> Result<App, anyhow::Error> {
         pretty_env_logger::init_timed();
 
         let args = Args::parse();
@@ -80,7 +80,7 @@ impl App {
         }
     }
 
-    async fn run_impl(self) -> Result<(), RunnerError> {
+    async fn run_impl(self) -> Result<(), anyhow::Error> {
         let worker_context = if self.worker {
             let docker = worker_lib::docker::Docker::init()?;
             Some(worker_lib::context::Context::new(docker))
@@ -101,19 +101,7 @@ impl App {
         } else {
             unimplemented!()
         };
-	context.init().await?;
-
-        // let call_context = super::filters::CallContext {
-        //     token: None,
-        //     check_permisions: false,
-        //     worker_context: worker_context.clone(),
-        //     store: context_store.clone(),
-        //     ws: None,
-        // };
-        // tokio::spawn(super::handlers::trigger_projects_impl(
-        //     call_context,
-        //     super::config::ActionEvent::ConfigReloaded,
-        // ));
+        context.init().await?;
 
         let api = filters::runner(context);
         let routes = api.with(warp::log("runner"));

@@ -22,7 +22,7 @@ impl GenBind {
         self.zones.is_empty()
     }
 
-    pub async fn gen(&self, path: PathBuf) -> Result<(), super::CodegenError> {
+    pub async fn gen(&self, path: PathBuf) -> Result<(), anyhow::Error> {
         let mut dockerfile = tokio::fs::File::create(path.join("Dockerfile")).await?;
         dockerfile
             .write_all(self.get_dockerfile()?.as_bytes())
@@ -54,7 +54,7 @@ impl GenBind {
         Ok(())
     }
 
-    fn get_dockerfile(&self) -> Result<String, super::CodegenError> {
+    fn get_dockerfile(&self) -> Result<String, anyhow::Error> {
         Ok(format!(
             r#"
 FROM ubuntu/bind9:latest
@@ -66,7 +66,7 @@ COPY ./db.* /etc/bind/
         ))
     }
 
-    fn get_named_conf_options(&self) -> Result<String, super::CodegenError> {
+    fn get_named_conf_options(&self) -> Result<String, anyhow::Error> {
         Ok(format!(
             r#"
 options {{
@@ -102,7 +102,7 @@ options {{
         ))
     }
 
-    fn get_named_conf_local(&self) -> Result<String, super::CodegenError> {
+    fn get_named_conf_local(&self) -> Result<String, anyhow::Error> {
         let mut zones = String::new();
         for (zone, _) in self.zones.iter() {
             zones.push_str(&self.get_named_conf_local_zone(zone)?);
@@ -122,7 +122,7 @@ options {{
         ))
     }
 
-    fn get_named_conf_local_zone(&self, zone: &str) -> Result<String, super::CodegenError> {
+    fn get_named_conf_local_zone(&self, zone: &str) -> Result<String, anyhow::Error> {
         Ok(format!(
             r#"
 zone "{zone}" {{
@@ -140,7 +140,7 @@ impl GenZone {
         &self,
         nameserver: &str,
         zone: &str,
-    ) -> Result<String, super::CodegenError> {
+    ) -> Result<String, anyhow::Error> {
         Ok(format!(
             r#"
 @         IN    NS      {nameserver}.{zone}.
@@ -150,7 +150,7 @@ impl GenZone {
         ))
     }
 
-    fn get_db_zone_a(&self, nameserver: &str, ip: &str) -> Result<String, super::CodegenError> {
+    fn get_db_zone_a(&self, nameserver: &str, ip: &str) -> Result<String, anyhow::Error> {
         Ok(format!(
             r#"
 {nameserver}       IN    A       {ip}
@@ -160,11 +160,7 @@ impl GenZone {
         ))
     }
 
-    fn get_db_zone_cname(
-        &self,
-        subdomain: &str,
-        zone: &str,
-    ) -> Result<String, super::CodegenError> {
+    fn get_db_zone_cname(&self, subdomain: &str, zone: &str) -> Result<String, anyhow::Error> {
         Ok(format!(
             r#"
 {subdomain}.{zone}.       IN    CNAME       {zone}.
@@ -174,7 +170,7 @@ impl GenZone {
         ))
     }
 
-    fn get_db_zone(&self, zone: &str) -> Result<String, super::CodegenError> {
+    fn get_db_zone(&self, zone: &str) -> Result<String, anyhow::Error> {
         let mut records = String::new();
         for (nameserver, ip) in self.nameservers.iter() {
             records.push_str(&self.get_db_zone_nameserver(nameserver, zone)?);

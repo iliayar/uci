@@ -6,7 +6,7 @@ use std::{
 
 use tokio::io::AsyncWriteExt;
 
-use super::LoadConfigError;
+use anyhow::Error;
 
 use anyhow::anyhow;
 
@@ -16,7 +16,7 @@ pub struct CaddyBuilder {
 }
 
 impl CaddyBuilder {
-    pub fn add(&mut self, other: &Caddy) -> Result<(), LoadConfigError> {
+    pub fn add(&mut self, other: &Caddy) -> Result<(), anyhow::Error> {
         for (hostname, config) in other.hostnames.iter() {
             if let Some(current_config) = self.hostnames.get_mut(hostname) {
                 current_config.push_str(config);
@@ -43,7 +43,7 @@ pub struct Caddy {
 impl Caddy {
     pub async fn load<'a>(
         context: &super::State<'a>,
-    ) -> Result<Option<Caddy>, LoadConfigError> {
+    ) -> Result<Option<Caddy>, anyhow::Error> {
         raw::load(context).await
     }
 }
@@ -78,9 +78,9 @@ mod raw {
         fn load_raw(
             self,
             context: &config::State,
-        ) -> Result<Self::Output, config::LoadConfigError> {
+        ) -> Result<Self::Output, anyhow::Error> {
             let vars: common::vars::Vars = context.into();
-            let hostnames: Result<HashMap<_, _>, config::LoadConfigError> = self
+            let hostnames: Result<HashMap<_, _>, anyhow::Error> = self
                 .hostnames
                 .into_iter()
                 .map(|(hostname, config)| Ok((hostname, vars.eval(&config)?)))
@@ -95,10 +95,10 @@ mod raw {
 
     pub async fn load<'a>(
         context: &config::State<'a>,
-    ) -> Result<Option<super::Caddy>, super::LoadConfigError> {
+    ) -> Result<Option<super::Caddy>, anyhow::Error> {
         let path: PathBuf = context.get_named("project_config").cloned()?;
         if path.exists() {
-            let config: Result<Config, super::LoadConfigError> =
+            let config: Result<Config, anyhow::Error> =
                 config::load_sync::<Config>(path.clone(), context)
                     .await
                     .map_err(|err| anyhow!("Failed to load caddy from {:?}: {}", path, err).into());

@@ -6,7 +6,7 @@ pub struct Secrets {
 }
 
 impl Secrets {
-    pub async fn load(path: PathBuf) -> Result<Secrets, super::LoadConfigError> {
+    pub async fn load(path: PathBuf) -> Result<Secrets, anyhow::Error> {
         let content = tokio::fs::read_to_string(path).await?;
         Ok(Secrets {
             secrets: serde_yaml::from_str(&content)?,

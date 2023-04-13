@@ -5,7 +5,7 @@ use std::{
 
 use crate::lib::git;
 
-use super::LoadConfigError;
+use anyhow::Error;
 
 use anyhow::anyhow;
 use log::*;
@@ -33,7 +33,7 @@ impl Repo {
     async fn clone_if_missing<'a>(
         &self,
         state: &super::State<'a>,
-    ) -> Result<(), super::ExecutionError> {
+    ) -> Result<(), anyhow::Error> {
         match self {
             Repo::Regular {
                 source,
@@ -173,7 +173,7 @@ mod raw {
         fn load_raw(
             self,
             context: &config::State,
-        ) -> Result<Self::Output, config::LoadConfigError> {
+        ) -> Result<Self::Output, anyhow::Error> {
             Ok(super::Repos {
                 repos: self.repos.load_raw(context)?,
             })
@@ -186,7 +186,7 @@ mod raw {
         fn load_raw(
             self,
             context: &config::State,
-        ) -> Result<Self::Output, config::LoadConfigError> {
+        ) -> Result<Self::Output, anyhow::Error> {
             let repo_id: String = context.get_named("_id").cloned()?;
             let project_info: &config::ProjectInfo = context.get()?;
             let service_config: &config::ServiceConfig = context.get()?;

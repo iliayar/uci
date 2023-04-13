@@ -7,8 +7,6 @@ use std::path::PathBuf;
 use anyhow::anyhow;
 use log::*;
 
-use super::LoadConfigError;
-
 #[derive(Debug, Default)]
 pub struct Actions {
     actions: HashMap<String, Vec<Trigger>>,
@@ -24,8 +22,6 @@ pub struct Trigger {
     on: TriggerType,
     run_pipelines: Option<Vec<String>>,
     services: Option<HashMap<String, ServiceAction>>,
-    reload_config: bool,
-    reload_project: bool,
 }
 
 #[derive(Debug)]
@@ -34,50 +30,34 @@ pub enum TriggerType {
         project_id: String,
         trigger_id: String,
     },
-    ProjectReload {
-        project_id: String,
-    },
     ReposUpdated {
-        patterns: HashMap<String, Vec<regex::Regex>>,
+        repo_id: String,
+        patterns: Vec<regex::Regex>,
     },
-    ConfigReload,
 }
 
 pub enum Event {
-    ProjectReloaded {
-        project_id: String,
-    },
     Call {
         project_id: String,
         trigger_id: String,
     },
     RepoUpdate {
-        diffs: super::ReposDiffs,
+        repo_id: String,
+        diffs: git::ChangedFiles,
     },
-    ConfigReload,
 }
 
 pub const ACTIONS_CONFIG: &str = "actions.yaml";
 
 impl Actions {
-    pub async fn load<'a>(context: &super::State<'a>) -> Result<Actions, LoadConfigError> {
+    pub async fn load<'a>(context: &super::State<'a>) -> Result<Actions, anyhow::Error> {
         raw::load(context).await
     }
 
     pub async fn get_matched_actions(
         &self,
         event: &Event,
-    ) -> Result<super::ProjectMatchedActions, super::ExecutionError> {
-        let reload_config = self
-            .get_actions(event, &|trigger| Some(trigger.reload_config))
-            .await?
-            .into_iter()
-            .any(|v| v);
-        let reload_project = self
-            .get_actions(event, &|trigger| Some(trigger.reload_project))
-            .await?
-            .into_iter()
-            .any(|v| v);
+    ) -> Result<super::EventActions, anyhow::Error> {
         let run_pipelines: HashSet<String> = self
             .get_actions(event, &|trigger| trigger.run_pipelines.clone())
             .await?
@@ -92,9 +72,7 @@ impl Actions {
             .map(|m| m.into_iter())
             .flatten()
             .collect();
-        Ok(super::ProjectMatchedActions {
-            reload_config,
-            reload_project,
+        Ok(super::EventActions {
             run_pipelines,
             services,
         })
@@ -104,7 +82,7 @@ impl Actions {
         &self,
         event: &Event,
         f: &impl Fn(&super::Trigger) -> Option<T>,
-    ) -> Result<Vec<T>, super::ExecutionError> {
+    ) -> Result<Vec<T>, anyhow::Error> {
         let mut actions = Vec::new();
         for (action_id, triggers) in self.actions.iter() {
             for (i, case) in triggers.iter().enumerate() {
@@ -133,17 +111,16 @@ impl TriggerType {
                 } => project_id == event_project_id && trigger_id == event_trigger_id,
                 _ => false,
             },
-            TriggerType::ProjectReload { project_id } => match event {
-                Event::ProjectReloaded {
-                    project_id: event_project_id,
-                } => project_id == event_project_id,
-                _ => false,
-            },
-            TriggerType::ReposUpdated { patterns } => match event {
-                Event::RepoUpdate { diffs } => {
-                    for (repo_id, patterns) in patterns.iter() {
-                        if let Some(repo_diffs) = diffs.get(repo_id) {
-                            for diff in repo_diffs.iter() {
+            TriggerType::ReposUpdated { repo_id, patterns } => match event {
+                Event::RepoUpdate {
+                    repo_id: event_repo_id,
+                    diffs,
+                } => {
+                    if repo_id != event_repo_id {
+                        return false;
+                    } else {
+                        for pattern in patterns.iter() {
+                            for diff in diffs.iter() {
                                 for pattern in patterns.iter() {
                                     if pattern.is_match(diff) {
                                         return true;
@@ -154,10 +131,6 @@ impl TriggerType {
                     }
                     return false;
                 }
-                _ => false,
-            },
-            TriggerType::ConfigReload => match event {
-                Event::ConfigReload => true,
                 _ => false,
             },
         }
@@ -185,14 +158,8 @@ mod raw {
         #[serde(rename = "call")]
         Call,
 
-        #[serde(rename = "project_reload")]
-        ProjectReload,
-
         #[serde(rename = "changed")]
         FileChanged,
-
-        #[serde(rename = "config_reload")]
-        ConfigReload,
     }
 
     #[derive(Deserialize, Serialize)]
@@ -209,18 +176,14 @@ mod raw {
         on: TriggerType,
         run_pipelines: Option<Vec<String>>,
         services: Option<HashMap<String, ServiceAction>>,
-        reload_config: Option<serde_yaml::Value>,
-        reload_project: Option<serde_yaml::Value>,
-        changes: Option<HashMap<String, Vec<String>>>,
+        repo_id: Option<String>,
+        changes: Option<Vec<String>>,
     }
 
     impl config::LoadRawSync for Actions {
         type Output = super::Actions;
 
-        fn load_raw(
-            self,
-            context: &config::State,
-        ) -> Result<Self::Output, config::LoadConfigError> {
+        fn load_raw(self, context: &config::State) -> Result<Self::Output, anyhow::Error> {
             Ok(super::Actions {
                 actions: self.actions.load_raw(context)?,
             })
@@ -230,23 +193,7 @@ mod raw {
     impl config::LoadRawSync for Trigger {
         type Output = super::Trigger;
 
-        fn load_raw(self, state: &config::State) -> Result<Self::Output, config::LoadConfigError> {
-            if let TriggerType::ProjectReload = self.on {
-                if self.reload_config.is_some() {
-                    return Err(anyhow!(
-                        "Trigger on project_reload is disallowed with reload_config action"
-                    )
-                    .into());
-                }
-
-                if self.reload_project.is_some() {
-                    return Err(anyhow!(
-                        "Trigger on project_reload is disallowed with reload_project action"
-                    )
-                    .into());
-                }
-            }
-
+        fn load_raw(self, state: &config::State) -> Result<Self::Output, anyhow::Error> {
             let project_info: &config::ProjectInfo = state.get()?;
             let project_id = project_info.id.clone();
             let trigger_id: String = state.get_named("_id").cloned()?;
@@ -256,30 +203,26 @@ mod raw {
                     project_id: project_id.clone(),
                     trigger_id: trigger_id.clone(),
                 },
-                TriggerType::ProjectReload => super::TriggerType::ProjectReload {
-                    project_id: project_id.clone(),
-                },
                 TriggerType::FileChanged => {
-                    let changes: Result<HashMap<_, _>, super::LoadConfigError> = self
+                    let changes: Result<Vec<_>, anyhow::Error> = self
                         .changes
-                        .ok_or(anyhow!("changes field required for on: changed"))?
+                        .ok_or(anyhow!("'changes' field required for on: changed"))?
                         .into_iter()
-                        .map(|(r, ps)| {
-                            let nps: Result<Vec<_>, super::LoadConfigError> =
-                                ps.into_iter().map(|p| Ok(regex::Regex::new(&p)?)).collect();
-                            Ok((r, nps?))
-                        })
+                        .map(|pattern| Ok(regex::Regex::new(&pattern)?))
                         .collect();
-                    super::TriggerType::ReposUpdated { patterns: changes? }
+                    let repo_id = self
+                        .repo_id
+                        .ok_or(anyhow!("'repo_id' fieled required for on: changed"))?;
+                    super::TriggerType::ReposUpdated {
+                        repo_id,
+                        patterns: changes?,
+                    }
                 }
-                TriggerType::ConfigReload => super::TriggerType::ConfigReload,
             };
 
             Ok(super::Trigger {
                 run_pipelines: self.run_pipelines,
                 services: self.services.load_raw(state)?,
-                reload_config: self.reload_config.is_some(),
-                reload_project: self.reload_project.is_some(),
                 on,
             })
         }
@@ -288,16 +231,14 @@ mod raw {
     impl config::LoadRawSync for ServiceAction {
         type Output = super::ServiceAction;
 
-        fn load_raw(self, state: &config::State) -> Result<Self::Output, config::LoadConfigError> {
+        fn load_raw(self, state: &config::State) -> Result<Self::Output, anyhow::Error> {
             Ok(match self {
                 ServiceAction::Deploy => super::ServiceAction::Deploy,
             })
         }
     }
 
-    pub async fn load<'a>(
-        state: &config::State<'a>,
-    ) -> Result<super::Actions, super::LoadConfigError> {
+    pub async fn load<'a>(state: &config::State<'a>) -> Result<super::Actions, anyhow::Error> {
         let projects_info: &config::ProjectInfo = state.get()?;
         let path = projects_info.path.join(super::ACTIONS_CONFIG);
         if !path.exists() {

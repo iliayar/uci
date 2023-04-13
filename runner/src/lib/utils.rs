@@ -44,7 +44,7 @@ pub fn eval_rel_path<S: AsRef<str>>(
     context: &super::config::State,
     path: S,
     dirpath: PathBuf,
-) -> Result<PathBuf, super::config::LoadConfigError> {
+) -> Result<PathBuf, anyhow::Error> {
     let vars: common::vars::Vars = context.into();
     let path = vars.eval(path.as_ref())?;
 
@@ -58,7 +58,7 @@ pub fn eval_rel_path<S: AsRef<str>>(
 pub fn eval_abs_path<S: AsRef<str>>(
     context: &super::config::State,
     path: S,
-) -> Result<PathBuf, super::config::LoadConfigError> {
+) -> Result<PathBuf, anyhow::Error> {
     let vars: common::vars::Vars = context.into();
     let res_path = vars.eval(path.as_ref())?;
     let res_path = try_expand_home(res_path);

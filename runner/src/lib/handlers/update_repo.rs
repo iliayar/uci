@@ -1,6 +1,6 @@
 use crate::lib::{
     config::{self, ActionEvent, ActionType},
-    filters::{with_call_context, CallContext, ContextPtr},
+    filters::{with_call_context, ContextPtr, InternalServerError, Unauthorized},
 };
 
 use reqwest::StatusCode;
@@ -19,18 +19,24 @@ pub fn filter<PM: config::ProjectsManager>(
 }
 
 async fn update_repo<PM: config::ProjectsManager>(
-    call_context: CallContext<PM>,
+    call_context: super::CallContext<PM>,
     project_id: String,
-    repo: String,
+    repo_id: String,
 ) -> Result<impl warp::Reply, warp::Rejection> {
-    info!("Running repo {}", repo);
-    super::trigger_projects_impl(
-        call_context,
-        ActionEvent::UpdateRepos {
-            project_id,
-            repos: vec![repo],
-        },
-    )
-    .await;
-    Ok(StatusCode::OK)
+    if !call_context
+        .check_permissions(Some(&project_id), config::ActionType::Write)
+        .await
+    {
+        return Err(warp::reject::custom(Unauthorized::TokenIsUnauthorized));
+    }
+    info!("Updating repo {}", repo_id);
+    match call_context.update_repo(&project_id, &repo_id).await {
+        Ok(_) => Ok(warp::reply::with_status(
+            warp::reply::json(&common::runner::EmptyResponse {}),
+            StatusCode::OK,
+        )),
+        Err(err) => Err(warp::reject::custom(InternalServerError::Error(
+            err.to_string(),
+        ))),
+    }
 }

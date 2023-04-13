@@ -1,10 +1,7 @@
-mod utils;
-
 pub mod call;
+mod call_context;
 pub mod list_projects;
 pub mod reload_config;
-pub mod reload_project;
 pub mod update_repo;
 
-use utils::*;
-pub use utils::trigger_projects_impl;
+pub use call_context::*;

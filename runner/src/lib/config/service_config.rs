@@ -1,6 +1,6 @@
 use std::{collections::HashMap, path::PathBuf, sync::Arc};
 
-use super::LoadConfigError;
+use anyhow::Error;
 
 #[derive(Debug, Default)]
 pub struct ServiceConfig {
@@ -29,11 +29,11 @@ pub enum ActionEvent {
 }
 
 impl ServiceConfig {
-    pub async fn load<'a>(state: &super::State<'a>) -> Result<ServiceConfig, LoadConfigError> {
+    pub async fn load<'a>(state: &super::State<'a>) -> Result<ServiceConfig, anyhow::Error> {
         raw::load(state).await
     }
 
-    pub fn check_allowed<S: AsRef<str>, PS: AsRef<str>>(
+    pub fn check_allowed<S: AsRef<str>>(
         &self,
         token: Option<S>,
         action: super::ActionType,
@@ -85,7 +85,7 @@ mod raw {
         async fn load_raw(
             self,
             state: &config::State,
-        ) -> Result<Self::Output, config::LoadConfigError> {
+        ) -> Result<Self::Output, anyhow::Error> {
             let service_config: PathBuf = state.get_named("service_config").cloned()?;
             let data_dir =
                 utils::try_expand_home(self.data_dir.unwrap_or(DEFAULT_DATA_DIR.to_string()));
@@ -128,7 +128,7 @@ mod raw {
 
     pub async fn load<'a>(
         state: &config::State<'a>,
-    ) -> Result<super::ServiceConfig, super::LoadConfigError> {
+    ) -> Result<super::ServiceConfig, anyhow::Error> {
         let service_config: PathBuf = state.get_named("service_config").cloned()?;
         config::load::<ServiceConfig>(service_config.clone(), state)
             .await

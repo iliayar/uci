@@ -2,7 +2,7 @@ use std::collections::{HashMap, HashSet};
 
 use std::path::PathBuf;
 
-use super::{LoadConfigError, State};
+use super::State;
 
 use log::*;
 
@@ -76,7 +76,7 @@ impl StaticProjects {
     pub async fn load_projects_info<'a>(
         &self,
         state: &State<'a>,
-    ) -> Result<HashMap<String, super::ProjectInfo>, super::LoadConfigError> {
+    ) -> Result<HashMap<String, super::ProjectInfo>, anyhow::Error> {
         let mut state = state.clone();
         state.set(self);
         let res = raw::load(&state).await?;
@@ -116,10 +116,7 @@ mod raw {
     impl config::LoadRaw for Projects {
         type Output = super::HashMap<String, config::ProjectInfo>;
 
-        async fn load_raw(
-            self,
-            context: &config::State,
-        ) -> Result<Self::Output, config::LoadConfigError> {
+        async fn load_raw(self, context: &config::State) -> Result<Self::Output, anyhow::Error> {
             self.projects.load_raw(context).await
         }
     }
@@ -128,10 +125,7 @@ mod raw {
     impl config::LoadRaw for Project {
         type Output = config::ProjectInfo;
 
-        async fn load_raw(
-            self,
-            state: &config::State,
-        ) -> Result<Self::Output, config::LoadConfigError> {
+        async fn load_raw(self, state: &config::State) -> Result<Self::Output, anyhow::Error> {
             let service_config: &config::ServiceConfig = state.get()?;
             let project_id: String = state.get_named("_id").cloned()?;
 
@@ -188,7 +182,7 @@ mod raw {
 
     pub async fn load<'a>(
         state: &config::State<'a>,
-    ) -> Result<HashMap<String, config::ProjectInfo>, super::LoadConfigError> {
+    ) -> Result<HashMap<String, config::ProjectInfo>, anyhow::Error> {
         let static_projects: &config::StaticProjects = state.get()?;
         let path: PathBuf = static_projects.projects_config.clone();
         config::load::<Projects>(path.clone(), &state)

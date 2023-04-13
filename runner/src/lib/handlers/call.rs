@@ -1,6 +1,6 @@
 use crate::lib::{
     config::{self, ActionEvent, ActionType},
-    filters::{with_call_context, CallContext, ContextPtr, InternalServerError, Unauthorized},
+    filters::{with_call_context, ContextPtr, InternalServerError, Unauthorized},
 };
 
 use reqwest::StatusCode;
@@ -19,34 +19,25 @@ pub fn filter<PM: config::ProjectsManager>(
 }
 
 async fn call<PM: config::ProjectsManager>(
-    call_context: CallContext<PM>,
+    call_context: super::CallContext<PM>,
     project_id: String,
     trigger_id: String,
 ) -> Result<impl warp::Reply, warp::Rejection> {
-    info!("Running trigger {} for project {}", trigger_id, project_id);
-
-    match call_context.context.get_project_info(&project_id).await {
-        Ok(project) => {
-            if !project.check_allowed_token(call_context.token, ActionType::Execute) {
-                return Err(warp::reject::custom(Unauthorized::TokenIsUnauthorized));
-            }
-        }
-        Err(err) => {
-            return Err(warp::reject::custom(InternalServerError::Error(
-                err.to_string(),
-            )));
-        }
+    if !call_context
+        .check_permissions(Some(&project_id), config::ActionType::Execute)
+        .await
+    {
+        return Err(warp::reject::custom(Unauthorized::TokenIsUnauthorized));
     }
 
-    // TODO: Trigger project
-    // super::trigger_projects_impl(
-    //     call_context,
-    //     ActionEvent::DirectCall {
-    //         project_id: project_id.clone(),
-    //         trigger_id: trigger_id.clone(),
-    //     },
-    // )
-    // .await;
-
-    Ok(StatusCode::OK)
+    info!("Running trigger {} for project {}", trigger_id, project_id);
+    match call_context.call_trigger(&project_id, &trigger_id).await {
+        Ok(_) => Ok(warp::reply::with_status(
+            warp::reply::json(&common::runner::EmptyResponse {}),
+            StatusCode::OK,
+        )),
+        Err(err) => Err(warp::reject::custom(InternalServerError::Error(
+            err.to_string(),
+        ))),
+    }
 }

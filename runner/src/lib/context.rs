@@ -4,7 +4,6 @@ use super::{config, git};
 
 use futures::Future;
 use log::*;
-use thiserror::Error;
 use tokio::sync::{mpsc, Mutex};
 
 pub struct Context<PM: config::ProjectsManager> {
@@ -42,28 +41,13 @@ impl WsOutput {
     }
 }
 
-#[derive(Debug, Error)]
-pub enum ContextError {
-    #[error("Failed to load config: {0}")]
-    ConfigLoadError(#[from] config::LoadConfigError),
-
-    #[error("Failed to execute config: {0}")]
-    ConfigExecutionError(#[from] config::ExecutionError),
-
-    #[error("Git error: {0}")]
-    GitError(#[from] git::GitError),
-
-    #[error(transparent)]
-    Other(#[from] anyhow::Error),
-}
-
 impl<PM: config::ProjectsManager> Context<PM> {
     pub async fn new(
         projects_store: config::ProjectsStore<PM>,
         worker_context: Option<worker_lib::context::Context>,
         config_path: PathBuf,
         env: String,
-    ) -> Result<Context<PM>, ContextError> {
+    ) -> Result<Context<PM>, anyhow::Error> {
         let config = load_config_impl(config_path.clone(), env.clone()).await?;
         Ok(Context {
             config: Mutex::new(Arc::new(config)),
@@ -85,33 +69,51 @@ impl<PM: config::ProjectsManager> Context<PM> {
         return self.config.lock().await.clone();
     }
 
-    pub async fn reload_config(&self) -> Result<(), ContextError> {
+    pub async fn reload_config(&self) -> Result<(), anyhow::Error> {
         *self.config.lock().await =
             Arc::new(load_config_impl(self.config_path.clone(), self.env.clone()).await?);
         Ok(())
     }
 
-    pub async fn init_projects(&self) -> Result<(), ContextError> {
+    pub async fn init_projects(&self) -> Result<(), anyhow::Error> {
         let mut state = config::State::default();
         let config = self.config.lock().await.clone();
         state.set(config.as_ref());
         state.set_named("env", &self.env);
+        state.set(&self.worker_context);
         self.projects_store.init(&state).await?;
         Ok(())
     }
 
-    pub async fn reload_project(&self, project_id: &str) -> Result<(), ContextError> {
+    pub async fn update_repo(&self, project_id: &str, repo_id: &str) -> Result<(), anyhow::Error> {
         let mut state = config::State::default();
         let config = self.config.lock().await.clone();
         state.set(config.as_ref());
         state.set_named("env", &self.env);
+        state.set(&self.worker_context);
         self.projects_store
-            .reload_project(&state, project_id)
+            .update_repo(&state, project_id, repo_id)
             .await?;
         Ok(())
     }
 
-    pub async fn list_projects(&self) -> Result<Vec<config::ProjectInfo>, ContextError> {
+    pub async fn call_trigger(
+        &self,
+        project_id: &str,
+        trigger_id: &str,
+    ) -> Result<(), anyhow::Error> {
+        let mut state = config::State::default();
+        let config = self.config.lock().await.clone();
+        state.set(config.as_ref());
+        state.set_named("env", &self.env);
+        state.set(&self.worker_context);
+        self.projects_store
+            .call_trigger(&state, project_id, trigger_id)
+            .await?;
+        Ok(())
+    }
+
+    pub async fn list_projects(&self) -> Result<Vec<config::ProjectInfo>, anyhow::Error> {
         let mut state = config::State::default();
         let config = self.config.lock().await.clone();
         state.set(config.as_ref());
@@ -122,7 +124,7 @@ impl<PM: config::ProjectsManager> Context<PM> {
     pub async fn get_project_info(
         &self,
         project_id: &str,
-    ) -> Result<config::ProjectInfo, ContextError> {
+    ) -> Result<config::ProjectInfo, anyhow::Error> {
         let mut state = config::State::default();
         let config = self.config.lock().await.clone();
         state.set(config.as_ref());
@@ -158,7 +160,7 @@ impl<PM: config::ProjectsManager> Context<PM> {
 async fn load_config_impl(
     config_path: PathBuf,
     env: String,
-) -> Result<config::ServiceConfig, ContextError> {
+) -> Result<config::ServiceConfig, anyhow::Error> {
     let mut context = config::State::default();
     context.set_named("service_config", &config_path);
     let config = config::ServiceConfig::load(&context).await?;
