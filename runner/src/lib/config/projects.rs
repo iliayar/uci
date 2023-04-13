@@ -1,9 +1,14 @@
-use std::{collections::HashMap, path::PathBuf, sync::Arc};
+use std::{
+    collections::{HashMap, HashSet},
+    path::PathBuf,
+    sync::Arc,
+};
 
 use tokio::sync::Mutex;
 
-use crate::lib::context::WsOutput;
+use crate::lib::{context::WsOutput, git};
 
+use anyhow::anyhow;
 use log::*;
 
 #[async_trait::async_trait]
@@ -14,7 +19,7 @@ where
     async fn get_project_info<'a>(
         &mut self,
         state: &super::State<'a>,
-        project_id: String,
+        project_id: &str,
     ) -> Result<ProjectInfo, anyhow::Error>;
     async fn list_projects<'a>(
         &mut self,
@@ -48,8 +53,8 @@ impl<PL: ProjectsManager> ProjectsStore<PL> {
     pub async fn get_project_info<'a>(
         &self,
         state: &super::State<'a>,
-        project_id: String,
-    ) -> Result<ProjectInfo, super::ExecutionError> {
+        project_id: &str,
+    ) -> Result<ProjectInfo, anyhow::Error> {
         Ok(self
             .manager
             .lock()
@@ -58,46 +63,28 @@ impl<PL: ProjectsManager> ProjectsStore<PL> {
             .await?)
     }
 
-    pub async fn reload_projects<'a>(&self, state: &super::State<'a>) -> Result<(), anyhow::Error> {
+    pub async fn init<'a>(&self, state: &super::State<'a>) -> Result<(), anyhow::Error> {
         let projects = self.load_enabled_projects(state).await?;
         *self.projects.lock().await = projects;
-        self.add_internal_project(state).await?;
+        self.reload_internal_project(state).await?;
         Ok(())
     }
 
     pub async fn reload_project<'a>(
         &self,
         state: &super::State<'a>,
-        project_id: String,
+        project_id: &str,
     ) -> Result<(), anyhow::Error> {
-        let project = self.load_project(state, project_id.clone()).await?;
+        let project_info = self.get_project_info(state, project_id).await?;
+        project_info.clone_missing_repos(state).await?;
+        let project = project_info.load(state).await?;
+        debug!("Reloaded project {:#?}", project);
         self.projects
             .lock()
             .await
-            .insert(project_id, Arc::new(project));
-        self.add_internal_project(state).await?;
+            .insert(project_id.to_string(), Arc::new(project));
+        self.reload_internal_project(state).await?;
         Ok(())
-    }
-
-    async fn reload_internal_project<'a>(
-        &self,
-        state: &super::State<'a>,
-    ) -> Result<(), anyhow::Error> {
-        todo!()
-    }
-
-    async fn load_project<'a>(
-        &self,
-        state: &super::State<'a>,
-        project_id: String,
-    ) -> Result<super::Project, anyhow::Error> {
-        let project_info = self
-            .manager
-            .lock()
-            .await
-            .get_project_info(state, project_id)
-            .await?;
-        Ok(project_info.load(state).await?)
     }
 
     async fn load_enabled_projects<'a>(
@@ -105,18 +92,26 @@ impl<PL: ProjectsManager> ProjectsStore<PL> {
         state: &super::State<'a>,
     ) -> Result<Projects, anyhow::Error> {
         let mut res = HashMap::new();
-        for project in self.list_projects(state).await? {
-            if project.enabled {
-                let project = self.load_project(state, project.id).await?;
+        let projects = self.list_projects(state).await?;
+
+        let mut clone_tasks = Vec::new();
+        for project_info in projects.iter() {
+            clone_tasks.push(project_info.clone_missing_repos(state));
+        }
+        futures::future::try_join_all(clone_tasks).await?;
+
+        for project_info in projects.iter() {
+            if project_info.enabled {
+                let project = project_info.load(state).await?;
                 debug!("Loaded project: {:#?}", project);
                 res.insert(project.id.clone(), Arc::new(project));
             }
         }
-        self.add_internal_project(state).await?;
+        self.reload_internal_project(state).await?;
         Ok(res)
     }
 
-    async fn add_internal_project<'a>(
+    async fn reload_internal_project<'a>(
         &self,
         state: &super::State<'a>,
     ) -> Result<(), anyhow::Error> {
@@ -141,20 +136,16 @@ impl<PL: ProjectsManager> ProjectsStore<PL> {
         };
 
         let service_config: &super::ServiceConfig = state.get()?;
-        let data_dir = service_config.data_dir.clone();
+        let internal_data_dir = service_config.internal_path.clone();
         if !gen_caddy.is_empty() {
-            let path = data_dir
-                .join(super::INTERNAL_DATA_DIR)
-                .join(super::CADDY_DATA_DIR);
+            let path = internal_data_dir.join(super::CADDY_DATA_DIR);
             reset_dir(path.clone()).await?;
             info!("Generating caddy in {:?}", path);
             gen_caddy.gen(path).await?;
         }
 
         if !gen_bind.is_empty() {
-            let path = data_dir
-                .join(super::INTERNAL_DATA_DIR)
-                .join(super::BIND9_DATA_DIR);
+            let path = internal_data_dir.join(super::BIND9_DATA_DIR);
             reset_dir(path.clone()).await?;
             info!("Generating bind in {:?}", path);
             gen_bind.gen(path).await?;
@@ -162,9 +153,7 @@ impl<PL: ProjectsManager> ProjectsStore<PL> {
 
         if !gen_project.is_empty() {
             let project_id = String::from("__internal_project__");
-            let project_root = data_dir
-                .join(super::INTERNAL_DATA_DIR)
-                .join(super::INTERNAL_PROJECT_DATA_DIR);
+            let project_root = internal_data_dir.join(super::INTERNAL_PROJECT_DATA_DIR);
             reset_dir(project_root.clone()).await?;
             info!("Generating internal project in {:?}", project_root);
             gen_project.gen(project_root.clone()).await?;
@@ -176,20 +165,69 @@ impl<PL: ProjectsManager> ProjectsStore<PL> {
                 repos: super::Repos::default(),
                 tokens: super::Tokens::default(),
                 secrets: super::Secrets::default(),
-                data_path: data_dir.join(super::INTERNAL_DATA_DIR),
+                data_path: internal_data_dir,
             };
 
+            let project = project_info.load(state).await?;
+            debug!("Loaded internal project {:#?}", project);
             self.projects
                 .lock()
                 .await
-                .insert(project_id, Arc::new(project_info.load(state).await?));
+                .insert(project_id, Arc::new(project));
         }
 
         Ok(())
     }
+
+    pub async fn get_matched(
+        &self,
+        event: &super::Event,
+    ) -> Result<super::MatchedActions, anyhow::Error> {
+        let mut matched = super::MatchedActions::default();
+        for (project_id, project) in self.projects.lock().await.iter() {
+            matched.add_project(project_id, project.get_matched_actions(event).await?);
+        }
+        Ok(matched)
+    }
+
+    pub async fn run_matched<'a>(
+        &self,
+        state: &super::State<'a>,
+        matched: super::MatchedActions,
+    ) -> Result<(), anyhow::Error> {
+        let mut tasks = Vec::new();
+
+        let projects: Vec<Arc<super::Project>> = self
+            .projects
+            .lock()
+            .await
+            .iter()
+            .map(|(k, v)| v)
+            .cloned()
+            .collect();
+
+        for project in projects.iter().cloned() {
+            debug!("Running matched for project {}", project.id);
+            let project_info = self.get_project_info(state, &project.id).await?;
+            if let Some(project_actions) = matched.get_project(&project.id) {
+                if project_info.check_allowed(state, super::ActionType::Execute) {
+                    warn!(
+                        "Not allowed to execute actions on project {}, skiping",
+                        project.id
+                    );
+                    continue;
+                }
+
+                tasks.push(async move { project.run_matched_action(state, project_actions).await });
+            }
+        }
+
+        futures::future::try_join_all(tasks).await?;
+        Ok(())
+    }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct ProjectInfo {
     pub id: String,
     pub enabled: bool,
@@ -204,18 +242,53 @@ impl ProjectInfo {
     pub async fn load<'a>(
         &self,
         state: &super::State<'a>,
-    ) -> Result<super::Project, super::LoadConfigError> {
+    ) -> Result<super::Project, anyhow::Error> {
         let mut state = state.clone();
         state.set(self);
-        super::Project::load(&state).await
+        match super::Project::load(&state).await {
+            Ok(project) => Ok(project),
+            Err(err) => Err(anyhow!("Failed to load project {}: {}", self.id, err)),
+        }
     }
 
-    pub fn check_allowed<S: AsRef<str>>(
+    pub fn check_allowed_token<S: AsRef<str>>(
         &self,
         token: Option<S>,
         action: super::ActionType,
     ) -> bool {
         self.tokens.check_allowed(token, action)
+    }
+
+    pub fn check_allowed<'a>(&self, state: &super::State<'a>, action: super::ActionType) -> bool {
+        if let Ok(token) = state.get_named::<String, _>("token") {
+            self.tokens.check_allowed(Some(token), action)
+        } else {
+            self.tokens.check_allowed::<String>(None, action)
+        }
+    }
+
+    pub async fn clone_missing_repos<'a>(
+        &self,
+        state: &super::State<'a>,
+    ) -> Result<(), anyhow::Error> {
+        self.repos.clone_missing_repos(state).await
+    }
+
+    pub async fn pull_repo<'a>(
+        &self,
+        state: &super::State<'a>,
+        repo_id: &str,
+    ) -> Result<git::ChangedFiles, anyhow::Error> {
+        self.repos.pull_repo(state, repo_id).await
+    }
+}
+
+impl Into<common::vars::Vars> for &ProjectInfo {
+    fn into(self) -> common::vars::Vars {
+        let mut vars = common::vars::Vars::default();
+        vars.assign("repos", (&self.repos).into()).ok();
+        vars.assign("data.path", (&self.data_path).into()).ok();
+        vars
     }
 }
 

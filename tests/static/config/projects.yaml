@@ -1,6 +1,6 @@
 projects:
   testci:
-    path: ${projects_config_dir}/projects/testci
+    path: ${static_projects.config_dir}/projects/testci
     repos:
       test:
         source: ssh://git@gitlab.com:iliayar/testci.git
@@ -10,6 +10,10 @@ projects:
       test-manual:
         manual: true
     tokens:
+      - token: ${config.secrets.admin-token}
+        permissions:
+          - read
+          - write
       - token: HUH
         permissions:
           - read

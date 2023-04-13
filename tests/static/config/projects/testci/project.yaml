@@ -1,5 +1,5 @@
 bind9:
-  enabled: true
+  enabled: false
   zones:
     'ilyay.space':
       ip: 12.34.56.78
@@ -15,11 +15,11 @@ bind9:
       cnames:
         - 'some-service'
 caddy:
-  enabled: true
+  enabled: false
   hostnames:
     'ilyay.space': |
       file_server
-      root * ${repos.test.path}/caddy
+      root * ${project.repos.test.path}/caddy
   
     'conscpects.ilyay.space': |
       file_server

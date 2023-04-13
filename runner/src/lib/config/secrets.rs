@@ -13,3 +13,9 @@ impl Secrets {
         })
     }
 }
+
+impl Into<common::vars::Vars> for &Secrets {
+    fn into(self) -> common::vars::Vars {
+        (&self.secrets).into()
+    }
+}

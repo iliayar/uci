@@ -14,6 +14,7 @@ pub struct Context<PM: config::ProjectsManager> {
     pub projects_store: config::ProjectsStore<PM>,
     pub ws_clients: Mutex<HashMap<String, WsClient>>,
     pub worker_context: Option<worker_lib::context::Context>,
+    pub ws: Option<super::context::WsOutput>,
 }
 
 pub struct WsClient {
@@ -27,8 +28,8 @@ pub struct WsOutput {
 }
 
 impl WsOutput {
-    pub async fn send<T: serde::Serialize>(&self, msg: T) {
-        let content = match serde_json::to_string(&msg) {
+    pub async fn send<T: serde::Serialize, TR: AsRef<T>>(&self, msg: TR) {
+        let content = match serde_json::to_string(msg.as_ref()) {
             Err(err) => {
                 error!("Failed to encode msg for ws: {}", err);
                 return;
@@ -64,18 +65,20 @@ impl<PM: config::ProjectsManager> Context<PM> {
         env: String,
     ) -> Result<Context<PM>, ContextError> {
         let config = load_config_impl(config_path.clone(), env.clone()).await?;
-        let context = Context {
+        Ok(Context {
             config: Mutex::new(Arc::new(config)),
             ws_clients: Mutex::new(HashMap::default()),
+            ws: None,
             worker_context,
             config_path,
             env,
             projects_store,
-        };
+        })
+    }
 
-        context.reload_projects().await?;
-
-        Ok(context)
+    pub async fn init(&self) -> Result<(), anyhow::Error> {
+        self.init_projects().await?;
+        Ok(())
     }
 
     pub async fn config(&self) -> Arc<config::ServiceConfig> {
@@ -88,16 +91,16 @@ impl<PM: config::ProjectsManager> Context<PM> {
         Ok(())
     }
 
-    pub async fn reload_projects(&self) -> Result<(), ContextError> {
+    pub async fn init_projects(&self) -> Result<(), ContextError> {
         let mut state = config::State::default();
         let config = self.config.lock().await.clone();
         state.set(config.as_ref());
         state.set_named("env", &self.env);
-        self.projects_store.reload_projects(&state).await?;
+        self.projects_store.init(&state).await?;
         Ok(())
     }
 
-    pub async fn reload_project(&self, project_id: String) -> Result<(), ContextError> {
+    pub async fn reload_project(&self, project_id: &str) -> Result<(), ContextError> {
         let mut state = config::State::default();
         let config = self.config.lock().await.clone();
         state.set(config.as_ref());
@@ -118,7 +121,7 @@ impl<PM: config::ProjectsManager> Context<PM> {
 
     pub async fn get_project_info(
         &self,
-        project_id: String,
+        project_id: &str,
     ) -> Result<config::ProjectInfo, ContextError> {
         let mut state = config::State::default();
         let config = self.config.lock().await.clone();
@@ -128,6 +131,27 @@ impl<PM: config::ProjectsManager> Context<PM> {
             .projects_store
             .get_project_info(&state, project_id)
             .await?)
+    }
+
+    pub async fn init_ws(&mut self) -> String {
+        let client_id = uuid::Uuid::new_v4().to_string();
+        let (tx, rx) = mpsc::unbounded_channel();
+        let client = WsClient { rx };
+        self.ws_clients
+            .lock()
+            .await
+            .insert(client_id.clone(), client);
+        debug!("New ws client registerd: {}", client_id);
+        let ws = WsOutput { client_id, tx };
+        let client_id = ws.client_id.clone();
+        self.ws = Some(ws);
+        client_id
+    }
+
+    pub async fn finish_ws(&mut self) {
+        if let Some(ws) = self.ws.take() {
+            self.ws_clients.lock().await.remove(&ws.client_id);
+        }
     }
 }
 

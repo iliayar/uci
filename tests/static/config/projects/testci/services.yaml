@@ -1,11 +1,11 @@
 services:
   test-service:
     build:
-      path: ${repos.test.path}/app
+      path: ${project.repos.test.path}/app
     volumes:
       '/test/vol': test-vol
       '/test/vol-global': global-test-vol
-      '/test/repo': ${repos.test.path}
+      '/test/repo': ${project.repos.test.path}
     env:
       TEST_ENV: aboba
     networks:
@@ -20,7 +20,7 @@ services:
 
   ubuntu-nc:
     build:
-      path: ${repos.ubuntu-with-nc.path}
+      path: ${project.repos.ubuntu-with-nc.path}
     command: ["nc", "-l", "-p", "8080"]
     ports:
       - 8080:8080

@@ -65,41 +65,20 @@ impl<'a> Into<common::vars::Vars> for &State<'a> {
         use common::vars::*;
         let mut vars = Vars::default();
 
-        if let Ok(repos) = self.get::<super::Repos>() {
-            vars.assign("repos", repos.into()).ok();
-        }
-
-        if let Ok(projects_config) = self.get_named::<PathBuf, _>("projects_config") {
-            vars.assign(
-                "projects_config",
-                projects_config.to_string_lossy().to_string().into(),
-            )
-            .ok();
-            vars.assign(
-                "projects_config_dir",
-                projects_config
-                    .parent()
-                    .unwrap()
-                    .to_string_lossy()
-                    .to_string()
-                    .into(),
-            )
-            .ok();
+        if let Ok(project_info) = self.get::<super::ProjectInfo>() {
+            vars.assign("project", project_info.into()).ok();
         }
 
         if let Ok(config) = self.get::<super::ServiceConfig>() {
-            if let Ok(project_id) = self.get_named::<String, _>("project_id") {
-                vars.assign(
-                    "project.data.path",
-                    config
-                        .data_path
-                        .join(project_id)
-                        .to_string_lossy()
-                        .to_string()
-                        .into(),
-                )
-                .ok();
-            }
+            vars.assign("config", config.into()).ok();
+        }
+
+        if let Ok(static_projects) = self.get::<super::StaticProjects>() {
+            vars.assign("static_projects", static_projects.into()).ok();
+        }
+
+        if let Ok(project_params) = self.get_named::<HashMap<String, String>, _>("project_params") {
+            vars.assign("params", project_params.into()).ok();
         }
 
         vars
@@ -110,15 +89,6 @@ impl<'a> Into<common::vars::Vars> for State<'a> {
     fn into(self) -> common::vars::Vars {
         (&self).into()
     }
-}
-
-fn getter_impl<'a, T: ?Sized>(
-    binding: Option<&'a T>,
-    name: &str,
-) -> Result<&'a T, super::LoadConfigError> {
-    binding
-        .ok_or(anyhow!("{} is not set in LoadContext", name))
-        .map_err(Into::into)
 }
 
 #[async_trait::async_trait]

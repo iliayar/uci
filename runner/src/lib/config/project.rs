@@ -40,32 +40,42 @@ impl ProjectMatchedActions {
 }
 
 impl Project {
-    pub async fn load<'a>(context: &super::State<'a>) -> Result<Project, super::LoadConfigError> {
-        let mut context = context.clone();
+    pub async fn load<'a>(state: &super::State<'a>) -> Result<Project, anyhow::Error> {
+        let mut state = state.clone();
+        let project_info: &super::ProjectInfo = state.get()?;
 
-        let project_id: String = context.get_named("project_id").cloned()?;
-        let project_root: PathBuf = context.get_named("project_root").cloned()?;
+        let project_id: String = project_info.id.clone();
+        let project_root: PathBuf = project_info.path.clone();
 
-        let params = load_params(project_root.join(PARAMS_CONFIG), &context)
+        let params = load_params(project_root.join(PARAMS_CONFIG), &state)
             .await?
             .unwrap_or_default();
-        // let params_binding = super::binding::Params { value: &params };
-        // context.set(&params_binding);
+        state.set_named("project_params", &params);
 
         let project_config = project_root.join(PROJECT_CONFIG);
-        context.set_named("project_config", &project_config);
+        state.set_named("project_config", &project_config);
 
-        let bind = super::Bind::load(&context).await?;
-        let caddy = super::Caddy::load(&context).await?;
+        let bind = super::Bind::load(&state)
+            .await
+            .map_err(|err| anyhow!("Failed to load bind config: {}", err))?;
+        let caddy = super::Caddy::load(&state)
+            .await
+            .map_err(|err| anyhow!("Failed to load caddy config: {}", err))?;
 
-        let services = super::Services::load(&context).await?;
+        let services = super::Services::load(&state)
+            .await
+            .map_err(|err| anyhow!("Failed to load services: {}", err))?;
 
-        let mut context = context.clone();
-	context.set(&services);
+        let mut context = state.clone();
+        context.set(&services);
 
-        let actions = super::Actions::load(&context).await?;
+        let actions = super::Actions::load(&context)
+            .await
+            .map_err(|err| anyhow!("Failed to load actions: {}", err))?;
 
-        let pipelines = super::Pipelines::load(&context).await?;
+        let pipelines = super::Pipelines::load(&context)
+            .await
+            .map_err(|err| anyhow!("Failed to load pipelines: {}", err))?;
 
         Ok(Project {
             id: project_id,
@@ -144,7 +154,7 @@ impl Project {
 
         if let Some(worker_context) = worker_context.clone() {
             let executor = worker_lib::executor::Executor::new(worker_context)?;
-            executor.run_result(pipeline).await?;
+            tokio::spawn(executor.run_result(pipeline));
         } else {
             let worker_url: Option<String> = state.get_named("worker_url").cloned().ok();
             let worker_url = worker_url.as_ref().ok_or(anyhow!(
@@ -174,9 +184,9 @@ impl Project {
         state: &super::State<'a>,
         ProjectMatchedActions {
             reload_config,
+            reload_project,
             run_pipelines,
             services,
-            reload_project,
         }: ProjectMatchedActions,
     ) -> Result<(), super::ExecutionError> {
         let mut pipeline_tasks = Vec::new();

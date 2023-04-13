@@ -1,33 +1,4 @@
-// use std::{
-//     collections::{HashMap, HashSet},
-//     path::PathBuf,
-//     sync::Arc,
-// };
-
-// use anyhow::anyhow;
-// use log::*;
-
-// use crate::lib::filters::CallContext;
-
 // impl Config {
-//     pub async fn load(
-//         configs_root: PathBuf,
-//         env: String,
-//     ) -> Result<Config, super::LoadConfigError> {
-//         info!("Preloading config");
-
-//         let mut load_context = super::LoadContext::default();
-//         load_context.set_configs_root(&configs_root);
-//         load_context.set_env(&env);
-
-//         let service_config = super::ServiceConfig::load(&load_context).await?;
-//         load_context.set_config(&service_config);
-
-//         Ok(Config {
-//             service_config,
-//             projects: Default::default(),
-//         })
-//     }
     // pub async fn preload(
     //     configs_root: PathBuf,
     //     env: String,
@@ -91,13 +62,5 @@
 //             .await?;
 
 //         Ok(())
-//     }
-
-//     pub async fn reload_project<'a>(
-//         &self,
-//         configs_root: PathBuf,
-//         env: &'a str,
-//     ) -> Result<(), super::LoadConfigError> {
-//         todo!()
 //     }
 // }

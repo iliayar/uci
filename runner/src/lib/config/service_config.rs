@@ -2,7 +2,7 @@ use std::{collections::HashMap, path::PathBuf, sync::Arc};
 
 use super::LoadConfigError;
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct ServiceConfig {
     pub data_dir: PathBuf,
     pub repos_path: PathBuf,
@@ -29,10 +29,8 @@ pub enum ActionEvent {
 }
 
 impl ServiceConfig {
-    pub async fn load<'a>(
-        context: &super::State<'a>,
-    ) -> Result<ServiceConfig, LoadConfigError> {
-        raw::load(context).await
+    pub async fn load<'a>(state: &super::State<'a>) -> Result<ServiceConfig, LoadConfigError> {
+        raw::load(state).await
     }
 
     pub fn check_allowed<S: AsRef<str>, PS: AsRef<str>>(
@@ -41,6 +39,16 @@ impl ServiceConfig {
         action: super::ActionType,
     ) -> bool {
         self.tokens.check_allowed(token, action)
+    }
+}
+
+impl Into<common::vars::Vars> for &ServiceConfig {
+    fn into(self) -> common::vars::Vars {
+        let mut vars = common::vars::Vars::default();
+        vars.assign("internal.path", (&self.internal_path).into())
+            .ok();
+        vars.assign("secrets", (&self.secrets).into()).ok();
+        vars
     }
 }
 
@@ -76,45 +84,53 @@ mod raw {
 
         async fn load_raw(
             self,
-            context: &config::State,
+            state: &config::State,
         ) -> Result<Self::Output, config::LoadConfigError> {
-            let service_config: PathBuf = context.get_named("service_config").cloned()?;
+            let service_config: PathBuf = state.get_named("service_config").cloned()?;
             let data_dir =
                 utils::try_expand_home(self.data_dir.unwrap_or(DEFAULT_DATA_DIR.to_string()));
 
-            let secrets = if let Some(secrets) = self.secrets {
-                let secrets_path = utils::eval_rel_path(&context, secrets, service_config)?;
-                config::Secrets::load(secrets_path).await?
-            } else {
-                config::Secrets::default()
-            };
-
-            let mut context = context.clone();
-            context.set(&secrets);
-
-            let tokens = if let Some(tokens) = self.tokens {
-                tokens.load_raw(&context)?
-            } else {
-                config::Tokens::default()
-            };
-
-            Ok(super::ServiceConfig {
+            let mut res = super::ServiceConfig {
+                data_dir: data_dir.clone(),
                 data_path: data_dir.join(DEFAULT_DATA_PATH),
                 repos_path: data_dir.join(DEFAULT_REPOS_PATH),
                 internal_path: data_dir.join(DEFAULT_INTERNAL_PATH),
                 worker_url: self.worker_url,
-                secrets,
-                tokens,
-                data_dir,
-            })
+                ..Default::default()
+            };
+
+            res.secrets = {
+                let mut state = state.clone();
+                state.set(&res);
+
+                if let Some(secrets) = self.secrets {
+                    let secrets_path = utils::eval_rel_path(&state, secrets, service_config)?;
+                    config::Secrets::load(secrets_path).await?
+                } else {
+                    config::Secrets::default()
+                }
+            };
+
+            res.tokens = {
+                let mut state = state.clone();
+                state.set(&res);
+
+                if let Some(tokens) = self.tokens {
+                    tokens.load_raw(&state)?
+                } else {
+                    config::Tokens::default()
+                }
+            };
+
+            Ok(res)
         }
     }
 
     pub async fn load<'a>(
-        context: &config::State<'a>,
+        state: &config::State<'a>,
     ) -> Result<super::ServiceConfig, super::LoadConfigError> {
-        let service_config: PathBuf = context.get_named("service_config").cloned()?;
-        config::load::<ServiceConfig>(service_config.clone(), context)
+        let service_config: PathBuf = state.get_named("service_config").cloned()?;
+        config::load::<ServiceConfig>(service_config.clone(), state)
             .await
             .map_err(|err| {
                 anyhow::anyhow!(

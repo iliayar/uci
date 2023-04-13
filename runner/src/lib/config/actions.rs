@@ -40,6 +40,7 @@ pub enum TriggerType {
     ReposUpdated {
         patterns: HashMap<String, Vec<regex::Regex>>,
     },
+    ConfigReload,
 }
 
 pub enum Event {
@@ -53,6 +54,7 @@ pub enum Event {
     RepoUpdate {
         diffs: super::ReposDiffs,
     },
+    ConfigReload,
 }
 
 pub const ACTIONS_CONFIG: &str = "actions.yaml";
@@ -154,6 +156,10 @@ impl TriggerType {
                 }
                 _ => false,
             },
+            TriggerType::ConfigReload => match event {
+                Event::ConfigReload => true,
+                _ => false,
+            },
         }
     }
 }
@@ -184,6 +190,9 @@ mod raw {
 
         #[serde(rename = "changed")]
         FileChanged,
+
+        #[serde(rename = "config_reload")]
+        ConfigReload,
     }
 
     #[derive(Deserialize, Serialize)]
@@ -221,10 +230,7 @@ mod raw {
     impl config::LoadRawSync for Trigger {
         type Output = super::Trigger;
 
-        fn load_raw(
-            self,
-            context: &config::State,
-        ) -> Result<Self::Output, config::LoadConfigError> {
+        fn load_raw(self, state: &config::State) -> Result<Self::Output, config::LoadConfigError> {
             if let TriggerType::ProjectReload = self.on {
                 if self.reload_config.is_some() {
                     return Err(anyhow!(
@@ -241,8 +247,9 @@ mod raw {
                 }
             }
 
-            let project_id: String = context.get_named("project_id").cloned()?;
-            let trigger_id: String = context.get_named("_id").cloned()?;
+            let project_info: &config::ProjectInfo = state.get()?;
+            let project_id = project_info.id.clone();
+            let trigger_id: String = state.get_named("_id").cloned()?;
 
             let on = match self.on {
                 TriggerType::Call => super::TriggerType::Call {
@@ -265,11 +272,12 @@ mod raw {
                         .collect();
                     super::TriggerType::ReposUpdated { patterns: changes? }
                 }
+                TriggerType::ConfigReload => super::TriggerType::ConfigReload,
             };
 
             Ok(super::Trigger {
                 run_pipelines: self.run_pipelines,
-                services: self.services.load_raw(context)?,
+                services: self.services.load_raw(state)?,
                 reload_config: self.reload_config.is_some(),
                 reload_project: self.reload_project.is_some(),
                 on,
@@ -280,10 +288,7 @@ mod raw {
     impl config::LoadRawSync for ServiceAction {
         type Output = super::ServiceAction;
 
-        fn load_raw(
-            self,
-            context: &config::State,
-        ) -> Result<Self::Output, config::LoadConfigError> {
+        fn load_raw(self, state: &config::State) -> Result<Self::Output, config::LoadConfigError> {
             Ok(match self {
                 ServiceAction::Deploy => super::ServiceAction::Deploy,
             })
@@ -291,14 +296,14 @@ mod raw {
     }
 
     pub async fn load<'a>(
-        context: &config::State<'a>,
+        state: &config::State<'a>,
     ) -> Result<super::Actions, super::LoadConfigError> {
-        let project_root: PathBuf = context.get_named("project_root").cloned()?;
-        let path = project_root.join(super::ACTIONS_CONFIG);
+        let projects_info: &config::ProjectInfo = state.get()?;
+        let path = projects_info.path.join(super::ACTIONS_CONFIG);
         if !path.exists() {
             return Ok(Default::default());
         }
-        config::load_sync::<Actions>(path.clone(), context)
+        config::load_sync::<Actions>(path.clone(), state)
             .await
             .map_err(|err| anyhow!("Failed to load actions from {:?}: {}", path, err).into())
     }

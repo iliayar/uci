@@ -1,4 +1,4 @@
-use std::{collections::HashMap, iter::Peekable, str::Chars};
+use std::{collections::HashMap, iter::Peekable, str::Chars, path::PathBuf};
 
 use log::*;
 
@@ -43,6 +43,9 @@ pub enum VarsError {
     #[error("Keys is not allowd in append")]
     AppendKey,
 
+    #[error("Cannot merge values of types: {0} and {1}")]
+    InvalidMerge(String, String),
+
     #[error("get_var not imlemented for custom var")]
     GetCustomVarNotImplemented,
 }
@@ -54,6 +57,19 @@ pub enum Vars {
     String(String),
     Bool(bool),
     None,
+}
+
+impl Vars {
+    fn value_name(&self) -> String {
+        match self {
+            Vars::Object { values } => "object",
+            Vars::List { values } => "list",
+            Vars::String(_) => "string",
+            Vars::Bool(_) => "bool",
+            Vars::None => "none",
+        }
+        .to_string()
+    }
 }
 
 pub enum Value<T = ()> {
@@ -99,6 +115,16 @@ impl<E: Into<Vars>> From<HashMap<String, E>> for Vars {
     }
 }
 
+impl<E> From<&HashMap<String, E>> for Vars
+where
+    for<'a> &'a E: Into<Vars>,
+{
+    fn from(m: &HashMap<String, E>) -> Self {
+        let values = m.iter().map(|(k, v)| (k.clone(), v.into())).collect();
+        Vars::Object { values }
+    }
+}
+
 impl<E: Into<Vars>> From<Vec<E>> for Vars {
     fn from(v: Vec<E>) -> Self {
         let values = v.into_iter().map(|v| v.into()).collect();
@@ -112,9 +138,27 @@ impl From<String> for Vars {
     }
 }
 
+impl From<&String> for Vars {
+    fn from(s: &String) -> Self {
+        Vars::String(s.to_string())
+    }
+}
+
 impl From<bool> for Vars {
     fn from(v: bool) -> Self {
         Vars::Bool(v)
+    }
+}
+
+impl From<PathBuf> for Vars {
+    fn from(path: PathBuf) -> Self {
+        path.to_string_lossy().to_string().into()
+    }
+}
+
+impl From<&PathBuf> for Vars {
+    fn from(path: &PathBuf) -> Self {
+        path.to_string_lossy().to_string().into()
     }
 }
 
@@ -204,11 +248,11 @@ impl Vars {
     pub fn get_string(&self, path: Path) -> Result<String, VarsError> {
         match self.get(path)? {
             Vars::String(s) => Ok(s.to_string()),
-	    Vars::Bool(v) => Ok(v.to_string()),
+            Vars::Bool(v) => Ok(v.to_string()),
             _ => Err(VarsError::NotAString),
         }
     }
-	
+
     pub fn eval(&self, text: &str) -> Result<String, SubstitutionError> {
         substitute_vars(self, text)
     }
@@ -288,6 +332,32 @@ impl Vars {
             nassigned.push((path.clone(), Vars::String(value.to_string())));
         }
         Vars::from_list(&nassigned)
+    }
+
+    pub fn merge(self, other: Vars) -> Result<Vars, SubstitutionError> {
+        match (self, other) {
+            (Vars::None, value) => Ok(value),
+            (value, Vars::None) => Ok(value),
+            (Vars::Object { values: lhs_values }, Vars::Object { values: rhs_values }) => {
+                let mut values = lhs_values;
+                for (k, v) in rhs_values.into_iter() {
+                    let cur = values.remove(&k).unwrap_or(Vars::None);
+                    values.insert(k, cur.merge(v)?);
+                }
+                Ok(Vars::Object { values })
+            }
+            (
+                Vars::List { values: lhs_values },
+                Vars::List {
+                    values: mut rhs_values,
+                },
+            ) => {
+                let mut values = lhs_values;
+                values.append(&mut rhs_values);
+                Ok(Vars::List { values })
+            }
+            (lhs, rhs) => Err(VarsError::InvalidMerge(lhs.value_name(), rhs.value_name()).into()),
+        }
     }
 }
 

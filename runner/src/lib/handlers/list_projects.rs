@@ -41,7 +41,7 @@ async fn list_projects_impl<PM: config::ProjectsManager>(
         .await?
         .into_iter()
         .filter_map(|project| {
-            if project.check_allowed(call_context.token.as_ref(), ActionType::Read) {
+            if project.check_allowed_token(call_context.token.as_ref(), ActionType::Read) {
                 Some(project.id)
             } else {
                 None

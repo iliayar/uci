@@ -1,5 +1,6 @@
 data_dir: ~/.microci
+secrets: ./secrets.yaml
 tokens:
-  - token: LUL
+  - token: ${config.secrets.admin-token}
     permissions: ['read', 'write']
   - permissions: ['read']

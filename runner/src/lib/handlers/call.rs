@@ -25,13 +25,9 @@ async fn call<PM: config::ProjectsManager>(
 ) -> Result<impl warp::Reply, warp::Rejection> {
     info!("Running trigger {} for project {}", trigger_id, project_id);
 
-    match call_context
-        .context
-        .get_project_info(project_id.clone())
-        .await
-    {
+    match call_context.context.get_project_info(&project_id).await {
         Ok(project) => {
-            if !project.check_allowed(call_context.token, ActionType::Execute) {
+            if !project.check_allowed_token(call_context.token, ActionType::Execute) {
                 return Err(warp::reject::custom(Unauthorized::TokenIsUnauthorized));
             }
         }

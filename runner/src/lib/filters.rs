@@ -1,6 +1,5 @@
 use futures::{FutureExt, StreamExt};
 use std::{collections::HashMap, convert::Infallible, sync::Arc};
-use tokio::sync::{mpsc, Mutex};
 use tokio_stream::wrappers::UnboundedReceiverStream;
 use warp::{Filter, Rejection};
 
@@ -171,7 +170,6 @@ pub struct CallContext<PM: config::ProjectsManager> {
     pub token: Option<String>,
     pub check_permisions: bool,
     pub context: ContextPtr<PM>,
-    pub ws: Option<super::context::WsOutput>,
 }
 
 impl<PM: config::ProjectsManager> CallContext<PM> {
@@ -180,29 +178,6 @@ impl<PM: config::ProjectsManager> CallContext<PM> {
             token,
             check_permisions: true,
             context,
-            ws: None,
-        }
-    }
-
-    pub async fn init_ws(&mut self) -> String {
-        let client_id = uuid::Uuid::new_v4().to_string();
-        let (tx, rx) = mpsc::unbounded_channel();
-        let client = context::WsClient { rx };
-        self.context
-            .ws_clients
-            .lock()
-            .await
-            .insert(client_id.clone(), client);
-        debug!("New ws client registerd: {}", client_id);
-        let ws = context::WsOutput { client_id, tx };
-        let client_id = ws.client_id.clone();
-        self.ws = Some(ws);
-        client_id
-    }
-
-    pub async fn finish_ws(&mut self) {
-        if let Some(ws) = self.ws.take() {
-            self.context.ws_clients.lock().await.remove(&ws.client_id);
         }
     }
 }

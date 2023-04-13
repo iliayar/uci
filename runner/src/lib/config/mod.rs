@@ -14,6 +14,7 @@ mod utils;
 mod projects;
 mod permissions;
 mod secrets;
+mod matched_actions;
 
 pub use actions::*;
 pub use bind::*;
@@ -29,6 +30,7 @@ pub use services::*;
 pub use projects::*;
 pub use permissions::*;
 pub use secrets::*;
+pub use matched_actions::*;
 
 #[derive(Debug, thiserror::Error)]
 pub enum LoadConfigError {

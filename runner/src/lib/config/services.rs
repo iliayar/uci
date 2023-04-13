@@ -337,17 +337,17 @@ mod raw {
         image: Option<String>,
         global: bool,
     ) -> Result<String, config::LoadConfigError> {
+        let service_id = context.get_named("service_id").cloned()?;
         if let Some(image) = image {
             // Will pull specified image
             Ok(String::from(image))
         } else if global {
             // Image name is service name
-            Ok(context.get_named("service_id").cloned()?)
+            Ok(service_id)
         } else {
             // Image name is scoped under project
-            let project_id: String = context.get_named("project_id").cloned()?;
-            let service_id: String = context.get_named("service_id").cloned()?;
-            Ok(format!("{}_{}", project_id, service_id,))
+            let project_info: &config::ProjectInfo = context.get()?;
+            Ok(format!("{}_{}", project_info.id, service_id))
         }
     }
 
@@ -355,14 +355,14 @@ mod raw {
         context: &config::State,
         global: bool,
     ) -> Result<String, super::LoadConfigError> {
+        let service_id = context.get_named("service_id").cloned()?;
         if global {
             // Container name is service name
-            Ok(context.get_named("service_id").cloned()?)
+            Ok(service_id)
         } else {
             // Container name is scoped under project
-            let project_id: String = context.get_named("project_id").cloned()?;
-            let service_id: String = context.get_named("service_id").cloned()?;
-            Ok(format!("{}_{}", project_id, service_id,))
+            let project_info: &config::ProjectInfo = context.get()?;
+            Ok(format!("{}_{}", project_info.id, service_id))
         }
     }
 
@@ -384,8 +384,8 @@ mod raw {
     pub async fn load<'a>(
         context: &config::State<'a>,
     ) -> Result<super::Services, super::LoadConfigError> {
-        let project_root: PathBuf = context.get_named("project_root").cloned()?;
-        let path = project_root.join(super::SERVICES_CONFIG);
+        let project_info: &config::ProjectInfo = context.get()?;
+        let path = project_info.path.join(super::SERVICES_CONFIG);
         if !path.exists() {
             return Ok(Default::default());
         }

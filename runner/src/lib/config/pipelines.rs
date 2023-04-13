@@ -10,8 +10,8 @@ pub struct Pipelines {
 }
 
 impl Pipelines {
-    pub async fn load<'a>(context: &super::State<'a>) -> Result<Pipelines, LoadConfigError> {
-        raw::load(context)
+    pub async fn load<'a>(state: &super::State<'a>) -> Result<Pipelines, LoadConfigError> {
+        raw::load(state)
             .await
             .map_err(|err| anyhow!("Failed to pipelines: {}", err).into())
     }
@@ -85,14 +85,14 @@ mod raw {
 
         async fn load_raw(
             self,
-            context: &config::State,
+            state: &config::State,
         ) -> Result<Self::Output, config::LoadConfigError> {
             let mut pipelines: HashMap<String, common::Pipeline> = HashMap::new();
             for (id, PipelineLocation { path }) in self.pipelines.into_iter() {
-                let project_root: PathBuf = context.get_named("project_root").cloned()?;
-                let pipeline_path = utils::eval_rel_path(context, path, project_root)?;
+                let project_info: &config::ProjectInfo = state.get()?;
+                let pipeline_path = utils::eval_rel_path(state, path, project_info.path.clone())?;
                 let pipeline: Result<common::Pipeline, super::LoadConfigError> =
-                    config::load_sync::<Pipeline>(pipeline_path.clone(), context)
+                    config::load_sync::<Pipeline>(pipeline_path.clone(), state)
                         .await
                         .map_err(|err| {
                             anyhow!("Failed to load pipeline from {:?}: {}", pipeline_path, err)
@@ -110,14 +110,14 @@ mod raw {
 
         fn load_raw(
             self,
-            context: &config::State,
+            state: &config::State,
         ) -> Result<Self::Output, config::LoadConfigError> {
             let links =
-                config::utils::substitute_vars_dict(context, self.links.unwrap_or_default())?;
+                config::utils::substitute_vars_dict(state, self.links.unwrap_or_default())?;
 
             Ok(common::Pipeline {
                 links,
-                jobs: self.jobs.load_raw(context)?,
+                jobs: self.jobs.load_raw(state)?,
                 networks: Default::default(),
                 volumes: Default::default(),
             })
@@ -129,11 +129,11 @@ mod raw {
 
         fn load_raw(
             self,
-            context: &config::State,
+            state: &config::State,
         ) -> Result<Self::Output, config::LoadConfigError> {
             Ok(common::Job {
                 needs: self.needs.unwrap_or_default(),
-                steps: self.steps.unwrap_or_default().load_raw(context)?,
+                steps: self.steps.unwrap_or_default().load_raw(state)?,
             })
         }
     }
@@ -143,16 +143,16 @@ mod raw {
 
         fn load_raw(
             self,
-            context: &config::State,
+            state: &config::State,
         ) -> Result<Self::Output, config::LoadConfigError> {
             match get_type(&self)? {
                 Type::Script => {
                     let networks = config::utils::get_networks_names(
-                        context,
+                        state,
                         self.networks.unwrap_or_default(),
                     )?;
                     let volumes = config::utils::get_volumes_names(
-                        context,
+                        state,
                         self.volumes.unwrap_or_default(),
                     )?;
 
@@ -163,7 +163,7 @@ mod raw {
                         docker_image: self.image,
                         interpreter: self.interpreter,
                         env: config::utils::substitute_vars_dict(
-                            context,
+                            state,
                             self.env.unwrap_or_default(),
                         )?,
                         volumes,
@@ -194,14 +194,14 @@ mod raw {
     }
 
     pub async fn load<'a>(
-        context: &config::State<'a>,
+        state: &config::State<'a>,
     ) -> Result<super::Pipelines, super::LoadConfigError> {
-        let project_root: PathBuf = context.get_named("project_root").cloned()?;
-        let path = project_root.join(super::PIPELINES_CONFIG);
+	let project_info: &config::ProjectInfo = state.get()?;
+        let path = project_info.path.join(super::PIPELINES_CONFIG);
         if !path.exists() {
             return Ok(Default::default());
         }
-        config::load::<Pipelines>(path.clone(), context)
+        config::load::<Pipelines>(path.clone(), state)
             .await
             .map_err(|err| anyhow!("Failed to load pipelines from {:?}: {}", path, err).into())
     }

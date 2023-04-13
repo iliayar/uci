@@ -30,9 +30,9 @@ pub enum Repo {
 pub type ReposDiffs = HashMap<String, git::ChangedFiles>;
 
 impl Repo {
-    async fn clone_if_missing(
+    async fn clone_if_missing<'a>(
         &self,
-        config: &super::ServiceConfig,
+        state: &super::State<'a>,
     ) -> Result<(), super::ExecutionError> {
         match self {
             Repo::Regular {
@@ -60,27 +60,10 @@ impl Repo {
         Ok(())
     }
 
-    async fn is_missing(&self) -> Result<bool, super::ExecutionError> {
-        match self {
-            Repo::Regular {
-                source,
-                branch,
-                path,
-            } => {
-                if !git::check_exists(path.clone()).await? {
-                    Ok(true)
-                } else {
-                    Ok(false)
-                }
-            }
-            Repo::Manual { path } => Ok(false),
-        }
-    }
-
-    async fn pull(
+    async fn pull<'a>(
         &self,
-        config: &super::ServiceConfig,
-    ) -> Result<git::ChangedFiles, super::ExecutionError> {
+        state: &super::State<'a>,
+    ) -> Result<git::ChangedFiles, anyhow::Error> {
         match self {
             Repo::Regular {
                 source,
@@ -116,50 +99,32 @@ impl Into<common::vars::Vars> for &Repo {
 }
 
 impl Repos {
-    pub async fn pull_all(
+    pub async fn pull_repo<'a>(
         &self,
-        config: &super::ServiceConfig,
-        repos: Option<HashSet<String>>,
-    ) -> Result<ReposDiffs, super::ExecutionError> {
-        info!("Pulling repos");
-
-        let mut repo_diffs = ReposDiffs::new();
-        for (repo_id, repo) in self.repos.iter() {
-            if repos.is_none() || repos.as_ref().unwrap().contains(repo_id) {
-                info!("Pulling repo {}", repo_id);
-                repo_diffs.insert(repo_id.clone(), repo.pull(config).await?);
-            }
-        }
-        debug!("Repos diffs: {:?}", repo_diffs);
-
-        Ok(repo_diffs)
+        state: &super::State<'a>,
+        repo_id: &str,
+    ) -> Result<git::ChangedFiles, anyhow::Error> {
+	if let Some(repo) = self.repos.get(repo_id) {
+	    repo.pull(state).await
+	} else {
+	    Err(anyhow!("No such repo: {}", repo_id))
+	}
     }
 
-    pub async fn clone_missing_repos(
+    pub async fn clone_missing_repos<'a>(
         &self,
-        config: &super::ServiceConfig,
-    ) -> Result<(), super::ExecutionError> {
+        state: &super::State<'a>,
+    ) -> Result<(), anyhow::Error> {
         let mut git_tasks = Vec::new();
 
         for (id, repo) in self.repos.iter() {
             info!("Cloning repo {}", id);
-            git_tasks.push(repo.clone_if_missing(config));
+            git_tasks.push(repo.clone_if_missing(state));
         }
 
         futures::future::try_join_all(git_tasks).await?;
 
         Ok(())
-    }
-
-    pub async fn get_missing_repos(&self) -> Result<HashSet<String>, super::ExecutionError> {
-        let mut res = HashSet::new();
-        for (id, repo) in self.repos.iter() {
-            if repo.is_missing().await? {
-                res.insert(id.clone());
-            }
-        }
-
-        Ok(res)
     }
 }
 
@@ -223,16 +188,16 @@ mod raw {
             context: &config::State,
         ) -> Result<Self::Output, config::LoadConfigError> {
             let repo_id: String = context.get_named("_id").cloned()?;
-            let project_id: String = context.get_named("project_id").cloned()?;
+            let project_info: &config::ProjectInfo = context.get()?;
             let service_config: &config::ServiceConfig = context.get()?;
             let default_path = service_config
                 .repos_path
-                .join(format!("{}_{}", project_id, repo_id));
-	    let path = if let Some(path) = self.path {
-		utils::eval_abs_path(context, path)?
-	    } else {
-		default_path
-	    };
+                .join(format!("{}_{}", project_info.id, repo_id));
+            let path = if let Some(path) = self.path {
+                utils::eval_abs_path(context, path)?
+            } else {
+                default_path
+            };
             if !self.manual.unwrap_or(false) {
                 Ok(super::Repo::Regular {
                     source: self

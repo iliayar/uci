@@ -101,6 +101,7 @@ impl App {
         } else {
             unimplemented!()
         };
+	context.init().await?;
 
         // let call_context = super::filters::CallContext {
         //     token: None,
