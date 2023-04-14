@@ -2,7 +2,7 @@ actions:
   main:
     - on: call
       run_pipelines:
-        - echo
+        - stub
   deploy:
     - on: call
       services:

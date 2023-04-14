@@ -1,29 +1,44 @@
-use futures::{FutureExt, StreamExt};
-use std::{convert::Infallible, sync::Arc};
-use tokio_stream::wrappers::UnboundedReceiverStream;
+use std::{collections::HashMap, convert::Infallible, fmt::Debug, sync::Arc};
+use tokio::sync::Mutex;
 use warp::{Filter, Rejection};
 
 use super::{
     config,
-    context::{self, Context},
-    handlers,
+    context::Context,
+    handlers::{self, WsClient},
 };
 use warp::hyper::StatusCode;
 
-use log::*;
-
 pub type ContextPtr<PM> = Arc<Context<PM>>;
 
-pub fn runner<PM: config::ProjectsManager>(
+pub struct Deps<PM: config::ProjectsManager> {
+    pub context: Arc<Context<PM>>,
+    pub ws_clients: Arc<Mutex<HashMap<String, WsClient>>>,
+}
+
+impl<PM: config::ProjectsManager> Clone for Deps<PM> {
+    fn clone(&self) -> Self {
+        Self {
+            context: self.context.clone(),
+            ws_clients: self.ws_clients.clone(),
+        }
+    }
+}
+
+pub fn runner<PM: config::ProjectsManager + 'static>(
     context: Context<PM>,
-) -> impl Filter<Extract = impl warp::Reply, Error = Infallible> + Clone {
-    let context = Arc::new(context);
+) -> impl Filter<Extract = impl warp::Reply, Error = Rejection> + Clone {
+    let deps = Deps {
+        context: Arc::new(context),
+        ws_clients: Arc::new(Mutex::new(HashMap::new())),
+    };
+
     ping()
-        .or(handlers::call::filter(context.clone()))
-        .or(handlers::reload_config::filter(context.clone()))
-        .or(handlers::update_repo::filter(context.clone()))
-        .or(handlers::list_projects::filter(context.clone()))
-        .or(ws(context))
+        .or(handlers::call::filter(deps.clone()))
+        .or(handlers::reload_config::filter(deps.clone()))
+        .or(handlers::update_repo::filter(deps.clone()))
+        .or(handlers::list_projects::filter(deps.clone()))
+        .or(handlers::ws::filter(deps))
         .recover(report_rejection)
 }
 
@@ -31,53 +46,19 @@ pub fn ping() -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection
     warp::path("ping").and(warp::get()).map(|| StatusCode::OK)
 }
 
-pub fn ws<PM: config::ProjectsManager>(
-    context: ContextPtr<PM>,
-) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
-    warp::path!("ws" / String)
-        .and(warp::ws())
-        .and(with_context(context))
-        .and_then(ws_client)
-}
-
-async fn ws_client<PM: config::ProjectsManager>(
-    client_id: String,
-    ws: warp::ws::Ws,
-    context: ContextPtr<PM>,
-) -> Result<impl warp::Reply, warp::Rejection> {
-    debug!("Handling ws client {}", client_id);
-    let client = context.ws_clients.lock().await.remove(&client_id);
-    match client {
-        Some(client) => Ok(ws.on_upgrade(move |socket| ws_client_connection(socket, client))),
-        None => Err(warp::reject::not_found()),
-    }
-}
-
-async fn ws_client_connection(socket: warp::ws::WebSocket, client: context::WsClient) {
-    // NOTE: Do not care of receiving messages
-    let (client_ws_sender, _) = socket.split();
-    let client_rcv = UnboundedReceiverStream::new(client.rx);
-    debug!("Running ws sending");
-    tokio::task::spawn(client_rcv.forward(client_ws_sender).map(|result| {
-        if let Err(e) = result {
-            error!("Error sending websocket msg: {}", e);
-        }
-    }));
-}
-
 pub fn with_call_context<PM: config::ProjectsManager>(
-    context: ContextPtr<PM>,
+    deps: Deps<PM>,
 ) -> impl Filter<Extract = (handlers::CallContext<PM>,), Error = warp::Rejection> + Clone {
     warp::any()
         .and(with_validation())
-        .and(with_context(context))
+        .and(with_deps(deps))
         .map(handlers::CallContext::for_handler)
 }
 
-pub fn with_context<PM: config::ProjectsManager>(
-    context: ContextPtr<PM>,
-) -> impl Filter<Extract = (ContextPtr<PM>,), Error = Infallible> + Clone {
-    warp::any().map(move || context.clone())
+pub fn with_deps<PM: config::ProjectsManager>(
+    deps: Deps<PM>,
+) -> impl Filter<Extract = (Deps<PM>,), Error = Infallible> + Clone {
+    warp::any().map(move || deps.clone())
 }
 
 #[derive(Debug)]
@@ -121,7 +102,7 @@ pub fn with_validation() -> impl Filter<Extract = (Option<String>,), Error = Rej
     })
 }
 
-pub async fn report_rejection(r: Rejection) -> Result<impl warp::Reply, Infallible> {
+pub async fn report_rejection(r: Rejection) -> Result<impl warp::Reply, Rejection> {
     if let Some(auth_error) = r.find::<AuthRejection>() {
         let message = match auth_error {
             AuthRejection::UnsupportedAuthorizationMethod(method) => {
@@ -133,31 +114,19 @@ pub async fn report_rejection(r: Rejection) -> Result<impl warp::Reply, Infallib
                 "Specified token is unauthrized for this action".to_string()
             }
         };
-        Ok(warp::reply::with_status(
+        return Ok(warp::reply::with_status(
             warp::reply::json(&common::runner::ErrorResponse { message }),
             StatusCode::UNAUTHORIZED,
-        ))
+        ));
     } else if let Some(internal_server_error) = r.find::<InternalServerError>() {
         let message = match internal_server_error {
             InternalServerError::Error(err) => err.clone(),
         };
-        Ok(warp::reply::with_status(
+        return Ok(warp::reply::with_status(
             warp::reply::json(&common::runner::ErrorResponse { message }),
             StatusCode::INTERNAL_SERVER_ERROR,
-        ))
-    } else if r.is_not_found() {
-        Ok(warp::reply::with_status(
-            warp::reply::json(&common::runner::ErrorResponse {
-                message: "Not found".to_string(),
-            }),
-            StatusCode::NOT_FOUND,
-        ))
-    } else {
-        Ok(warp::reply::with_status(
-            warp::reply::json(&common::runner::ErrorResponse {
-                message: "Unknown error".to_string(),
-            }),
-            StatusCode::INTERNAL_SERVER_ERROR,
-        ))
+        ));
     }
+
+    Err(r)
 }

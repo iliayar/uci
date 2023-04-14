@@ -1,6 +1,6 @@
 use crate::cli::*;
 
-use futures_util::StreamExt;
+// use futures_util::StreamExt;
 use log::*;
 use termion::{color, style};
 
@@ -24,41 +24,39 @@ pub async fn execute_config_reload(
     debug!("Executing project list command");
 
     let response = crate::runner::post(config, "/reload")?.send().await;
-    let response: common::runner::ConfigReloadReponse = crate::runner::json(response).await?;
+    let response: common::runner::EmptyResponse = crate::runner::json(response).await?;
 
-    if let Some(repos) = response.pulling_repos {
-        println!(
-            "{}Config still reloading{}",
-            color::Fg(color::Blue),
-            style::Reset
-        );
-        println!("Will pull {}repos{}:", style::Bold, style::Reset);
-        for repo in repos.into_iter() {
-            println!("- {}", repo);
-        }
-        debug!("ws client_id: {:?}", response.client_id);
+    // if let Some(repos) = response.pulling_repos {
+    // println!(
+    //     "{}Config still reloading{}",
+    //     color::Fg(color::Blue),
+    //     style::Reset
+    // );
+    // println!("Will pull {}repos{}:", style::Bold, style::Reset);
+    // for repo in repos.into_iter() {
+    //     println!("- {}", repo);
+    // }
+    // debug!("ws client_id: {:?}", response.client_id);
 
-        if let Some(client_id) = response.client_id {
-            crate::runner::ws::<common::runner::ReloadConfigMessage>(config, client_id)
-                .await
-                .for_each(|msg| async move {
-                    match msg {
-                        common::runner::ReloadConfigMessage::ReposCloned => {
-                            println!("{}Repos pulled{}", color::Fg(color::Green), style::Reset);
-                        }
-                        common::runner::ReloadConfigMessage::ConfigReloaded => {
-                            println!("{}Config reloaded{}", color::Fg(color::Green), style::Reset);
-                        }
-                        common::runner::ReloadConfigMessage::ConfigReloadedError(err) => {
-                            println!("{}{}{}", color::Fg(color::Red), err, style::Reset);
-                        }
-                    }
-                })
-                .await;
-        }
-    } else {
-        println!("{}Config reloaded{}", color::Fg(color::Green), style::Reset);
-    }
+    // if let Some(client_id) = response.client_id {
+    //     crate::runner::ws::<common::runner::Message>(config, client_id)
+    //         .await
+    //         .for_each(|msg| async move {
+    //             match msg {
+    //                 common::runner::Message::ReposCloned => {
+    //                     println!("{}Repos pulled{}", color::Fg(color::Green), style::Reset);
+    //                 }
+    //                 common::runner::Message::ConfigReloaded => {
+    //                     println!("{}Config reloaded{}", color::Fg(color::Green), style::Reset);
+    //                 }
+    //                 common::runner::Message::ConfigReloadedError(err) => {
+    //                     println!("{}{}{}", color::Fg(color::Red), err, style::Reset);
+    //                 }
+    //             }
+    //         })
+    //         .await;
+    // }
+    println!("{}Config reloaded{}", color::Fg(color::Green), style::Reset);
 
     Ok(())
 }

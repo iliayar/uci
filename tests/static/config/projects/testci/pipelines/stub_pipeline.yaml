@@ -1,0 +1,6 @@
+jobs:
+  run_script:
+    steps:
+      - type: script
+        script: |
+          echo LUL

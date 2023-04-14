@@ -16,13 +16,12 @@ pub struct ProjectsListResponse {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct ConfigReloadReponse {
-    pub client_id: Option<String>,
-    pub pulling_repos: Option<HashSet<String>>,
+pub struct ContinueReponse {
+    pub client_id: String,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
-pub enum ReloadConfigMessage {
+pub enum Message {
     // RepoPulled(String),
     ReposCloned,
     ConfigReloaded,

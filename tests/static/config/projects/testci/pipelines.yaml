@@ -3,3 +3,5 @@ pipelines:
     path: pipelines/echo_pipeline.yaml
   test-needs:
     path: pipelines/test_pipeline.yaml
+  stub:
+    path: pipelines/stub_pipeline.yaml

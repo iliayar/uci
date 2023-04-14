@@ -54,10 +54,46 @@ pub enum Commands {
 pub enum ProjectCommands {
     /// List projects
     List {},
+
+    /// Manage actions
+    Actions {
+        #[command(subcommand)]
+        command: ActionCommand,
+    },
+
+    /// Manage repos
+    Repos {
+        #[command(subcommand)]
+        command: RepoCommand,
+    },
 }
 
 #[derive(Subcommand, Debug)]
 pub enum ConfigCommands {
     /// List projects
     Reload {},
+}
+
+#[derive(Subcommand, Debug)]
+pub enum ActionCommand {
+    /// List projects
+    Call {
+        #[clap(short, long)]
+        project_id: String,
+
+        #[clap(short, long)]
+        action_id: String,
+    },
+}
+
+#[derive(Subcommand, Debug)]
+pub enum RepoCommand {
+    /// List projects
+    Update {
+        #[clap(short, long)]
+        project_id: String,
+
+        #[clap(short, long)]
+        repo_id: String,
+    },
 }

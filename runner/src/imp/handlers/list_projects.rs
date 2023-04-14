@@ -2,17 +2,17 @@ use std::collections::HashSet;
 
 use crate::imp::{
     config::{self, ActionType},
-    filters::{with_call_context, ContextPtr, InternalServerError},
+    filters::{with_call_context, InternalServerError, Deps},
 };
 
 use reqwest::StatusCode;
 use warp::Filter;
 
 pub fn filter<PM: config::ProjectsManager>(
-    context: ContextPtr<PM>,
+    deps: Deps<PM>,
 ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
     warp::any()
-        .and(with_call_context(context))
+        .and(with_call_context(deps))
         .and(warp::path!("projects" / "list"))
         .and(warp::get())
         .and_then(list_projects)

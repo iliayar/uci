@@ -1,16 +1,16 @@
 use crate::imp::{
     config::{self, ActionType},
-    filters::{with_call_context, AuthRejection, ContextPtr, InternalServerError},
+    filters::{with_call_context, AuthRejection, InternalServerError, Deps},
 };
 
 use reqwest::StatusCode;
 use warp::Filter;
 
 pub fn filter<PM: config::ProjectsManager>(
-    context: ContextPtr<PM>,
+    deps: Deps<PM>,
 ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
     warp::any()
-        .and(with_call_context(context))
+        .and(with_call_context(deps))
         .and(warp::path!("reload"))
         .and(warp::post())
         .and_then(reload_config)

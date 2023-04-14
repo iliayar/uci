@@ -1,6 +1,6 @@
 use crate::imp::{
     config,
-    filters::{with_call_context, AuthRejection, ContextPtr, InternalServerError},
+    filters::{with_call_context, AuthRejection, Deps},
 };
 
 use reqwest::StatusCode;
@@ -8,8 +8,8 @@ use warp::Filter;
 
 use log::*;
 
-pub fn filter<PM: config::ProjectsManager>(
-    context: ContextPtr<PM>,
+pub fn filter<PM: config::ProjectsManager + 'static>(
+    context: Deps<PM>,
 ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
     warp::any()
         .and(with_call_context(context))
@@ -18,8 +18,8 @@ pub fn filter<PM: config::ProjectsManager>(
         .and_then(update_repo)
 }
 
-async fn update_repo<PM: config::ProjectsManager>(
-    call_context: super::CallContext<PM>,
+async fn update_repo<PM: config::ProjectsManager + 'static>(
+    mut call_context: super::CallContext<PM>,
     project_id: String,
     repo_id: String,
 ) -> Result<impl warp::Reply, warp::Rejection> {
@@ -30,13 +30,17 @@ async fn update_repo<PM: config::ProjectsManager>(
         return Err(warp::reject::custom(AuthRejection::TokenIsUnauthorized));
     }
     info!("Updating repo {}", repo_id);
-    match call_context.update_repo(&project_id, &repo_id).await {
-        Ok(_) => Ok(warp::reply::with_status(
-            warp::reply::json(&common::runner::EmptyResponse {}),
-            StatusCode::OK,
-        )),
-        Err(err) => Err(warp::reject::custom(InternalServerError::Error(
-            err.to_string(),
-        ))),
-    }
+
+    let client_id = call_context.init_ws().await;
+    tokio::spawn(async move {
+        if let Err(err) = call_context.update_repo(&project_id, &repo_id).await {
+            error!("Updating repo failed: {}", err)
+        }
+	call_context.finish_ws().await;
+    });
+
+    Ok(warp::reply::with_status(
+        warp::reply::json(&common::runner::ContinueReponse { client_id }),
+        StatusCode::ACCEPTED,
+    ))
 }
