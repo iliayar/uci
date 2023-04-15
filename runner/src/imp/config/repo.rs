@@ -13,11 +13,13 @@ pub struct Repos {
 #[derive(Debug, Clone)]
 pub enum Repo {
     Regular {
+        id: String,
         path: PathBuf,
         source: String,
         branch: String,
     },
     Manual {
+        id: String,
         path: PathBuf,
     },
 }
@@ -28,23 +30,35 @@ impl Repo {
     async fn clone_if_missing<'a>(&self, state: &super::State<'a>) -> Result<(), anyhow::Error> {
         match self {
             Repo::Regular {
+                id,
                 source,
                 branch,
                 path,
             } => {
                 if !git::check_exists(path.clone()).await? {
+                    let run_context: &RunContext = state.get()?;
+                    run_context
+                        .send(common::runner::CloneMissingRepos::ClonningRepo {
+                            repo_id: id.to_string(),
+                        })
+                        .await;
                     git::clone(
                         // TODO: Support http
                         source.strip_prefix("ssh://").unwrap().to_string(),
                         path.clone(),
                     )
                     .await?;
+                    run_context
+                        .send(common::runner::CloneMissingRepos::RepoCloned {
+                            repo_id: id.to_string(),
+                        })
+                        .await;
                 } else {
-                    info!("Repo already cloned");
+                    info!("Repo {} already cloned", id);
                 }
             }
-            Repo::Manual { path } => {
-                info!("Repo is manually managed, don't clone");
+            Repo::Manual { id, path } => {
+                info!("Repo {} is manually managed, don't clone", id);
                 tokio::fs::create_dir_all(path.clone()).await?;
             }
         }
@@ -55,12 +69,21 @@ impl Repo {
     async fn pull<'a>(&self, state: &super::State<'a>) -> Result<git::ChangedFiles, anyhow::Error> {
         match self {
             Repo::Regular {
+                id,
                 source,
                 branch,
                 path,
-            } => Ok(git::pull(path.clone(), branch.clone()).await?),
+            } => {
+                if !git::check_exists(path.clone()).await? {
+                    info!("Repo {} doesn't exists, will clone it", id);
+                    self.clone_if_missing(state).await?;
+                    Ok(git::ChangedFiles::default())
+                } else {
+                    Ok(git::pull(path.clone(), branch.clone()).await?)
+                }
+            }
 
-            Repo::Manual { path } => {
+            Repo::Manual { id, path } => {
                 info!("Repo is manually managed, don't pull");
                 Ok(git::ChangedFiles::default())
             }
@@ -73,11 +96,12 @@ impl From<&Repo> for common::vars::Vars {
         use common::vars::*;
         let path = match val {
             Repo::Regular {
+                id,
                 source,
                 branch,
                 path,
             } => path.clone(),
-            Repo::Manual { path } => path.clone(),
+            Repo::Manual { id, path } => path.clone(),
         };
         let value = HashMap::from_iter([(
             String::from("path"),
@@ -93,8 +117,11 @@ impl Repos {
         state: &super::State<'a>,
         repo_id: &str,
     ) -> Result<git::ChangedFiles, anyhow::Error> {
+        let run_context: &RunContext = state.get()?;
+        run_context
+            .send(common::runner::UpdateRepoMessage::PullingRepo)
+            .await;
         if let Some(repo) = self.repos.get(repo_id) {
-            let run_context: &RunContext = state.get()?;
             let res = repo.pull(state).await;
 
             match res.as_ref() {
@@ -116,6 +143,9 @@ impl Repos {
 
             res
         } else {
+            run_context
+                .send(common::runner::UpdateRepoMessage::NoSuchRepo)
+                .await;
             Err(anyhow!("No such repo: {}", repo_id))
         }
     }
@@ -127,14 +157,20 @@ impl Repos {
         let run_context: &RunContext = state.get()?;
         let mut git_tasks = Vec::new();
 
+        run_context
+            .send(common::runner::CloneMissingRepos::Begin)
+            .await;
+
         for (id, repo) in self.repos.iter() {
             info!("Cloning repo {}", id);
-            git_tasks.push(async move { repo.clone_if_missing(state).await });
+            git_tasks.push(repo.clone_if_missing(state));
         }
 
         futures::future::try_join_all(git_tasks).await?;
 
-        run_context.send(common::runner::Message::ReposCloned).await;
+        run_context
+            .send(common::runner::CloneMissingRepos::Finish)
+            .await;
 
         Ok(())
     }
@@ -206,6 +242,7 @@ mod raw {
             };
             if !self.manual.unwrap_or(false) {
                 Ok(super::Repo::Regular {
+                    id: repo_id.clone(),
                     source: self
                         .source
                         .ok_or_else(|| anyhow!("'source' must be specified for not manual repo"))?,
@@ -213,7 +250,10 @@ mod raw {
                     path,
                 })
             } else {
-                Ok(super::Repo::Manual { path })
+                Ok(super::Repo::Manual {
+                    id: repo_id.clone(),
+                    path,
+                })
             }
         }
     }

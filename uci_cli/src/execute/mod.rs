@@ -1,5 +1,6 @@
 mod config;
 mod project;
+mod utils;
 
 use super::cli::*;
 

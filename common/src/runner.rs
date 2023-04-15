@@ -22,26 +22,29 @@ pub struct ContinueReponse {
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum UpdateRepoMessage {
+    PullingRepo,
     RepoPulled { changed_files: Vec<String> },
     FailedToPull { err: String },
+    NoSuchRepo,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
-pub enum Message {
-    // RepoPulled(String),
-    ReposCloned,
-    ConfigReloaded,
-    ConfigReloadedError(String),
-}
-
-impl AsRef<Message> for Message {
-    fn as_ref(&self) -> &Message {
-        self
-    }
+pub enum CloneMissingRepos {
+    Begin,
+    ClonningRepo { repo_id: String },
+    RepoCloned { repo_id: String },
+    Finish,
 }
 
 impl AsRef<UpdateRepoMessage> for UpdateRepoMessage {
     fn as_ref(&self) -> &UpdateRepoMessage {
+        self
+    }
+}
+
+
+impl AsRef<CloneMissingRepos> for CloneMissingRepos {
+    fn as_ref(&self) -> &CloneMissingRepos {
         self
     }
 }

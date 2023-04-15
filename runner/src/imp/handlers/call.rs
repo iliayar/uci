@@ -30,7 +30,7 @@ async fn call<PM: config::ProjectsManager + 'static>(
         return Err(warp::reject::custom(AuthRejection::TokenIsUnauthorized));
     }
 
-    let run_id = call_context.init_run().await;
+    let run_id = call_context.init_run_buffered().await;
     tokio::spawn(async move {
         if let Err(err) = call_context.call_trigger(&project_id, &trigger_id).await {
             error!("Call action failed: {}", err);

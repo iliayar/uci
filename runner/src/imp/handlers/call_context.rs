@@ -13,7 +13,7 @@ pub type WsClientReciever = mpsc::UnboundedReceiver<Result<warp::ws::Message, wa
 
 type WsSender = mpsc::UnboundedSender<Result<warp::ws::Message, warp::Error>>;
 
-const ENABLE_BUFFERING: bool = false;
+const ENABLE_BUFFERING: bool = true;
 
 pub struct CallContext<PM: config::ProjectsManager> {
     pub token: Option<String>,
@@ -27,6 +27,7 @@ pub struct RunContext {
     pub id: String,
     pub txs: Mutex<Vec<WsSender>>,
     pub buffer: Mutex<Vec<String>>,
+    pub enable_buffering: bool,
 }
 
 impl RunContext {
@@ -35,6 +36,16 @@ impl RunContext {
             id: uuid::Uuid::new_v4().to_string(),
             txs: Mutex::new(Vec::new()),
             buffer: Mutex::new(Vec::new()),
+            enable_buffering: false,
+        }
+    }
+
+    pub fn new_buffered() -> Self {
+        Self {
+            id: uuid::Uuid::new_v4().to_string(),
+            txs: Mutex::new(Vec::new()),
+            buffer: Mutex::new(Vec::new()),
+            enable_buffering: ENABLE_BUFFERING,
         }
     }
 }
@@ -52,7 +63,8 @@ impl RunContext {
         let mut txs = self.txs.lock().await;
         if txs.is_empty() {
             debug!("No ws clients to send message to");
-            if ENABLE_BUFFERING {
+            if self.enable_buffering {
+                debug!("Buffering message {}", content);
                 self.buffer.lock().await.push(content);
             }
             return;
@@ -62,22 +74,11 @@ impl RunContext {
         for tx in txs.iter() {
             // FIXME: Actually it may be true event if client close
             // connection. Maybe do it depending on errors?
-	    //
-	    // See handlers::ws::ws_client_connection
+            //
+            // See handlers::ws::ws_client_connection
             if tx.is_closed() {
                 need_update = true;
                 continue;
-            }
-
-            // NOTE: Intentionally send buffered messages only to first client
-            if ENABLE_BUFFERING && !self.buffer.lock().await.is_empty() {
-                let mut buffer = Vec::new();
-                std::mem::swap(self.buffer.lock().await.as_mut(), &mut buffer);
-                for msg in buffer {
-                    if let Err(err) = tx.send(Ok(warp::ws::Message::text(content.clone()))) {
-                        error!("Failed to send buffered ws message {}", err);
-                    }
-                }
             }
 
             debug!("Sending ws message: {}", content);
@@ -103,15 +104,44 @@ impl RunContext {
 
     async fn make_client_receiver(&self) -> WsClientReciever {
         let (tx, rx) = mpsc::unbounded_channel();
-        let mut txs = self.txs.lock().await;
-        let old_count = txs.len();
-        txs.push(tx);
-        let new_count = txs.len();
+
+	// NOTE: Avoiding dead lock in send_buffered
+        let (old_count, new_count) = {
+            let mut txs = self.txs.lock().await;
+            let old_count = txs.len();
+            txs.push(tx);
+            let new_count = txs.len();
+	    (old_count, new_count)
+        };
+
         debug!(
             "Ws clients number changed for run {}: {} -> {}",
             self.id, old_count, new_count
         );
+        self.send_buffered().await;
         rx
+    }
+
+    async fn send_buffered(&self) {
+        // NOTE: Intentionally send buffered messages only to first client
+        if !self.enable_buffering || self.buffer.lock().await.is_empty() {
+            return;
+        }
+
+        let tx = {
+            let txs = self.txs.lock().await;
+            assert!(!txs.is_empty());
+            txs[0].clone()
+        };
+
+        let mut buffer = Vec::new();
+        std::mem::swap(self.buffer.lock().await.as_mut(), &mut buffer);
+        for msg in buffer {
+            debug!("Sending buffered ws message: {}", msg);
+            if let Err(err) = tx.send(Ok(warp::ws::Message::text(msg))) {
+                error!("Failed to send buffered ws message {}", err);
+            }
+        }
     }
 }
 
@@ -147,7 +177,11 @@ impl<PM: config::ProjectsManager> CallContext<PM> {
         project_id: &str,
         trigger_id: &str,
     ) -> Result<(), anyhow::Error> {
-        self.context.call_trigger(project_id, trigger_id).await
+        let mut state = config::State::default();
+        if let Some(run_context) = self.run_context.as_ref() {
+            state.set(run_context.as_ref());
+        }
+        self.context.call_trigger(&state, project_id, trigger_id).await
     }
 
     pub async fn check_permissions(
@@ -178,7 +212,15 @@ impl<PM: config::ProjectsManager> CallContext<PM> {
     }
 
     pub async fn init_run(&mut self) -> String {
-        let run_context = Arc::new(RunContext::new());
+        self.init_run_impl(RunContext::new()).await
+    }
+
+    pub async fn init_run_buffered(&mut self) -> String {
+        self.init_run_impl(RunContext::new_buffered()).await
+    }
+
+    async fn init_run_impl(&mut self, run_context: RunContext) -> String {
+        let run_context = Arc::new(run_context);
         self.runs
             .lock()
             .await

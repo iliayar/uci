@@ -1,4 +1,4 @@
-use futures::{FutureExt, StreamExt};
+use futures::{SinkExt, StreamExt};
 use tokio_stream::wrappers::UnboundedReceiverStream;
 use warp::Filter;
 
@@ -33,12 +33,28 @@ async fn ws_client<PM: config::ProjectsManager>(
 
 async fn ws_client_connection(socket: warp::ws::WebSocket, rx: super::WsClientReciever) {
     // NOTE: Do not care of receiving messages
-    let (client_ws_sender, _) = socket.split();
-    let client_rcv = UnboundedReceiverStream::new(rx);
+    let (mut client_ws_sender, _) = socket.split();
+    let mut client_rcv = UnboundedReceiverStream::new(rx);
     debug!("Running ws sending");
-    tokio::task::spawn(client_rcv.forward(client_ws_sender).map(|result| {
-        if let Err(e) = result {
-            error!("Error sending websocket msg: {}", e);
+    tokio::task::spawn(async move {
+        while let Some(msg) = client_rcv.next().await {
+            match msg {
+                Ok(msg) => {
+                    if let Err(e) = client_ws_sender.send(msg).await {
+                        error!("Error sending websocket msg: {}", e);
+                        break;
+                    }
+                }
+                Err(err) => {
+                    error!("Failed to receive ws msg: {}", err);
+                    break;
+                }
+            }
         }
-    }));
+        debug!("Closing ws connection");
+        client_rcv.close();
+        if let Err(err) = client_ws_sender.close().await {
+            error!("Failed to close ws sender: {}", err);
+        }
+    });
 }

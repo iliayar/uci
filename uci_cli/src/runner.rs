@@ -1,11 +1,13 @@
 use reqwest::{header, Url};
 
-use futures_util::{stream::SplitStream, StreamExt};
+use futures_util::{stream::SplitStream, FutureExt, StreamExt};
 use serde::Deserialize;
 
 use log::*;
 use tokio::net::TcpStream;
 use tokio_tungstenite::{MaybeTlsStream, WebSocketStream};
+
+use crate::execute::ExecuteError;
 
 fn call_runner(config: &super::config::Config) -> Result<reqwest::Client, anyhow::Error> {
     let mut headers = header::HeaderMap::new();
@@ -70,7 +72,23 @@ impl WsClient {
     pub async fn receive<T: for<'a> Deserialize<'a>>(&mut self) -> Option<T> {
         let message = self.rx.next().await;
         debug!("Receive message: {:?}", message);
+        self.receive_impl(message).await
+    }
 
+    pub async fn try_receive<T: for<'a> Deserialize<'a>>(&mut self) -> Option<T> {
+        if let Some(message) = self.rx.next().now_or_never() {
+            self.receive_impl(message).await
+        } else {
+            None
+        }
+    }
+
+    async fn receive_impl<T: for<'a> Deserialize<'a>>(
+        &mut self,
+        message: Option<
+            Result<tokio_tungstenite::tungstenite::Message, tokio_tungstenite::tungstenite::Error>,
+        >,
+    ) -> Option<T> {
         let message = match message? {
             Ok(message) => message,
             Err(err) => {
@@ -101,7 +119,10 @@ impl WsClient {
     }
 }
 
-pub async fn ws(config: &super::config::Config, client_id: String) -> WsClient {
+pub async fn ws(
+    config: &super::config::Config,
+    client_id: String,
+) -> Result<WsClient, ExecuteError> {
     let runner_url = config
         .ws_runner_url
         .as_ref()
@@ -110,9 +131,9 @@ pub async fn ws(config: &super::config::Config, client_id: String) -> WsClient {
 
     let (ws_stream, _) = tokio_tungstenite::connect_async(url)
         .await
-        .expect("Failed to connect");
+        .map_err(|err| ExecuteError::Fatal(format!("Failed to connect to socket: {}", err)))?;
 
     let (_, read) = ws_stream.split();
 
-    WsClient { rx: read }
+    Ok(WsClient { rx: read })
 }

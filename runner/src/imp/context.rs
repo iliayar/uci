@@ -73,12 +73,13 @@ impl<PM: config::ProjectsManager> Context<PM> {
         Ok(())
     }
 
-    pub async fn call_trigger(
+    pub async fn call_trigger<'a>(
         &self,
+        state: &config::State<'a>,
         project_id: &str,
         trigger_id: &str,
     ) -> Result<(), anyhow::Error> {
-        let mut state = config::State::default();
+        let mut state = state.clone();
         let config = self.config.lock().await.clone();
         state.set(config.as_ref());
         state.set_named("env", &self.env);

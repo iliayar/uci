@@ -1,7 +1,9 @@
-use crate::cli::*;
+use std::io::Write;
+
+use crate::{cli::*, utils::Spinner};
 
 use log::*;
-use termion::{color, style};
+use termion::{color, scroll, style};
 
 pub async fn execute_project(
     config: &crate::config::Config,
@@ -56,7 +58,10 @@ pub async fn execute_trigger_call(
     let response = crate::runner::post(config, format!("/call/{}/{}", project_id, action_id))?
         .send()
         .await;
-    let response: common::runner::EmptyResponse = crate::runner::json(response).await?;
+    let response: common::runner::ContinueReponse = crate::runner::json(response).await?;
+
+    debug!("Will follow run {}", response.run_id);
+    let mut ws_client = crate::runner::ws(config, response.run_id).await?;
 
     println!(
         "{}Triggered action {}{}{} on project {}{}{} {}",
@@ -69,6 +74,8 @@ pub async fn execute_trigger_call(
         style::NoBold,
         style::Reset
     );
+
+    super::utils::print_clone_repos(&mut ws_client).await?;
 
     Ok(())
 }
@@ -99,59 +106,110 @@ pub async fn execute_repo_update(
         .await;
     let response: common::runner::ContinueReponse = crate::runner::json(response).await?;
 
-    println!(
-        "{}Pulling repo {}{}{} in project {}{}{} {}",
-        color::Fg(color::Blue),
-        style::Bold,
-        repo_id,
-        style::NoBold,
-        style::Bold,
-        project_id,
-        style::NoBold,
-        style::Reset
-    );
-
     debug!("Will follow run {}", response.run_id);
 
-    let mut ws_client = crate::runner::ws(config, response.run_id).await;
+    let mut ws_client = crate::runner::ws(config, response.run_id).await?;
 
-    while let Some(message) = ws_client
+    match ws_client
         .receive::<common::runner::UpdateRepoMessage>()
         .await
     {
-        match message {
-            common::runner::UpdateRepoMessage::RepoPulled { changed_files } => {
-                println!(
-                    "{}Repo {}{}{} pulled{}",
-                    color::Fg(color::Green),
-                    style::Bold,
-                    repo_id,
-                    style::NoBold,
-                    style::Reset
-                );
-
-                if changed_files.is_empty() {
-                    println!("No changes");
-                } else {
-                    println!("{}Changed files{}:", style::Bold, style::Reset);
-                    for file in changed_files.into_iter() {
-                        println!("  {}{}{}", style::Italic, file, style::Reset);
-                    }
-                }
-            }
-            common::runner::UpdateRepoMessage::FailedToPull { err } => {
-                println!(
-                    "{} Failed to pull repo {}{}{}: {}{}",
-                    color::Fg(color::Red),
-                    style::Bold,
-                    repo_id,
-                    style::NoBold,
-                    err,
-                    style::Reset,
-                );
-            }
+        Some(common::runner::UpdateRepoMessage::PullingRepo) => {
+            println!(
+                "{}Pulling repo {bold}{}{no_bold} in project {bold}{}{no_bold} {}",
+                color::Fg(color::Blue),
+                repo_id,
+                project_id,
+                style::Reset,
+                bold = style::Bold,
+                no_bold = style::NoBold,
+            );
+        }
+        Some(msg) => {
+            return Err(super::ExecuteError::Fatal(format!(
+                "Unexpected message: {:?}",
+                msg
+            )));
+        }
+        None => {
+            return Err(super::ExecuteError::Fatal(format!("Expected a message")));
         }
     }
+
+    let mut spinner = Spinner::new();
+    loop {
+        if let Some(message) = ws_client
+            .try_receive::<common::runner::UpdateRepoMessage>()
+            .await
+        {
+            match message {
+                common::runner::UpdateRepoMessage::NoSuchRepo => {
+                    println!(
+                        "{}No such repo {bold}{}{no_bold} in project {bold}{}{no_bold} {}",
+                        color::Fg(color::Red),
+                        repo_id,
+                        project_id,
+                        style::Reset,
+                        bold = style::Bold,
+                        no_bold = style::NoBold,
+                    );
+                }
+                common::runner::UpdateRepoMessage::RepoPulled { changed_files } => {
+                    println!(
+                        "{}Repo {}{}{} pulled{}",
+                        color::Fg(color::Green),
+                        style::Bold,
+                        repo_id,
+                        style::NoBold,
+                        style::Reset
+                    );
+
+                    if changed_files.is_empty() {
+                        println!("No changes");
+                    } else {
+                        println!("{}Changed files{}:", style::Bold, style::Reset);
+                        for file in changed_files.into_iter() {
+                            println!("  {}{}{}", style::Italic, file, style::Reset);
+                        }
+                    }
+                }
+                common::runner::UpdateRepoMessage::FailedToPull { err } => {
+                    println!(
+                        "{} Failed to pull repo {}{}{}: {}{}",
+                        color::Fg(color::Red),
+                        style::Bold,
+                        repo_id,
+                        style::NoBold,
+                        err,
+                        style::Reset,
+                    );
+                }
+                msg => {
+                    return Err(super::ExecuteError::Warning(format!(
+                        "Unexpected message: {:?}",
+                        msg
+                    )));
+                }
+            }
+            break;
+        }
+
+        println!(
+            "[{}{}{}] Pulling repo {}",
+            color::Fg(color::Blue),
+            spinner.next(),
+            style::Reset,
+            repo_id
+        );
+
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        print!("{}", scroll::Down(1));
+        std::io::stdout()
+            .flush()
+            .map_err(|err| super::ExecuteError::Fatal(err.to_string()))?;
+    }
+
+    super::utils::print_clone_repos(&mut ws_client).await?;
 
     Ok(())
 }

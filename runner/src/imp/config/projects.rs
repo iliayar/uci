@@ -62,36 +62,13 @@ impl<PL: ProjectsManager> ProjectsStore<PL> {
         project_id: &str,
     ) -> Result<super::Project, anyhow::Error> {
         let project_info = self.get_project_info(state, project_id).await?;
+	project_info.clone_missing_repos(state).await?;
         project_info.load(state).await
     }
 
     pub async fn init<'a>(&self, state: &super::State<'a>) -> Result<(), anyhow::Error> {
         self.reload_internal_project(state).await?;
         Ok(())
-    }
-
-    async fn load_enabled_projects<'a>(
-        &self,
-        state: &super::State<'a>,
-    ) -> Result<Projects, anyhow::Error> {
-        let mut res = HashMap::new();
-        let projects = self.list_projects(state).await?;
-
-        let mut clone_tasks = Vec::new();
-        for project_info in projects.iter() {
-            clone_tasks.push(project_info.clone_missing_repos(state));
-        }
-        futures::future::try_join_all(clone_tasks).await?;
-
-        for project_info in projects.iter() {
-            if project_info.enabled {
-                let project = project_info.load(state).await?;
-                debug!("Loaded project: {:#?}", project);
-                res.insert(project.id.clone(), Arc::new(project));
-            }
-        }
-        self.reload_internal_project(state).await?;
-        Ok(res)
     }
 
     async fn handle_event<'a>(

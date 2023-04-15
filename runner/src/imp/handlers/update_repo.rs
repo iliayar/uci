@@ -31,7 +31,7 @@ async fn update_repo<PM: config::ProjectsManager + 'static>(
     }
     info!("Updating repo {}", repo_id);
 
-    let run_id = call_context.init_run().await;
+    let run_id = call_context.init_run_buffered().await;
     tokio::spawn(async move {
         if let Err(err) = call_context.update_repo(&project_id, &repo_id).await {
             error!("Updating repo failed: {}", err)
