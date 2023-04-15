@@ -56,8 +56,13 @@ impl<PM: config::ProjectsManager> Context<PM> {
         Ok(())
     }
 
-    pub async fn update_repo(&self, project_id: &str, repo_id: &str) -> Result<(), anyhow::Error> {
-        let mut state = config::State::default();
+    pub async fn update_repo<'a>(
+        &self,
+        state: &config::State<'a>,
+        project_id: &str,
+        repo_id: &str,
+    ) -> Result<(), anyhow::Error> {
+        let mut state = state.clone();
         let config = self.config.lock().await.clone();
         state.set(config.as_ref());
         state.set_named("env", &self.env);

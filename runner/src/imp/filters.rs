@@ -5,7 +5,7 @@ use warp::{Filter, Rejection};
 use super::{
     config,
     context::Context,
-    handlers::{self, WsClient},
+    handlers::{self, Runs},
 };
 use warp::hyper::StatusCode;
 
@@ -13,14 +13,14 @@ pub type ContextPtr<PM> = Arc<Context<PM>>;
 
 pub struct Deps<PM: config::ProjectsManager> {
     pub context: Arc<Context<PM>>,
-    pub ws_clients: Arc<Mutex<HashMap<String, WsClient>>>,
+    pub runs: Runs,
 }
 
 impl<PM: config::ProjectsManager> Clone for Deps<PM> {
     fn clone(&self) -> Self {
         Self {
             context: self.context.clone(),
-            ws_clients: self.ws_clients.clone(),
+            runs: self.runs.clone(),
         }
     }
 }
@@ -30,7 +30,7 @@ pub fn runner<PM: config::ProjectsManager + 'static>(
 ) -> impl Filter<Extract = impl warp::Reply, Error = Rejection> + Clone {
     let deps = Deps {
         context: Arc::new(context),
-        ws_clients: Arc::new(Mutex::new(HashMap::new())),
+        runs: Arc::new(Mutex::new(HashMap::new())),
     };
 
     ping()

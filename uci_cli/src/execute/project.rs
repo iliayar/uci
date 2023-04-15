@@ -111,8 +111,47 @@ pub async fn execute_repo_update(
         style::Reset
     );
 
-    debug!("Will follow with client_id {}", response.client_id);
-    todo!();
+    debug!("Will follow run {}", response.run_id);
+
+    let mut ws_client = crate::runner::ws(config, response.run_id).await;
+
+    while let Some(message) = ws_client
+        .receive::<common::runner::UpdateRepoMessage>()
+        .await
+    {
+        match message {
+            common::runner::UpdateRepoMessage::RepoPulled { changed_files } => {
+                println!(
+                    "{}Repo {}{}{} pulled{}",
+                    color::Fg(color::Green),
+                    style::Bold,
+                    repo_id,
+                    style::NoBold,
+                    style::Reset
+                );
+
+                if changed_files.is_empty() {
+                    println!("No changes");
+                } else {
+                    println!("{}Changed files{}:", style::Bold, style::Reset);
+                    for file in changed_files.into_iter() {
+                        println!("  {}{}{}", style::Italic, file, style::Reset);
+                    }
+                }
+            }
+            common::runner::UpdateRepoMessage::FailedToPull { err } => {
+                println!(
+                    "{} Failed to pull repo {}{}{}: {}{}",
+                    color::Fg(color::Red),
+                    style::Bold,
+                    repo_id,
+                    style::NoBold,
+                    err,
+                    style::Reset,
+                );
+            }
+        }
+    }
 
     Ok(())
 }

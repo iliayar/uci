@@ -1,9 +1,11 @@
 use reqwest::{header, Url};
 
-use futures_util::StreamExt;
+use futures_util::{stream::SplitStream, StreamExt};
 use serde::Deserialize;
 
 use log::*;
+use tokio::net::TcpStream;
+use tokio_tungstenite::{MaybeTlsStream, WebSocketStream};
 
 fn call_runner(config: &super::config::Config) -> Result<reqwest::Client, anyhow::Error> {
     let mut headers = header::HeaderMap::new();
@@ -60,10 +62,46 @@ pub async fn json<T: for<'a> Deserialize<'a>>(
     }
 }
 
-pub async fn ws<T: for<'a> Deserialize<'a>>(
-    config: &super::config::Config,
-    client_id: String,
-) -> impl StreamExt<Item = T> {
+pub struct WsClient {
+    rx: SplitStream<WebSocketStream<MaybeTlsStream<TcpStream>>>,
+}
+
+impl WsClient {
+    pub async fn receive<T: for<'a> Deserialize<'a>>(&mut self) -> Option<T> {
+        let message = self.rx.next().await;
+        debug!("Receive message: {:?}", message);
+
+        let message = match message? {
+            Ok(message) => message,
+            Err(err) => {
+                warn!("WebSocket error: {}", err);
+                return None;
+            }
+        };
+
+        debug!("Matching message type: {:?}", message);
+        let message = match message {
+            tokio_tungstenite::tungstenite::Message::Text(message) => message,
+            tokio_tungstenite::tungstenite::Message::Close(_) => {
+                return None;
+            }
+            _ => {
+                warn!("Unknown WebSocket message type: {}", message);
+                return None;
+            }
+        };
+
+        match serde_json::from_str(&message) {
+            Ok(value) => Some(value),
+            Err(err) => {
+                error!("Failed to decode WebSocket message: {}", err);
+                None
+            }
+        }
+    }
+}
+
+pub async fn ws(config: &super::config::Config, client_id: String) -> WsClient {
     let runner_url = config
         .ws_runner_url
         .as_ref()
@@ -76,24 +114,5 @@ pub async fn ws<T: for<'a> Deserialize<'a>>(
 
     let (_, read) = ws_stream.split();
 
-    read.filter_map(|msg| async move {
-        match msg {
-            Ok(msg) => match msg {
-                tokio_tungstenite::tungstenite::Message::Text(content) => {
-                    match serde_json::from_str(&content) {
-                        Err(err) => {
-                            error!("Failed to decode WebSocket message: {}", err);
-                            None
-                        }
-                        Ok(value) => Some(value),
-                    }
-                }
-                _ => None,
-            },
-            Err(err) => {
-                warn!("WebSocket error: {}", err);
-                None
-            }
-        }
-    })
+    WsClient { rx: read }
 }

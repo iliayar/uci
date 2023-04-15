@@ -1,6 +1,6 @@
 use std::{collections::HashMap, path::PathBuf};
 
-use crate::imp::git;
+use crate::imp::{git, handlers::RunContext};
 
 use anyhow::anyhow;
 use log::*;
@@ -94,7 +94,27 @@ impl Repos {
         repo_id: &str,
     ) -> Result<git::ChangedFiles, anyhow::Error> {
         if let Some(repo) = self.repos.get(repo_id) {
-            repo.pull(state).await
+            let run_context: &RunContext = state.get()?;
+            let res = repo.pull(state).await;
+
+            match res.as_ref() {
+                Err(err) => {
+                    run_context
+                        .send(common::runner::UpdateRepoMessage::FailedToPull {
+                            err: err.to_string(),
+                        })
+                        .await;
+                }
+                Ok(changed_files) => {
+                    run_context
+                        .send(common::runner::UpdateRepoMessage::RepoPulled {
+                            changed_files: changed_files.clone(),
+                        })
+                        .await;
+                }
+            }
+
+            res
         } else {
             Err(anyhow!("No such repo: {}", repo_id))
         }
@@ -104,14 +124,17 @@ impl Repos {
         &self,
         state: &super::State<'a>,
     ) -> Result<(), anyhow::Error> {
+        let run_context: &RunContext = state.get()?;
         let mut git_tasks = Vec::new();
 
         for (id, repo) in self.repos.iter() {
             info!("Cloning repo {}", id);
-            git_tasks.push(repo.clone_if_missing(state));
+            git_tasks.push(async move { repo.clone_if_missing(state).await });
         }
 
         futures::future::try_join_all(git_tasks).await?;
+
+        run_context.send(common::runner::Message::ReposCloned).await;
 
         Ok(())
     }
