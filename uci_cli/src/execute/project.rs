@@ -3,7 +3,7 @@ use std::io::Write;
 use crate::{cli::*, utils::Spinner};
 
 use log::*;
-use termion::{color, scroll, style};
+use termion::{color, scroll, style, clear};
 
 pub async fn execute_project(
     config: &crate::config::Config,
@@ -156,7 +156,8 @@ pub async fn execute_repo_update(
                 }
                 common::runner::UpdateRepoMessage::RepoPulled { changed_files } => {
                     println!(
-                        "{}Repo {}{}{} pulled{}",
+                        "{}{}Repo {}{}{} pulled{}",
+			clear::CurrentLine,
                         color::Fg(color::Green),
                         style::Bold,
                         repo_id,

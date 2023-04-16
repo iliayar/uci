@@ -138,16 +138,15 @@ impl Project {
         state: &State<'a>,
         pipeline: common::Pipeline,
     ) -> Result<(), anyhow::Error> {
-        let worker_context: &Option<worker_lib::context::Context> = state.get()?;
         match id {
             Id::Pipeline(id) => info!("Running pipeline {}", id),
             Id::Service(id) => info!("Running service {} action", id),
             Id::Other(id) => info!("Running pipeline for {} action", id),
         };
 
-        if let Some(worker_context) = worker_context.clone() {
-            let executor = worker_lib::executor::Executor::new(worker_context)?;
-            tokio::spawn(executor.run_result(pipeline));
+        if state.get_named::<(), _>("worker").is_ok() {
+            let executor: &worker_lib::executor::Executor = state.get()?;
+            executor.run_result(state, pipeline).await?;
         } else {
             let worker_url: Option<String> = state.get_named("worker_url").cloned().ok();
             let worker_url = worker_url.as_ref().ok_or_else(|| {

@@ -1,14 +1,19 @@
-use std::convert::Infallible;
+use std::{convert::Infallible, sync::Arc};
+use common::state::State;
 use warp::Filter;
 
 use super::handlers;
 use warp::hyper::StatusCode;
-use worker_lib::context::Context;
+
+#[derive(Clone)]
+pub struct Deps {
+    pub state: Arc<State<'static>>,
+}
 
 pub fn runner(
-    context: Context,
+    deps: Deps,
 ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
-    ping().or(run_filter(context))
+    ping().or(run_filter(deps))
 }
 
 pub fn ping() -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
@@ -16,17 +21,17 @@ pub fn ping() -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection
 }
 
 pub fn run_filter(
-    context: Context,
+    deps: Deps,
 ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
     warp::path("run")
         .and(warp::post())
-        .and(with_context(context))
+        .and(with_context(deps))
         .and(warp::body::json())
         .and_then(handlers::run)
 }
 
 pub fn with_context(
-    context: Context,
-) -> impl Filter<Extract = (Context,), Error = Infallible> + Clone {
-    warp::any().map(move || context.clone())
+    deps: Deps,
+) -> impl Filter<Extract = (Deps,), Error = Infallible> + Clone {
+    warp::any().map(move || deps.clone())
 }

@@ -1,4 +1,4 @@
-use common::RequestConfig;
+use common::{state::State, RequestConfig};
 
 use log::*;
 
@@ -6,11 +6,7 @@ use super::task;
 
 #[async_trait::async_trait]
 impl task::Task for RequestConfig {
-    async fn run(
-        self,
-        context: &crate::context::Context,
-        task_context: &super::TaskContext,
-    ) -> Result<(), task::TaskError> {
+    async fn run(self, state: &State) -> Result<(), anyhow::Error> {
         let mut client = match &self.method {
             common::RequestMethod::Post => reqwest::Client::new().post(&self.url),
             common::RequestMethod::Get => reqwest::Client::new().post(&self.url),

@@ -1,13 +1,17 @@
-use std::path::PathBuf;
+use std::{path::PathBuf, sync::Arc};
 
+use common::state::State;
+use tokio::sync::Mutex;
 use warp::Filter;
 
 use log::*;
 
 use clap::Parser;
 
-use runner_lib::{config, context};
 use super::filters;
+use runner_lib::{config, context};
+
+use runner_lib::call_context::Deps;
 
 #[derive(Parser, Debug)]
 #[command(about)]
@@ -66,12 +70,26 @@ impl App {
     }
 
     async fn run_impl(self) -> Result<(), anyhow::Error> {
-        let worker_context = if self.worker {
-            let docker = worker_lib::docker::Docker::init()?;
-            Some(worker_lib::context::Context::new(docker))
+        let mut state = State::default();
+
+        let mut maybe_docker = if self.worker {
+            Some(worker_lib::docker::Docker::init()?)
         } else {
             None
         };
+
+	let mut maybe_executor = if self.worker {
+	    Some(worker_lib::executor::Executor::new()?)
+	} else {
+	    None
+	};
+
+        if self.worker {
+            state.set_named("worker", &());
+            state.set_owned(maybe_docker.take().unwrap());
+	    state.set_owned(maybe_executor.take().unwrap());
+        }
+        state.set_named_owned("env", self.env);
 
         let context = if let Some(projects) = self.projects {
             let projects = match projects.canonicalize() {
@@ -82,15 +100,22 @@ impl App {
             };
             let manager = config::StaticProjects::new(projects).await?;
             let projects_store = config::ProjectsStore::with_manager(manager).await?;
-            context::Context::new(projects_store, worker_context, self.config, self.env).await?
+            context::Context::new(projects_store, self.config).await?
         } else {
             unimplemented!()
         };
-        context.init().await?;
 
-        let api = filters::runner(context);
+        context.init(&state).await?;
+
+        let deps = Deps {
+            context: Arc::new(context),
+            runs: Arc::new(Mutex::new(Default::default())),
+            state: Arc::new(state),
+        };
+        let api = filters::runner(deps);
         let routes = api.with(warp::log("runner"));
         warp::serve(routes).run(([127, 0, 0, 1], self.port)).await;
+
         Ok(())
     }
 }

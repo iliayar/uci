@@ -1,19 +1,17 @@
 use std::path::PathBuf;
 
 use crate::{
-    docker,
+    docker::{self, Docker},
     utils::{file_utils, tempfile},
 };
 
 use anyhow::anyhow;
+use common::state::State;
 
 #[async_trait::async_trait]
 impl super::Task for common::BuildImageConfig {
-    async fn run(
-        self,
-        context: &crate::context::Context,
-        task_context: &super::TaskContext,
-    ) -> Result<(), super::TaskError> {
+    async fn run(self, state: &State) -> Result<(), anyhow::Error> {
+        let docker: &Docker = state.get()?;
         if let Some(source) = self.source {
             let tar_tempfile = match source.path {
                 common::BuildImageConfigSourcePath::Directory(path) => {
@@ -39,8 +37,7 @@ impl super::Task for common::BuildImageConfig {
                 params_builder.dockerfile(dockerfile);
             }
 
-            context
-                .docker()
+            docker
                 .build(
                     params_builder
                         .build()
@@ -56,8 +53,7 @@ impl super::Task for common::BuildImageConfig {
                 params_builder.tag(tag);
             }
 
-            context
-                .docker()
+            docker
                 .pull(
                     params_builder
                         .build()

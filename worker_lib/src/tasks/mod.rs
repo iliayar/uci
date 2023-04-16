@@ -13,4 +13,4 @@ pub use parallel::*;
 pub use request::*;
 pub use run_shell::*;
 
-pub use task::{Task, TaskContext, TaskError};
+pub use task::{Task, TaskContext};

@@ -1,17 +1,14 @@
 use super::task;
-use crate::docker;
+use crate::docker::{self, Docker};
 
-use common::RunContainerConfig;
+use common::{state::State, RunContainerConfig};
 
 use anyhow::anyhow;
 
 #[async_trait::async_trait]
 impl task::Task for RunContainerConfig {
-    async fn run(
-        self,
-        context: &crate::context::Context,
-        task_context: &super::TaskContext,
-    ) -> Result<(), task::TaskError> {
+    async fn run(self, state: &State) -> Result<(), anyhow::Error> {
+        let docker: &Docker = state.get()?;
         let mut create_params_builder = docker::CreateContainerParamsBuilder::default();
         create_params_builder
             .image(self.image)
@@ -23,8 +20,7 @@ impl task::Task for RunContainerConfig {
             .restart(self.restart_policy)
             .env(self.env);
 
-        let name = context
-            .docker()
+        let name = docker
             .create_container(
                 create_params_builder
                     .build()
@@ -35,8 +31,7 @@ impl task::Task for RunContainerConfig {
         let mut start_params_builder = docker::StartContainerParamsBuilder::default();
         start_params_builder.name(name.clone());
 
-        context
-            .docker()
+        docker
             .start_container(
                 start_params_builder
                     .build()

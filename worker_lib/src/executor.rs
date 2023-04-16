@@ -1,57 +1,45 @@
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 
-use super::context::Context;
+use crate::docker::Docker;
+
 use super::tasks::{self, Task};
 
 use common::Pipeline;
 
+use common::state::State;
 use futures::stream::FuturesUnordered;
 use futures::StreamExt;
 
 use anyhow::anyhow;
 use log::*;
-use thiserror::Error;
 
-pub struct Executor {
-    context: Context,
-}
-
-#[derive(Debug, Error)]
-pub enum ExecutorError {
-    #[error("Task #{1} failed: {0}")]
-    TaskError(tasks::TaskError, usize),
-
-    #[error("IO Error: {0}")]
-    IOError(#[from] tokio::io::Error),
-
-    #[error("Docker error: {0}")]
-    DockerError(#[from] crate::docker::DockerError),
-
-    #[error(transparent)]
-    Other(#[from] anyhow::Error),
-}
+pub struct Executor {}
 
 impl Executor {
-    pub fn new(context: Context) -> Result<Executor, ExecutorError> {
-        Ok(Executor { context })
+    pub fn new() -> Result<Executor, anyhow::Error> {
+        Ok(Executor {})
     }
 
-    pub async fn run(self, config: Pipeline) {
+    pub async fn run<'a>(&self, state: &State<'a>, config: Pipeline) {
         debug!("Running pipeline: {:?}", config);
-        if let Err(err) = self.run_impl(config).await {
+        if let Err(err) = self.run_impl(state, config).await {
             error!("Executor failed: {}", err);
         }
     }
 
-    pub async fn run_result(self, config: Pipeline) -> Result<(), ExecutorError> {
-        self.run_impl(config).await
+    pub async fn run_result<'a>(
+        &self,
+        state: &State<'a>,
+        config: Pipeline,
+    ) -> Result<(), anyhow::Error> {
+        self.run_impl(state, config).await
     }
 
     async fn make_task_context(
         &self,
         config: &Pipeline,
-    ) -> Result<tasks::TaskContext, ExecutorError> {
+    ) -> Result<tasks::TaskContext, anyhow::Error> {
         info!("Creating task context");
         let links: HashMap<_, _> = config
             .links
@@ -66,10 +54,16 @@ impl Executor {
         Ok(tasks::TaskContext { links })
     }
 
-    pub async fn run_impl(self, config: Pipeline) -> Result<(), ExecutorError> {
+    pub async fn run_impl<'a>(
+        &self,
+        state: &State<'a>,
+        config: Pipeline,
+    ) -> Result<(), anyhow::Error> {
         info!("Running execution");
+        let mut state = state.clone();
 
         let task_context = self.make_task_context(&config).await?;
+        state.set(&task_context);
 
         let mut deps: HashMap<String, HashSet<String>> = config
             .jobs
@@ -78,10 +72,12 @@ impl Executor {
             .collect();
 
         if cycles::check(&deps) {
-            return Err(anyhow!("Jobs contains a dependencies cycle, do not run anything").into());
+            return Err(anyhow!(
+                "Jobs contains a dependencies cycle, do not run anything"
+            ));
         }
 
-        self.ensure_resources_exists(&config.networks, &config.volumes)
+        self.ensure_resources_exists(&state, &config.networks, &config.volumes)
             .await?;
 
         let pop_ready =
@@ -102,7 +98,7 @@ impl Executor {
         let mut futs: FuturesUnordered<_> = FuturesUnordered::new();
 
         for (id, job) in pop_ready(&mut deps) {
-            futs.push(self.run_job(id, job, &task_context));
+            futs.push(self.run_job(&state, id, job));
         }
 
         while let Some(id) = futs.next().await {
@@ -112,7 +108,7 @@ impl Executor {
             }
 
             for (id, job) in pop_ready(&mut deps) {
-                futs.push(self.run_job(id, job, &task_context));
+                futs.push(self.run_job(&state, id, job));
             }
         }
 
@@ -121,18 +117,16 @@ impl Executor {
         Ok(())
     }
 
-    async fn run_job(
+    async fn run_job<'a>(
         &self,
+        state: &State<'a>,
         id: String,
         job: common::Job,
-        task_context: &tasks::TaskContext,
-    ) -> Result<String, ExecutorError> {
+    ) -> Result<String, anyhow::Error> {
         info!("Runnig job {}", id);
 
         for (i, step) in job.steps.into_iter().enumerate() {
-            step.run(&self.context, task_context)
-                .await
-                .map_err(|e| ExecutorError::TaskError(e, i))?;
+            step.run(state).await?
         }
 
         info!("Job {} done", id);
@@ -140,23 +134,19 @@ impl Executor {
         Ok(id)
     }
 
-    async fn ensure_resources_exists(
+    async fn ensure_resources_exists<'a>(
         &self,
+        state: &State<'a>,
         networks: &[String],
         volumes: &[String],
-    ) -> Result<(), ExecutorError> {
+    ) -> Result<(), anyhow::Error> {
+        let docker: &Docker = state.get()?;
         for network in networks {
-            self.context
-                .docker()
-                .create_network_if_missing(network)
-                .await?;
+            docker.create_network_if_missing(network).await?;
         }
 
         for volume in volumes {
-            self.context
-                .docker()
-                .create_network_if_missing(volume)
-                .await?;
+            docker.create_network_if_missing(volume).await?;
         }
 
         Ok(())

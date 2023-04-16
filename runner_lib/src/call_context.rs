@@ -16,6 +16,7 @@ pub type ContextPtr<PM> = Arc<Context<PM>>;
 pub struct Deps<PM: config::ProjectsManager> {
     pub context: Arc<Context<PM>>,
     pub runs: Runs,
+    pub state: Arc<State<'static>>,
 }
 
 impl<PM: config::ProjectsManager> Clone for Deps<PM> {
@@ -23,6 +24,7 @@ impl<PM: config::ProjectsManager> Clone for Deps<PM> {
         Self {
             context: self.context.clone(),
             runs: self.runs.clone(),
+            state: self.state.clone(),
         }
     }
 }
@@ -33,6 +35,7 @@ pub struct CallContext<PM: config::ProjectsManager> {
     pub context: ContextPtr<PM>,
     pub runs: Arc<Mutex<HashMap<String, Arc<RunContext>>>>,
     pub run_context: Option<Arc<RunContext>>,
+    pub state: Arc<State<'static>>,
 }
 
 impl<PM: config::ProjectsManager> CallContext<PM> {
@@ -43,11 +46,12 @@ impl<PM: config::ProjectsManager> CallContext<PM> {
             runs: deps.runs,
             check_permisions: true,
             run_context: None,
+            state: deps.state,
         }
     }
 
     pub async fn update_repo(&self, project_id: &str, repo_id: &str) -> Result<(), anyhow::Error> {
-        let mut state = State::default();
+        let mut state = self.state.as_ref().clone();
         if let Some(run_context) = self.run_context.as_ref() {
             state.set(run_context.as_ref());
         }
@@ -59,7 +63,8 @@ impl<PM: config::ProjectsManager> CallContext<PM> {
     }
 
     pub async fn list_projects(&self) -> Result<Vec<config::ProjectInfo>, anyhow::Error> {
-        self.context.list_projects().await
+        let state = self.state.as_ref().clone();
+        self.context.list_projects(&state).await
     }
 
     pub async fn call_trigger(
@@ -67,7 +72,7 @@ impl<PM: config::ProjectsManager> CallContext<PM> {
         project_id: &str,
         trigger_id: &str,
     ) -> Result<(), anyhow::Error> {
-        let mut state = State::default();
+        let mut state = self.state.as_ref().clone();
         if let Some(run_context) = self.run_context.as_ref() {
             state.set(run_context.as_ref());
         }
@@ -81,11 +86,12 @@ impl<PM: config::ProjectsManager> CallContext<PM> {
         project_id: Option<&str>,
         action: config::ActionType,
     ) -> bool {
+        let state = self.state.as_ref().clone();
         if !self.check_permisions {
             return true;
         }
         if let Some(project_id) = project_id {
-            match self.context.get_project_info(project_id).await {
+            match self.context.get_project_info(&state, project_id).await {
                 Ok(project_info) => project_info.check_allowed(self.token.as_ref(), action),
                 Err(err) => {
                     error!(

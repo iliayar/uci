@@ -1,23 +1,16 @@
-use std::{collections::HashMap, convert::Infallible, fmt::Debug, sync::Arc};
-use tokio::sync::Mutex;
+use std::{convert::Infallible, fmt::Debug};
 use warp::{Filter, Rejection};
 
 use super::handlers;
 
 use runner_lib::call_context::{CallContext, Deps};
 use runner_lib::config;
-use runner_lib::context::Context;
 
 use warp::hyper::StatusCode;
 
 pub fn runner<PM: config::ProjectsManager + 'static>(
-    context: Context<PM>,
+    deps: Deps<PM>,
 ) -> impl Filter<Extract = impl warp::Reply, Error = Rejection> + Clone {
-    let deps = Deps {
-        context: Arc::new(context),
-        runs: Arc::new(Mutex::new(HashMap::new())),
-    };
-
     ping()
         .or(handlers::call::filter(deps.clone()))
         .or(handlers::reload_config::filter(deps.clone()))
