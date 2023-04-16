@@ -1,5 +1,7 @@
 use std::path::PathBuf;
 
+use common::state::State;
+
 #[derive(Debug, Default)]
 pub struct ServiceConfig {
     pub data_dir: PathBuf,
@@ -27,7 +29,7 @@ pub enum ActionEvent {
 }
 
 impl ServiceConfig {
-    pub async fn load<'a>(state: &super::State<'a>) -> Result<ServiceConfig, anyhow::Error> {
+    pub async fn load<'a>(state: &State<'a>) -> Result<ServiceConfig, anyhow::Error> {
         raw::load(state).await
     }
 
@@ -53,6 +55,7 @@ impl From<&ServiceConfig> for common::vars::Vars {
 mod raw {
     use std::path::PathBuf;
 
+    use common::state::State;
     use serde::{Deserialize, Serialize};
 
     use crate::config::load::LoadRawSync;
@@ -78,7 +81,7 @@ mod raw {
     impl config::LoadRaw for ServiceConfig {
         type Output = super::ServiceConfig;
 
-        async fn load_raw(self, state: &config::State) -> Result<Self::Output, anyhow::Error> {
+        async fn load_raw(self, state: &State) -> Result<Self::Output, anyhow::Error> {
             let service_config: PathBuf = state.get_named("service_config").cloned()?;
             let data_dir = utils::try_expand_home(
                 self.data_dir
@@ -121,9 +124,7 @@ mod raw {
         }
     }
 
-    pub async fn load<'a>(
-        state: &config::State<'a>,
-    ) -> Result<super::ServiceConfig, anyhow::Error> {
+    pub async fn load<'a>(state: &State<'a>) -> Result<super::ServiceConfig, anyhow::Error> {
         let service_config: PathBuf = state.get_named("service_config").cloned()?;
         config::load::<ServiceConfig>(service_config.clone(), state)
             .await

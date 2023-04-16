@@ -1,6 +1,8 @@
 // FIXME: This file is very personal, maybe make it more generic
 use std::collections::HashMap;
 
+use common::state::State;
+
 #[derive(Default)]
 pub struct CaddyBuilder {
     hostnames: HashMap<String, String>,
@@ -32,14 +34,15 @@ pub struct Caddy {
 }
 
 impl Caddy {
-    pub async fn load<'a>(context: &super::State<'a>) -> Result<Option<Caddy>, anyhow::Error> {
-        raw::load(context).await
+    pub async fn load<'a>(state: &State<'a>) -> Result<Option<Caddy>, anyhow::Error> {
+        raw::load(state).await
     }
 }
 
 mod raw {
     use std::{collections::HashMap, path::PathBuf};
 
+    use common::state::State;
     use serde::{Deserialize, Serialize};
 
     use anyhow::anyhow;
@@ -61,12 +64,13 @@ mod raw {
     impl config::LoadRawSync for Caddy {
         type Output = super::Caddy;
 
-        fn load_raw(self, context: &config::State) -> Result<Self::Output, anyhow::Error> {
-            let vars: common::vars::Vars = context.into();
+        fn load_raw(self, state: &State) -> Result<Self::Output, anyhow::Error> {
             let hostnames: Result<HashMap<_, _>, anyhow::Error> = self
                 .hostnames
                 .into_iter()
-                .map(|(hostname, config)| Ok((hostname, vars.eval(&config)?)))
+                .map(|(hostname, config)| {
+                    Ok((hostname, config::utils::substitute_vars(state, config)?))
+                })
                 .collect();
             Ok(super::Caddy {
                 hostnames: hostnames?,
@@ -76,18 +80,16 @@ mod raw {
 
     impl config::AutoLoadRaw for Config {}
 
-    pub async fn load<'a>(
-        context: &config::State<'a>,
-    ) -> Result<Option<super::Caddy>, anyhow::Error> {
-        let path: PathBuf = context.get_named("project_config").cloned()?;
+    pub async fn load<'a>(state: &State<'a>) -> Result<Option<super::Caddy>, anyhow::Error> {
+        let path: PathBuf = state.get_named("project_config").cloned()?;
         if path.exists() {
             let config: Result<Config, anyhow::Error> =
-                config::load_sync::<Config>(path.clone(), context)
+                config::load_sync::<Config>(path.clone(), state)
                     .await
                     .map_err(|err| anyhow!("Failed to load caddy from {:?}: {}", path, err));
             if let Some(caddy) = config?.caddy {
-                if caddy.enabled.clone().load_raw(context)?.unwrap_or(true) {
-                    Ok(Some(caddy.load_raw(context)?))
+                if caddy.enabled.clone().load_raw(state)?.unwrap_or(true) {
+                    Ok(Some(caddy.load_raw(state)?))
                 } else {
                     Ok(None)
                 }

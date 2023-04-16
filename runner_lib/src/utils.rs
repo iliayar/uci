@@ -1,6 +1,9 @@
 use std::path::PathBuf;
 
 use anyhow::anyhow;
+use common::state::State;
+
+use crate::config;
 
 fn expand_home<S: AsRef<str>>(path: S) -> PathBuf {
     expand_home_impl(path).unwrap()
@@ -40,12 +43,11 @@ fn abs_or_rel_to_file<S: AsRef<str>>(path: S, filepath: PathBuf) -> PathBuf {
 }
 
 pub fn eval_rel_path<S: AsRef<str>>(
-    context: &super::config::State,
+    state: &State,
     path: S,
     dirpath: PathBuf,
 ) -> Result<PathBuf, anyhow::Error> {
-    let vars: common::vars::Vars = context.into();
-    let path = vars.eval(path.as_ref())?;
+    let path = config::utils::substitute_vars(state, path)?;
 
     if dirpath.is_dir() {
         Ok(abs_or_rel_to_dir(path, dirpath))
@@ -54,12 +56,8 @@ pub fn eval_rel_path<S: AsRef<str>>(
     }
 }
 
-pub fn eval_abs_path<S: AsRef<str>>(
-    context: &super::config::State,
-    path: S,
-) -> Result<PathBuf, anyhow::Error> {
-    let vars: common::vars::Vars = context.into();
-    let res_path = vars.eval(path.as_ref())?;
+pub fn eval_abs_path<S: AsRef<str>>(state: &State, path: S) -> Result<PathBuf, anyhow::Error> {
+    let res_path = config::utils::substitute_vars(state, path.as_ref())?;
     let res_path = try_expand_home(res_path);
 
     if res_path.is_absolute() {

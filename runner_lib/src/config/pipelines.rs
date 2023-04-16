@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 
 use anyhow::anyhow;
+use common::state::State;
 
 #[derive(Debug, Default)]
 pub struct Pipelines {
@@ -8,7 +9,7 @@ pub struct Pipelines {
 }
 
 impl Pipelines {
-    pub async fn load<'a>(state: &super::State<'a>) -> Result<Pipelines, anyhow::Error> {
+    pub async fn load<'a>(state: &State<'a>) -> Result<Pipelines, anyhow::Error> {
         raw::load(state)
             .await
             .map_err(|err| anyhow!("Failed to pipelines: {}", err))
@@ -24,6 +25,7 @@ pub const PIPELINES_CONFIG: &str = "pipelines.yaml";
 mod raw {
     use std::collections::HashMap;
 
+    use common::state::State;
     use serde::{Deserialize, Serialize};
 
     use crate::{config, utils};
@@ -80,7 +82,7 @@ mod raw {
     impl config::LoadRaw for Pipelines {
         type Output = super::Pipelines;
 
-        async fn load_raw(self, state: &config::State) -> Result<Self::Output, anyhow::Error> {
+        async fn load_raw(self, state: &State) -> Result<Self::Output, anyhow::Error> {
             let mut pipelines: HashMap<String, common::Pipeline> = HashMap::new();
             for (id, PipelineLocation { path }) in self.pipelines.into_iter() {
                 let project_info: &config::ProjectInfo = state.get()?;
@@ -101,7 +103,7 @@ mod raw {
     impl config::LoadRawSync for Pipeline {
         type Output = common::Pipeline;
 
-        fn load_raw(self, state: &config::State) -> Result<Self::Output, anyhow::Error> {
+        fn load_raw(self, state: &State) -> Result<Self::Output, anyhow::Error> {
             let links = config::utils::substitute_vars_dict(state, self.links.unwrap_or_default())?;
 
             Ok(common::Pipeline {
@@ -116,7 +118,7 @@ mod raw {
     impl config::LoadRawSync for Job {
         type Output = common::Job;
 
-        fn load_raw(self, state: &config::State) -> Result<Self::Output, anyhow::Error> {
+        fn load_raw(self, state: &State) -> Result<Self::Output, anyhow::Error> {
             Ok(common::Job {
                 needs: self.needs.unwrap_or_default(),
                 steps: self.steps.unwrap_or_default().load_raw(state)?,
@@ -127,7 +129,7 @@ mod raw {
     impl config::LoadRawSync for Step {
         type Output = common::Step;
 
-        fn load_raw(self, state: &config::State) -> Result<Self::Output, anyhow::Error> {
+        fn load_raw(self, state: &State) -> Result<Self::Output, anyhow::Error> {
             match get_type(&self)? {
                 Type::Script => {
                     let networks = config::utils::get_networks_names(
@@ -174,7 +176,7 @@ mod raw {
         }
     }
 
-    pub async fn load<'a>(state: &config::State<'a>) -> Result<super::Pipelines, anyhow::Error> {
+    pub async fn load<'a>(state: &State<'a>) -> Result<super::Pipelines, anyhow::Error> {
         let project_info: &config::ProjectInfo = state.get()?;
         let path = project_info.path.join(super::PIPELINES_CONFIG);
         if !path.exists() {

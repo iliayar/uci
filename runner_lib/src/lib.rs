@@ -1,9 +1,9 @@
 #![allow(unused_variables)]
 #![allow(dead_code)]
 
-mod utils;
 mod git;
+mod utils;
 
-pub mod context;
-pub mod config;
 pub mod call_context;
+pub mod config;
+pub mod context;

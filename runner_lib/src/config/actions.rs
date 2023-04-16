@@ -2,6 +2,7 @@ use crate::git;
 
 use std::collections::{HashMap, HashSet};
 
+use common::state::State;
 use log::*;
 
 #[derive(Debug, Default)]
@@ -47,8 +48,8 @@ pub enum Event {
 pub const ACTIONS_CONFIG: &str = "actions.yaml";
 
 impl Actions {
-    pub async fn load<'a>(context: &super::State<'a>) -> Result<Actions, anyhow::Error> {
-        raw::load(context).await
+    pub async fn load<'a>(state: &State<'a>) -> Result<Actions, anyhow::Error> {
+        raw::load(state).await
     }
 
     pub async fn get_matched_actions(
@@ -135,6 +136,7 @@ impl TriggerType {
 mod raw {
     use std::collections::HashMap;
 
+    use common::state::State;
     use serde::{Deserialize, Serialize};
 
     use crate::config;
@@ -178,9 +180,9 @@ mod raw {
     impl config::LoadRawSync for Actions {
         type Output = super::Actions;
 
-        fn load_raw(self, context: &config::State) -> Result<Self::Output, anyhow::Error> {
+        fn load_raw(self, state: &State) -> Result<Self::Output, anyhow::Error> {
             Ok(super::Actions {
-                actions: self.actions.load_raw(context)?,
+                actions: self.actions.load_raw(state)?,
             })
         }
     }
@@ -188,7 +190,7 @@ mod raw {
     impl config::LoadRawSync for Trigger {
         type Output = super::Trigger;
 
-        fn load_raw(self, state: &config::State) -> Result<Self::Output, anyhow::Error> {
+        fn load_raw(self, state: &State) -> Result<Self::Output, anyhow::Error> {
             let project_info: &config::ProjectInfo = state.get()?;
             let project_id = project_info.id.clone();
             let trigger_id: String = state.get_named("_id").cloned()?;
@@ -226,14 +228,14 @@ mod raw {
     impl config::LoadRawSync for ServiceAction {
         type Output = super::ServiceAction;
 
-        fn load_raw(self, state: &config::State) -> Result<Self::Output, anyhow::Error> {
+        fn load_raw(self, state: &State) -> Result<Self::Output, anyhow::Error> {
             Ok(match self {
                 ServiceAction::Deploy => super::ServiceAction::Deploy,
             })
         }
     }
 
-    pub async fn load<'a>(state: &config::State<'a>) -> Result<super::Actions, anyhow::Error> {
+    pub async fn load<'a>(state: &State<'a>) -> Result<super::Actions, anyhow::Error> {
         let projects_info: &config::ProjectInfo = state.get()?;
         let path = projects_info.path.join(super::ACTIONS_CONFIG);
         if !path.exists() {

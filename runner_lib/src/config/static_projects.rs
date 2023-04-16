@@ -2,8 +2,7 @@ use std::collections::HashMap;
 
 use std::path::PathBuf;
 
-use super::State;
-
+use common::state::State;
 use log::*;
 
 pub const INTERNAL_DATA_DIR: &str = "internal";
@@ -20,7 +19,7 @@ pub struct StaticProjects {
 impl super::ProjectsManager for StaticProjects {
     async fn get_project_info<'a>(
         &mut self,
-        state: &super::State<'a>,
+        state: &State<'a>,
         project_id: &str,
     ) -> Result<super::ProjectInfo, anyhow::Error> {
         if let Some(project) = self.load_projects_info(state).await?.remove(project_id) {
@@ -32,7 +31,7 @@ impl super::ProjectsManager for StaticProjects {
 
     async fn list_projects<'a>(
         &mut self,
-        state: &super::State<'a>,
+        state: &State<'a>,
     ) -> Result<Vec<super::ProjectInfo>, anyhow::Error> {
         Ok(self
             .load_projects_info(state)
@@ -90,6 +89,7 @@ mod raw {
 
     use crate::{config, utils};
 
+    use common::state::State;
     use config::LoadRawSync;
     use serde::{Deserialize, Serialize};
 
@@ -116,8 +116,8 @@ mod raw {
     impl config::LoadRaw for Projects {
         type Output = super::HashMap<String, config::ProjectInfo>;
 
-        async fn load_raw(self, context: &config::State) -> Result<Self::Output, anyhow::Error> {
-            self.projects.load_raw(context).await
+        async fn load_raw(self, state: &State) -> Result<Self::Output, anyhow::Error> {
+            self.projects.load_raw(state).await
         }
     }
 
@@ -125,7 +125,7 @@ mod raw {
     impl config::LoadRaw for Project {
         type Output = config::ProjectInfo;
 
-        async fn load_raw(self, state: &config::State) -> Result<Self::Output, anyhow::Error> {
+        async fn load_raw(self, state: &State) -> Result<Self::Output, anyhow::Error> {
             let service_config: &config::ServiceConfig = state.get()?;
             let project_id: String = state.get_named("_id").cloned()?;
 
@@ -181,7 +181,7 @@ mod raw {
     }
 
     pub async fn load<'a>(
-        state: &config::State<'a>,
+        state: &State<'a>,
     ) -> Result<HashMap<String, config::ProjectInfo>, anyhow::Error> {
         let static_projects: &config::StaticProjects = state.get()?;
         let path: PathBuf = static_projects.projects_config.clone();

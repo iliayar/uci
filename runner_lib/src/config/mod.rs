@@ -12,7 +12,8 @@ mod secrets;
 mod service_config;
 mod services;
 mod static_projects;
-mod utils;
+
+pub mod utils;
 
 pub use actions::*;
 pub use bind::*;

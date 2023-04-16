@@ -301,9 +301,11 @@ dependencies = [
  "log 0.4.17",
  "logger",
  "serde",
+ "serde_json",
  "thiserror",
  "tokio",
  "tokio-stream",
+ "uuid",
 ]
 
 [[package]]
@@ -1635,23 +1637,17 @@ name = "runner"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "async-trait",
  "clap",
  "common",
  "futures",
  "log 0.4.17",
  "logger",
  "pretty_env_logger",
- "regex",
  "reqwest",
  "runner_lib",
- "serde",
- "serde_json",
- "serde_yaml",
  "thiserror",
  "tokio",
  "tokio-stream",
- "uuid",
  "warp",
  "worker_lib",
 ]
@@ -1670,13 +1666,10 @@ dependencies = [
  "regex",
  "reqwest",
  "serde",
- "serde_json",
  "serde_yaml",
  "thiserror",
  "tokio",
  "tokio-stream",
- "uuid",
- "warp",
  "worker_lib",
 ]
 

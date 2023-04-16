@@ -50,6 +50,7 @@ pub mod permissions_raw {
 mod raw {
     use std::collections::HashMap;
 
+    use common::state::State;
     use serde::{Deserialize, Serialize};
 
     use crate::config;
@@ -82,7 +83,7 @@ mod raw {
     impl config::LoadRawSync for Vec<Permissions> {
         type Output = super::Permissions;
 
-        fn load_raw(self, context: &config::State) -> Result<Self::Output, anyhow::Error> {
+        fn load_raw(self, state: &State) -> Result<Self::Output, anyhow::Error> {
             let mut result = super::Permissions::default();
 
             for perm in self.into_iter() {
@@ -106,22 +107,20 @@ mod raw {
     impl config::LoadRawSync for Vec<Token> {
         type Output = super::Tokens;
 
-        fn load_raw(self, context: &config::State) -> Result<Self::Output, anyhow::Error> {
+        fn load_raw(self, state: &State) -> Result<Self::Output, anyhow::Error> {
             let mut anon: Option<super::Permissions> = None;
             let mut tokens = HashMap::new();
 
-            let vars: common::vars::Vars = context.into();
-
             for perm in self.into_iter() {
                 if let Some(token) = perm.token {
-                    let token = vars.eval(&token)?;
-                    tokens.insert(token, perm.permissions.load_raw(context)?);
+                    let token = config::utils::substitute_vars(state, token)?;
+                    tokens.insert(token, perm.permissions.load_raw(state)?);
                 } else {
                     if anon.is_some() {
                         warn!("Anonymous permissions mentioned more than one time, skiping it");
                         continue;
                     }
-                    anon = Some(perm.permissions.load_raw(context)?);
+                    anon = Some(perm.permissions.load_raw(state)?);
                 }
             }
 

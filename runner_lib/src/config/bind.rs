@@ -2,6 +2,7 @@
 use std::collections::{HashMap, HashSet};
 
 use anyhow::anyhow;
+use common::state::State;
 
 #[derive(Default)]
 pub struct BindBuilder {
@@ -95,14 +96,15 @@ pub struct Zone {
 }
 
 impl Bind {
-    pub async fn load<'a>(context: &super::State<'a>) -> Result<Option<Bind>, anyhow::Error> {
-        raw::load(context).await
+    pub async fn load<'a>(state: &State<'a>) -> Result<Option<Bind>, anyhow::Error> {
+        raw::load(state).await
     }
 }
 
 mod raw {
     use std::{collections::HashMap, path::PathBuf};
 
+    use common::state::State;
     use serde::{Deserialize, Serialize};
 
     use crate::config::{self, LoadRawSync};
@@ -130,9 +132,9 @@ mod raw {
     impl config::LoadRawSync for Bind {
         type Output = super::Bind;
 
-        fn load_raw(self, context: &config::State) -> Result<Self::Output, anyhow::Error> {
+        fn load_raw(self, state: &State) -> Result<Self::Output, anyhow::Error> {
             Ok(super::Bind {
-                zones: self.zones.load_raw(context)?,
+                zones: self.zones.load_raw(state)?,
             })
         }
     }
@@ -140,7 +142,7 @@ mod raw {
     impl config::LoadRawSync for Zone {
         type Output = super::Zone;
 
-        fn load_raw(self, context: &config::State) -> Result<Self::Output, anyhow::Error> {
+        fn load_raw(self, state: &State) -> Result<Self::Output, anyhow::Error> {
             Ok(super::Zone {
                 ip: self.ip,
                 nameservers: self.nameservers.unwrap_or_default(),
@@ -151,19 +153,17 @@ mod raw {
 
     impl config::AutoLoadRaw for Config {}
 
-    pub async fn load<'a>(
-        context: &config::State<'a>,
-    ) -> Result<Option<super::Bind>, anyhow::Error> {
-        let path: PathBuf = context.get_named("project_config").cloned()?;
+    pub async fn load<'a>(state: &State<'a>) -> Result<Option<super::Bind>, anyhow::Error> {
+        let path: PathBuf = state.get_named("project_config").cloned()?;
 
         if path.exists() {
             let config: Result<Config, anyhow::Error> =
-                config::load_sync::<Config>(path.clone(), context)
+                config::load_sync::<Config>(path.clone(), state)
                     .await
                     .map_err(|err| anyhow::anyhow!("Failed to load bind from {:?}: {}", path, err));
             if let Some(bind9) = config?.bind9 {
                 if bind9.enabled.unwrap_or(true) {
-                    Ok(Some(bind9.load_raw(context)?))
+                    Ok(Some(bind9.load_raw(state)?))
                 } else {
                     Ok(None)
                 }

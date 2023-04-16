@@ -1,5 +1,6 @@
 use std::{path::PathBuf, sync::Arc};
 
+use common::state::State;
 use tokio::sync::Mutex;
 
 use super::config;
@@ -47,7 +48,7 @@ impl<PM: config::ProjectsManager> Context<PM> {
     }
 
     pub async fn init_projects(&self) -> Result<(), anyhow::Error> {
-        let mut state = config::State::default();
+        let mut state = State::default();
         let config = self.config.lock().await.clone();
         state.set(config.as_ref());
         state.set_named("env", &self.env);
@@ -58,7 +59,7 @@ impl<PM: config::ProjectsManager> Context<PM> {
 
     pub async fn update_repo<'a>(
         &self,
-        state: &config::State<'a>,
+        state: &State<'a>,
         project_id: &str,
         repo_id: &str,
     ) -> Result<(), anyhow::Error> {
@@ -75,7 +76,7 @@ impl<PM: config::ProjectsManager> Context<PM> {
 
     pub async fn call_trigger<'a>(
         &self,
-        state: &config::State<'a>,
+        state: &State<'a>,
         project_id: &str,
         trigger_id: &str,
     ) -> Result<(), anyhow::Error> {
@@ -91,7 +92,7 @@ impl<PM: config::ProjectsManager> Context<PM> {
     }
 
     pub async fn list_projects(&self) -> Result<Vec<config::ProjectInfo>, anyhow::Error> {
-        let mut state = config::State::default();
+        let mut state = State::default();
         let config = self.config.lock().await.clone();
         state.set(config.as_ref());
         state.set_named("env", &self.env);
@@ -102,7 +103,7 @@ impl<PM: config::ProjectsManager> Context<PM> {
         &self,
         project_id: &str,
     ) -> Result<config::ProjectInfo, anyhow::Error> {
-        let mut state = config::State::default();
+        let mut state = State::default();
         let config = self.config.lock().await.clone();
         state.set(config.as_ref());
         state.set_named("env", &self.env);
@@ -116,7 +117,7 @@ async fn load_config_impl(
     config_path: PathBuf,
     env: String,
 ) -> Result<config::ServiceConfig, anyhow::Error> {
-    let mut context = config::State::default();
+    let mut context = State::default();
     context.set_named("service_config", &config_path);
     let config = config::ServiceConfig::load(&context).await?;
 

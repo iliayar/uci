@@ -4,6 +4,7 @@ use std::{
 };
 
 use anyhow::anyhow;
+use common::state::State;
 use log::*;
 
 #[derive(Debug)]
@@ -33,7 +34,7 @@ impl EventActions {
 }
 
 impl Project {
-    pub async fn load<'a>(state: &super::State<'a>) -> Result<Project, anyhow::Error> {
+    pub async fn load<'a>(state: &State<'a>) -> Result<Project, anyhow::Error> {
         let mut state = state.clone();
         let project_info: &super::ProjectInfo = state.get()?;
 
@@ -59,14 +60,14 @@ impl Project {
             .await
             .map_err(|err| anyhow!("Failed to load services: {}", err))?;
 
-        let mut context = state.clone();
-        context.set(&services);
+        let mut state = state.clone();
+        state.set(&services);
 
-        let actions = super::Actions::load(&context)
+        let actions = super::Actions::load(&state)
             .await
             .map_err(|err| anyhow!("Failed to load actions: {}", err))?;
 
-        let pipelines = super::Pipelines::load(&context)
+        let pipelines = super::Pipelines::load(&state)
             .await
             .map_err(|err| anyhow!("Failed to load pipelines: {}", err))?;
 
@@ -84,7 +85,7 @@ impl Project {
 
     pub async fn run_pipeline<'a>(
         &self,
-        state: &super::State<'a>,
+        state: &State<'a>,
         pipeline_id: &str,
     ) -> Result<(), anyhow::Error> {
         let pipeline = self
@@ -100,7 +101,7 @@ impl Project {
 
     pub async fn run_service_action<'a>(
         &self,
-        state: &super::State<'a>,
+        state: &State<'a>,
         service_id: String,
         action: super::ServiceAction,
     ) -> Result<(), anyhow::Error> {
@@ -134,7 +135,7 @@ impl Project {
     async fn run_pipeline_impl<'a>(
         &self,
         id: Id<'a>,
-        state: &super::State<'a>,
+        state: &State<'a>,
         pipeline: common::Pipeline,
     ) -> Result<(), anyhow::Error> {
         let worker_context: &Option<worker_lib::context::Context> = state.get()?;
@@ -175,7 +176,7 @@ impl Project {
 
     pub async fn handle_event<'a>(
         &self,
-        state: &super::State<'a>,
+        state: &State<'a>,
         event: &super::Event,
     ) -> Result<(), anyhow::Error> {
         let EventActions {
@@ -211,15 +212,13 @@ impl Project {
 
 pub async fn load_params<'a>(
     params_file: PathBuf,
-    context: &super::State<'a>,
+    state: &State<'a>,
 ) -> Result<Option<HashMap<String, String>>, anyhow::Error> {
     if !params_file.exists() {
         return Ok(None);
     }
 
-    let vars: common::vars::Vars = context.into();
-
-    let env: String = context.get_named("env").cloned()?;
+    let env: String = state.get_named("env").cloned()?;
     let content = tokio::fs::read_to_string(params_file).await?;
     let params: HashMap<String, HashMap<String, String>> = serde_yaml::from_str(&content)?;
 
@@ -229,12 +228,12 @@ pub async fn load_params<'a>(
     let mut result = HashMap::new();
 
     for (key, value) in env_params.into_iter() {
-        result.insert(key, vars.eval(&value)?);
+        result.insert(key, super::utils::substitute_vars(state, value)?);
     }
 
     for (key, value) in default_params.into_iter() {
         if let std::collections::hash_map::Entry::Vacant(e) = result.entry(key) {
-            e.insert(vars.eval(&value)?);
+            e.insert(super::utils::substitute_vars(state, value)?);
         }
     }
 

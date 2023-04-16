@@ -1,3 +1,4 @@
+use common::run_context::WsClientReciever;
 use futures::{SinkExt, StreamExt};
 use tokio_stream::wrappers::UnboundedReceiverStream;
 use warp::Filter;
@@ -30,7 +31,7 @@ async fn ws_client<PM: config::ProjectsManager>(
     }
 }
 
-async fn ws_client_connection(socket: warp::ws::WebSocket, rx: call_context::WsClientReciever) {
+async fn ws_client_connection(socket: warp::ws::WebSocket, rx: WsClientReciever) {
     // NOTE: Do not care of receiving messages
     let (mut client_ws_sender, _) = socket.split();
     let mut client_rcv = UnboundedReceiverStream::new(rx);
@@ -39,7 +40,10 @@ async fn ws_client_connection(socket: warp::ws::WebSocket, rx: call_context::WsC
         while let Some(msg) = client_rcv.next().await {
             match msg {
                 Ok(msg) => {
-                    if let Err(e) = client_ws_sender.send(msg).await {
+                    if let Err(e) = client_ws_sender
+                        .send(warp::ws::Message::text(msg.to_string()))
+                        .await
+                    {
                         error!("Error sending websocket msg: {}", e);
                         break;
                     }

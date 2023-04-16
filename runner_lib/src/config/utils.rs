@@ -1,39 +1,40 @@
 use std::collections::HashMap;
 
+use common::state::State;
 use serde::{Deserialize, Serialize};
 
 use anyhow::anyhow;
 
 pub fn substitute_vars_dict(
-    state: &super::State,
+    state: &State,
     dict: HashMap<String, String>,
 ) -> Result<HashMap<String, String>, anyhow::Error> {
-    let vars: common::vars::Vars = state.into();
+    let vars: common::vars::Vars = state_to_vars(state);
     let result: Result<_, anyhow::Error> = dict
         .into_iter()
-        .map(|(k, v)| Ok((k, vars.eval(&v)?)))
+        .map(|(k, v)| Ok((k, vars.eval(v)?)))
         .collect();
 
     result
 }
 
 pub fn substitute_vars_list(
-    state: &super::State,
+    state: &State,
     list: Vec<String>,
 ) -> Result<Vec<String>, anyhow::Error> {
-    let vars: common::vars::Vars = state.into();
-    let result: Result<_, anyhow::Error> = list.into_iter().map(|v| Ok(vars.eval(&v)?)).collect();
+    let vars: common::vars::Vars = state_to_vars(state);
+    let result: Result<_, anyhow::Error> = list.into_iter().map(|v| Ok(vars.eval(v)?)).collect();
 
     result
 }
 
-pub fn substitute_vars(state: &super::State, s: String) -> Result<String, anyhow::Error> {
-    let vars: common::vars::Vars = state.into();
-    Ok(vars.eval(&s)?)
+pub fn substitute_vars<S: AsRef<str>>(state: &State, s: S) -> Result<String, anyhow::Error> {
+    let vars: common::vars::Vars = state_to_vars(state);
+    Ok(vars.eval(s)?)
 }
 
 pub fn get_networks_names(
-    state: &super::State,
+    state: &State,
     networks: Vec<String>,
 ) -> Result<Vec<String>, anyhow::Error> {
     let services: &super::Services = state.get()?;
@@ -45,7 +46,7 @@ pub fn get_networks_names(
 }
 
 pub fn get_volumes_names(
-    state: &super::State,
+    state: &State,
     volumes: HashMap<String, String>,
 ) -> Result<HashMap<String, String>, anyhow::Error> {
     let services: &super::Services = state.get()?;
@@ -68,15 +69,12 @@ pub enum Enabled {
 impl super::LoadRawSync for Enabled {
     type Output = bool;
 
-    fn load_raw(self, state: &super::State) -> Result<Self::Output, anyhow::Error> {
+    fn load_raw(self, state: &State) -> Result<Self::Output, anyhow::Error> {
         match self {
             Enabled::Bool(v) => Ok(v),
-            Enabled::String(s) => {
-                let vars: common::vars::Vars = state.into();
-                let s = vars.eval(&s)?;
-                Ok(s.parse()
-                    .map_err(|err| anyhow!("Failed to parse enable field: {}", err))?)
-            }
+            Enabled::String(s) => Ok(substitute_vars(state, s)?
+                .parse()
+                .map_err(|err| anyhow!("Failed to parse enable field: {}", err))?),
         }
     }
 }
@@ -92,15 +90,34 @@ pub enum AsString {
 impl super::LoadRawSync for AsString {
     type Output = String;
 
-    fn load_raw(self, state: &super::State) -> Result<Self::Output, anyhow::Error> {
+    fn load_raw(self, state: &State) -> Result<Self::Output, anyhow::Error> {
         match self {
             AsString::Bool(v) => Ok(v.to_string()),
-            AsString::String(s) => {
-                let vars: common::vars::Vars = state.into();
-                let s = vars.eval(&s)?;
-                Ok(s)
-            }
+            AsString::String(s) => Ok(substitute_vars(state, s)?),
             AsString::Int(n) => Ok(n.to_string()),
         }
     }
+}
+
+fn state_to_vars(state: &State) -> common::vars::Vars {
+    use common::vars::*;
+    let mut vars = Vars::default();
+
+    if let Ok(project_info) = state.get::<super::ProjectInfo>() {
+        vars.assign("project", project_info.into()).ok();
+    }
+
+    if let Ok(config) = state.get::<super::ServiceConfig>() {
+        vars.assign("config", config.into()).ok();
+    }
+
+    if let Ok(static_projects) = state.get::<super::StaticProjects>() {
+        vars.assign("static_projects", static_projects.into()).ok();
+    }
+
+    if let Ok(project_params) = state.get_named::<HashMap<String, String>, _>("project_params") {
+        vars.assign("params", project_params.into()).ok();
+    }
+
+    vars
 }

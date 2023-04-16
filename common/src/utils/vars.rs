@@ -253,8 +253,8 @@ impl Vars {
         }
     }
 
-    pub fn eval(&self, text: &str) -> Result<String, SubstitutionError> {
-        substitute_vars(self, text)
+    pub fn eval<S: AsRef<str>>(&self, text: S) -> Result<String, SubstitutionError> {
+        substitute_vars(self, text.as_ref())
     }
 
     pub fn assign<S: AsRef<str>>(&mut self, path: S, value: Vars) -> Result<(), SubstitutionError> {

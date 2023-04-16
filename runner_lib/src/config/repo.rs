@@ -1,8 +1,10 @@
 use std::{collections::HashMap, path::PathBuf};
 
-use crate::{call_context::RunContext, git};
+use crate::git;
+use common::run_context::RunContext;
 
 use anyhow::anyhow;
+use common::state::State;
 use log::*;
 
 #[derive(Debug, Clone, Default)]
@@ -27,7 +29,7 @@ pub enum Repo {
 pub type ReposDiffs = HashMap<String, git::ChangedFiles>;
 
 impl Repo {
-    async fn clone_if_missing<'a>(&self, state: &super::State<'a>) -> Result<(), anyhow::Error> {
+    async fn clone_if_missing<'a>(&self, state: &State<'a>) -> Result<(), anyhow::Error> {
         match self {
             Repo::Regular {
                 id,
@@ -66,7 +68,7 @@ impl Repo {
         Ok(())
     }
 
-    async fn pull<'a>(&self, state: &super::State<'a>) -> Result<git::ChangedFiles, anyhow::Error> {
+    async fn pull<'a>(&self, state: &State<'a>) -> Result<git::ChangedFiles, anyhow::Error> {
         match self {
             Repo::Regular {
                 id,
@@ -114,7 +116,7 @@ impl From<&Repo> for common::vars::Vars {
 impl Repos {
     pub async fn pull_repo<'a>(
         &self,
-        state: &super::State<'a>,
+        state: &State<'a>,
         repo_id: &str,
     ) -> Result<git::ChangedFiles, anyhow::Error> {
         let run_context: &RunContext = state.get()?;
@@ -150,10 +152,7 @@ impl Repos {
         }
     }
 
-    pub async fn clone_missing_repos<'a>(
-        &self,
-        state: &super::State<'a>,
-    ) -> Result<(), anyhow::Error> {
+    pub async fn clone_missing_repos<'a>(&self, state: &State<'a>) -> Result<(), anyhow::Error> {
         let run_context: &RunContext = state.get()?;
         let mut git_tasks = Vec::new();
 
@@ -193,6 +192,7 @@ pub mod repos_raw {
 mod raw {
     use std::collections::HashMap;
 
+    use common::state::State;
     use serde::{Deserialize, Serialize};
 
     use crate::{config, utils};
@@ -218,9 +218,9 @@ mod raw {
     impl config::LoadRawSync for Repos {
         type Output = super::Repos;
 
-        fn load_raw(self, context: &config::State) -> Result<Self::Output, anyhow::Error> {
+        fn load_raw(self, state: &State) -> Result<Self::Output, anyhow::Error> {
             Ok(super::Repos {
-                repos: self.repos.load_raw(context)?,
+                repos: self.repos.load_raw(state)?,
             })
         }
     }
@@ -228,15 +228,15 @@ mod raw {
     impl config::LoadRawSync for Repo {
         type Output = super::Repo;
 
-        fn load_raw(self, context: &config::State) -> Result<Self::Output, anyhow::Error> {
-            let repo_id: String = context.get_named("_id").cloned()?;
-            let project_info: &config::ProjectInfo = context.get()?;
-            let service_config: &config::ServiceConfig = context.get()?;
+        fn load_raw(self, state: &State) -> Result<Self::Output, anyhow::Error> {
+            let repo_id: String = state.get_named("_id").cloned()?;
+            let project_info: &config::ProjectInfo = state.get()?;
+            let service_config: &config::ServiceConfig = state.get()?;
             let default_path = service_config
                 .repos_path
                 .join(format!("{}_{}", project_info.id, repo_id));
             let path = if let Some(path) = self.path {
-                utils::eval_abs_path(context, path)?
+                utils::eval_abs_path(state, path)?
             } else {
                 default_path
             };
@@ -250,10 +250,7 @@ mod raw {
                     path,
                 })
             } else {
-                Ok(super::Repo::Manual {
-                    id: repo_id,
-                    path,
-                })
+                Ok(super::Repo::Manual { id: repo_id, path })
             }
         }
     }

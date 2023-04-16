@@ -1,5 +1,6 @@
 use std::{collections::HashMap, path::PathBuf, sync::Arc};
 
+use common::state::State;
 use tokio::sync::Mutex;
 
 use crate::git;
@@ -14,12 +15,12 @@ where
 {
     async fn get_project_info<'a>(
         &mut self,
-        state: &super::State<'a>,
+        state: &State<'a>,
         project_id: &str,
     ) -> Result<ProjectInfo, anyhow::Error>;
     async fn list_projects<'a>(
         &mut self,
-        state: &super::State<'a>,
+        state: &State<'a>,
     ) -> Result<Vec<ProjectInfo>, anyhow::Error>;
 }
 
@@ -39,14 +40,14 @@ impl<PL: ProjectsManager> ProjectsStore<PL> {
 
     pub async fn list_projects<'a>(
         &self,
-        state: &super::State<'a>,
+        state: &State<'a>,
     ) -> Result<Vec<ProjectInfo>, anyhow::Error> {
         self.manager.lock().await.list_projects(state).await
     }
 
     pub async fn get_project_info<'a>(
         &self,
-        state: &super::State<'a>,
+        state: &State<'a>,
         project_id: &str,
     ) -> Result<ProjectInfo, anyhow::Error> {
         self.manager
@@ -58,22 +59,22 @@ impl<PL: ProjectsManager> ProjectsStore<PL> {
 
     pub async fn load_project<'a>(
         &self,
-        state: &super::State<'a>,
+        state: &State<'a>,
         project_id: &str,
     ) -> Result<super::Project, anyhow::Error> {
         let project_info = self.get_project_info(state, project_id).await?;
-	project_info.clone_missing_repos(state).await?;
+        project_info.clone_missing_repos(state).await?;
         project_info.load(state).await
     }
 
-    pub async fn init<'a>(&self, state: &super::State<'a>) -> Result<(), anyhow::Error> {
+    pub async fn init<'a>(&self, state: &State<'a>) -> Result<(), anyhow::Error> {
         self.reload_internal_project(state).await?;
         Ok(())
     }
 
     async fn handle_event<'a>(
         &self,
-        state: &super::State<'a>,
+        state: &State<'a>,
         project_id: &str,
         event: &super::Event,
     ) -> Result<(), anyhow::Error> {
@@ -81,10 +82,7 @@ impl<PL: ProjectsManager> ProjectsStore<PL> {
         project.handle_event(state, event).await
     }
 
-    async fn reload_internal_project<'a>(
-        &self,
-        state: &super::State<'a>,
-    ) -> Result<(), anyhow::Error> {
+    async fn reload_internal_project<'a>(&self, state: &State<'a>) -> Result<(), anyhow::Error> {
         let mut caddy_builder = super::CaddyBuilder::default();
         let mut bind_builder = super::BindBuilder::default();
 
@@ -157,7 +155,7 @@ impl<PL: ProjectsManager> ProjectsStore<PL> {
 
     pub async fn update_repo<'a>(
         &self,
-        state: &super::State<'a>,
+        state: &State<'a>,
         project_id: &str,
         repo_id: &str,
     ) -> Result<(), anyhow::Error> {
@@ -181,7 +179,7 @@ impl<PL: ProjectsManager> ProjectsStore<PL> {
 
     pub async fn call_trigger<'a>(
         &self,
-        state: &super::State<'a>,
+        state: &State<'a>,
         project_id: &str,
         trigger_id: &str,
     ) -> Result<(), anyhow::Error> {
@@ -210,10 +208,7 @@ pub struct ProjectInfo {
 }
 
 impl ProjectInfo {
-    pub async fn load<'a>(
-        &self,
-        state: &super::State<'a>,
-    ) -> Result<super::Project, anyhow::Error> {
+    pub async fn load<'a>(&self, state: &State<'a>) -> Result<super::Project, anyhow::Error> {
         let mut state = state.clone();
         state.set(self);
         match super::Project::load(&state).await {
@@ -230,16 +225,13 @@ impl ProjectInfo {
         self.tokens.check_allowed(token, action)
     }
 
-    pub async fn clone_missing_repos<'a>(
-        &self,
-        state: &super::State<'a>,
-    ) -> Result<(), anyhow::Error> {
+    pub async fn clone_missing_repos<'a>(&self, state: &State<'a>) -> Result<(), anyhow::Error> {
         self.repos.clone_missing_repos(state).await
     }
 
     pub async fn pull_repo<'a>(
         &self,
-        state: &super::State<'a>,
+        state: &State<'a>,
         repo_id: &str,
     ) -> Result<git::ChangedFiles, anyhow::Error> {
         let changed_files = self.repos.pull_repo(state, repo_id).await?;

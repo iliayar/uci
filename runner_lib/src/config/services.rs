@@ -1,6 +1,7 @@
 use std::{collections::HashMap, path::PathBuf};
 
 use anyhow::anyhow;
+use common::state::State;
 
 #[derive(Debug, Default)]
 pub struct Services {
@@ -41,8 +42,8 @@ struct Build {
 pub const SERVICES_CONFIG: &str = "services.yaml";
 
 impl Services {
-    pub async fn load<'a>(context: &super::State<'a>) -> Result<Services, anyhow::Error> {
-        raw::load(context).await
+    pub async fn load<'a>(state: &State<'a>) -> Result<Services, anyhow::Error> {
+        raw::load(state).await
     }
 
     pub fn get(&self, service: &str) -> Option<&Service> {
@@ -137,6 +138,7 @@ impl Service {
 mod raw {
     use std::collections::HashMap;
 
+    use common::state::State;
     use serde::{Deserialize, Serialize};
 
     use crate::{config, utils};
@@ -207,7 +209,7 @@ mod raw {
     impl config::LoadRawSync for Services {
         type Output = super::Services;
 
-        fn load_raw(self, state: &config::State) -> Result<Self::Output, anyhow::Error> {
+        fn load_raw(self, state: &State) -> Result<Self::Output, anyhow::Error> {
             let mut res = super::Services {
                 networks: self.networks.load_raw(state)?,
                 volumes: self.volumes.load_raw(state)?,
@@ -236,7 +238,7 @@ mod raw {
     impl config::LoadRawSync for Network {
         type Output = super::Network;
 
-        fn load_raw(self, context: &config::State) -> Result<Self::Output, anyhow::Error> {
+        fn load_raw(self, state: &State) -> Result<Self::Output, anyhow::Error> {
             Ok(super::Network {
                 global: self.global,
             })
@@ -246,7 +248,7 @@ mod raw {
     impl config::LoadRawSync for Volume {
         type Output = super::Volume;
 
-        fn load_raw(self, context: &config::State) -> Result<Self::Output, anyhow::Error> {
+        fn load_raw(self, state: &State) -> Result<Self::Output, anyhow::Error> {
             Ok(super::Volume {
                 global: self.global,
             })
@@ -256,23 +258,23 @@ mod raw {
     impl config::LoadRawSync for Service {
         type Output = super::Service;
 
-        fn load_raw(self, context: &config::State) -> Result<Self::Output, anyhow::Error> {
+        fn load_raw(self, state: &State) -> Result<Self::Output, anyhow::Error> {
             let build = if let Some(build) = self.build {
-                Some(build.load_raw(context)?)
+                Some(build.load_raw(state)?)
             } else {
                 None
             };
 
-            let networks = config::utils::get_networks_names(context, self.networks)?;
-            let volumes = config::utils::get_volumes_names(context, self.volumes)?;
+            let networks = config::utils::get_networks_names(state, self.networks)?;
+            let volumes = config::utils::get_volumes_names(state, self.volumes)?;
 
             Ok(super::Service {
-                image: get_image_name(context, self.image, self.global)?,
-                container: get_container_name(context, self.global)?,
+                image: get_image_name(state, self.image, self.global)?,
+                container: get_container_name(state, self.global)?,
                 command: self.command,
                 ports: parse_port_mapping(self.ports)?,
                 restart: self.restart.unwrap_or_else(|| String::from("on_failure")),
-                env: config::utils::substitute_vars_dict(context, self.env)?,
+                env: config::utils::substitute_vars_dict(state, self.env)?,
                 networks,
                 volumes,
                 build,
@@ -319,11 +321,11 @@ mod raw {
     }
 
     fn get_image_name(
-        context: &config::State,
+        state: &State,
         image: Option<String>,
         global: bool,
     ) -> Result<String, anyhow::Error> {
-        let service_id = context.get_named("service_id").cloned()?;
+        let service_id = state.get_named("service_id").cloned()?;
         if let Some(image) = image {
             // Will pull specified image
             Ok(image)
@@ -332,19 +334,19 @@ mod raw {
             Ok(service_id)
         } else {
             // Image name is scoped under project
-            let project_info: &config::ProjectInfo = context.get()?;
+            let project_info: &config::ProjectInfo = state.get()?;
             Ok(format!("{}_{}", project_info.id, service_id))
         }
     }
 
-    fn get_container_name(context: &config::State, global: bool) -> Result<String, anyhow::Error> {
-        let service_id = context.get_named("service_id").cloned()?;
+    fn get_container_name(state: &State, global: bool) -> Result<String, anyhow::Error> {
+        let service_id = state.get_named("service_id").cloned()?;
         if global {
             // Container name is service name
             Ok(service_id)
         } else {
             // Container name is scoped under project
-            let project_info: &config::ProjectInfo = context.get()?;
+            let project_info: &config::ProjectInfo = state.get()?;
             Ok(format!("{}_{}", project_info.id, service_id))
         }
     }
@@ -352,8 +354,8 @@ mod raw {
     impl config::LoadRawSync for Build {
         type Output = super::Build;
 
-        fn load_raw(self, context: &config::State) -> Result<Self::Output, anyhow::Error> {
-            let path = utils::try_expand_home(config::utils::substitute_vars(context, self.path)?);
+        fn load_raw(self, state: &State) -> Result<Self::Output, anyhow::Error> {
+            let path = utils::try_expand_home(config::utils::substitute_vars(state, self.path)?);
             Ok(super::Build {
                 path,
                 dockerfile: self.dockerfile,
@@ -361,13 +363,13 @@ mod raw {
         }
     }
 
-    pub async fn load<'a>(context: &config::State<'a>) -> Result<super::Services, anyhow::Error> {
-        let project_info: &config::ProjectInfo = context.get()?;
+    pub async fn load<'a>(state: &State<'a>) -> Result<super::Services, anyhow::Error> {
+        let project_info: &config::ProjectInfo = state.get()?;
         let path = project_info.path.join(super::SERVICES_CONFIG);
         if !path.exists() {
             return Ok(Default::default());
         }
-        config::load_sync::<Services>(path.clone(), context)
+        config::load_sync::<Services>(path.clone(), state)
             .await
             .map_err(|err| anyhow::anyhow!("Failed to load services from {:?}: {}", path, err))
     }
