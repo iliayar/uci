@@ -2,15 +2,14 @@ use futures::{SinkExt, StreamExt};
 use tokio_stream::wrappers::UnboundedReceiverStream;
 use warp::Filter;
 
-use crate::imp::{
-    config,
-    filters::{with_call_context, Deps},
-};
+use runner_lib::{call_context, config};
+
+use crate::filters::with_call_context;
 
 use log::*;
 
 pub fn filter<PM: config::ProjectsManager>(
-    deps: Deps<PM>,
+    deps: call_context::Deps<PM>,
 ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
     warp::path!("ws" / String)
         .and(warp::ws())
@@ -21,7 +20,7 @@ pub fn filter<PM: config::ProjectsManager>(
 async fn ws_client<PM: config::ProjectsManager>(
     run_id: String,
     ws: warp::ws::Ws,
-    context: super::CallContext<PM>,
+    context: call_context::CallContext<PM>,
 ) -> Result<impl warp::Reply, warp::Rejection> {
     debug!("Handling ws client {}", run_id);
     let client = context.make_out_channel(run_id).await;
@@ -31,7 +30,7 @@ async fn ws_client<PM: config::ProjectsManager>(
     }
 }
 
-async fn ws_client_connection(socket: warp::ws::WebSocket, rx: super::WsClientReciever) {
+async fn ws_client_connection(socket: warp::ws::WebSocket, rx: call_context::WsClientReciever) {
     // NOTE: Do not care of receiving messages
     let (mut client_ws_sender, _) = socket.split();
     let mut client_rcv = UnboundedReceiverStream::new(rx);

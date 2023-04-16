@@ -5,4 +5,5 @@ members = [
     "worker",
     "worker_lib",
     "uci_cli",
+    "runner_lib",
 ]

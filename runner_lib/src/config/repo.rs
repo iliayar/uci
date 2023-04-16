@@ -1,6 +1,6 @@
 use std::{collections::HashMap, path::PathBuf};
 
-use crate::imp::{git, handlers::RunContext};
+use crate::{call_context::RunContext, git};
 
 use anyhow::anyhow;
 use log::*;
@@ -195,7 +195,7 @@ mod raw {
 
     use serde::{Deserialize, Serialize};
 
-    use crate::imp::{config, utils};
+    use crate::{config, utils};
     use anyhow::anyhow;
 
     const REPO_CONFIG: &str = "repos.yaml";
@@ -242,7 +242,7 @@ mod raw {
             };
             if !self.manual.unwrap_or(false) {
                 Ok(super::Repo::Regular {
-                    id: repo_id.clone(),
+                    id: repo_id,
                     source: self
                         .source
                         .ok_or_else(|| anyhow!("'source' must be specified for not manual repo"))?,
@@ -251,7 +251,7 @@ mod raw {
                 })
             } else {
                 Ok(super::Repo::Manual {
-                    id: repo_id.clone(),
+                    id: repo_id,
                     path,
                 })
             }

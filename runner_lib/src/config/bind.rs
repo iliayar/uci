@@ -105,7 +105,7 @@ mod raw {
 
     use serde::{Deserialize, Serialize};
 
-    use crate::imp::config::{self, LoadRawSync};
+    use crate::config::{self, LoadRawSync};
 
     #[derive(Serialize, Deserialize)]
     pub struct Config {

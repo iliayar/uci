@@ -132,7 +132,7 @@ pub async fn execute_repo_update(
             )));
         }
         None => {
-            return Err(super::ExecuteError::Fatal(format!("Expected a message")));
+            return Err(super::ExecuteError::Fatal("Expected a message".to_string()));
         }
     }
 

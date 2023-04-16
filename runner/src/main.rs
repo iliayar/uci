@@ -1,12 +1,13 @@
-#[allow(unused_variables)]
-#[allow(opaque_hidden_inferred_bound)]
-#[allow(dead_code)]
-mod imp;
+#![allow(opaque_hidden_inferred_bound)]
+mod app;
+mod filters;
+mod handlers;
+
 use log::*;
 
 #[tokio::main]
 async fn main() {
-    match imp::App::init().await {
+    match app::App::init().await {
         Ok(app) => app.run().await,
         Err(err) => {
             error!("App exited with error: {}", err)

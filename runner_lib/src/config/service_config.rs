@@ -55,8 +55,8 @@ mod raw {
 
     use serde::{Deserialize, Serialize};
 
-    use crate::imp::config::load::LoadRawSync;
-    use crate::imp::{config, utils};
+    use crate::config::load::LoadRawSync;
+    use crate::{config, utils};
 
     const SERVICE_CONFIG: &str = "conf.yaml";
 

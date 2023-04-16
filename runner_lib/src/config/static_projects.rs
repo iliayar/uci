@@ -88,7 +88,7 @@ impl StaticProjects {
 mod raw {
     use std::{collections::HashMap, path::PathBuf};
 
-    use crate::imp::{config, utils};
+    use crate::{config, utils};
 
     use config::LoadRawSync;
     use serde::{Deserialize, Serialize};

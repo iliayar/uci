@@ -44,7 +44,7 @@ mod raw {
 
     use anyhow::anyhow;
 
-    use crate::imp::config::{self, LoadRawSync};
+    use crate::config::{self, LoadRawSync};
 
     #[derive(Serialize, Deserialize)]
     pub struct Config {

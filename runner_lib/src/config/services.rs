@@ -139,7 +139,7 @@ mod raw {
 
     use serde::{Deserialize, Serialize};
 
-    use crate::imp::{config, utils};
+    use crate::{config, utils};
 
     use anyhow::anyhow;
 

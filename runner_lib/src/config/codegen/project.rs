@@ -2,7 +2,7 @@ use std::path::PathBuf;
 
 use tokio::io::AsyncWriteExt;
 
-use crate::imp::config;
+use crate::config;
 
 pub struct GenProject {
     pub caddy: bool,

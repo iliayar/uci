@@ -52,7 +52,7 @@ mod raw {
 
     use serde::{Deserialize, Serialize};
 
-    use crate::imp::config;
+    use crate::config;
 
     use log::*;
 

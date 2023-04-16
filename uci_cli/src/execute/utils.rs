@@ -3,8 +3,7 @@ use std::io::Write;
 
 use crate::{runner::WsClient, utils::Spinner};
 
-use log::*;
-use termion::{color, scroll, style, clear};
+use termion::{clear, color, scroll, style};
 
 pub async fn print_clone_repos(ws_client: &mut WsClient) -> Result<(), super::ExecuteError> {
     match ws_client
@@ -13,9 +12,9 @@ pub async fn print_clone_repos(ws_client: &mut WsClient) -> Result<(), super::Ex
     {
         Some(common::runner::CloneMissingRepos::Begin) => {}
         _ => {
-            return Err(super::ExecuteError::Warning(format!(
-                "Expect begin message for clone missing repos"
-            )));
+            return Err(super::ExecuteError::Warning(
+                "Expect begin message for clone missing repos".to_string(),
+            ));
         }
     }
 

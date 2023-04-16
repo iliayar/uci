@@ -1,15 +1,14 @@
 use std::collections::HashSet;
 
-use crate::imp::{
-    config::{self, ActionType},
-    filters::{with_call_context, InternalServerError, Deps},
-};
+use runner_lib::{call_context, config};
+
+use crate::filters::{with_call_context, InternalServerError};
 
 use reqwest::StatusCode;
 use warp::Filter;
 
 pub fn filter<PM: config::ProjectsManager>(
-    deps: Deps<PM>,
+    deps: call_context::Deps<PM>,
 ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
     warp::any()
         .and(with_call_context(deps))
@@ -19,7 +18,7 @@ pub fn filter<PM: config::ProjectsManager>(
 }
 
 async fn list_projects<PM: config::ProjectsManager>(
-    call_context: super::CallContext<PM>,
+    call_context: call_context::CallContext<PM>,
 ) -> Result<impl warp::Reply, warp::Rejection> {
     match list_projects_impl(call_context).await {
         Ok(resp) => Ok(warp::reply::with_status(
@@ -33,12 +32,12 @@ async fn list_projects<PM: config::ProjectsManager>(
 }
 
 async fn list_projects_impl<PM: config::ProjectsManager>(
-    call_context: super::CallContext<PM>,
+    call_context: call_context::CallContext<PM>,
 ) -> Result<common::runner::ProjectsListResponse, anyhow::Error> {
     let mut projects = HashSet::new();
     for project in call_context.list_projects().await? {
         if call_context
-            .check_permissions(Some(&project.id), ActionType::Read)
+            .check_permissions(Some(&project.id), config::ActionType::Read)
             .await
         {
             projects.insert(project.id);

@@ -1,4 +1,4 @@
-use crate::imp::git;
+use crate::git;
 
 use std::collections::{HashMap, HashSet};
 
@@ -137,7 +137,7 @@ mod raw {
 
     use serde::{Deserialize, Serialize};
 
-    use crate::imp::config;
+    use crate::config;
 
     use anyhow::anyhow;
 

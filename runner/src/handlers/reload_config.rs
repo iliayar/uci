@@ -1,13 +1,12 @@
-use crate::imp::{
-    config::{self, ActionType},
-    filters::{with_call_context, AuthRejection, InternalServerError, Deps},
-};
+use runner_lib::{call_context, config};
+
+use crate::filters::{with_call_context, AuthRejection, InternalServerError};
 
 use reqwest::StatusCode;
 use warp::Filter;
 
 pub fn filter<PM: config::ProjectsManager>(
-    deps: Deps<PM>,
+    deps: call_context::Deps<PM>,
 ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
     warp::any()
         .and(with_call_context(deps))
@@ -17,10 +16,10 @@ pub fn filter<PM: config::ProjectsManager>(
 }
 
 async fn reload_config<PM: config::ProjectsManager>(
-    call_context: super::CallContext<PM>,
+    call_context: call_context::CallContext<PM>,
 ) -> Result<impl warp::Reply, warp::Rejection> {
     if !call_context
-        .check_permissions(None, ActionType::Write)
+        .check_permissions(None, config::ActionType::Write)
         .await
     {
         return Err(warp::reject::custom(AuthRejection::TokenIsUnauthorized));

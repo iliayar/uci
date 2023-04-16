@@ -2,28 +2,13 @@ use std::{collections::HashMap, convert::Infallible, fmt::Debug, sync::Arc};
 use tokio::sync::Mutex;
 use warp::{Filter, Rejection};
 
-use super::{
-    config,
-    context::Context,
-    handlers::{self, Runs},
-};
+use super::handlers;
+
+use runner_lib::call_context::{CallContext, Deps};
+use runner_lib::config;
+use runner_lib::context::Context;
+
 use warp::hyper::StatusCode;
-
-pub type ContextPtr<PM> = Arc<Context<PM>>;
-
-pub struct Deps<PM: config::ProjectsManager> {
-    pub context: Arc<Context<PM>>,
-    pub runs: Runs,
-}
-
-impl<PM: config::ProjectsManager> Clone for Deps<PM> {
-    fn clone(&self) -> Self {
-        Self {
-            context: self.context.clone(),
-            runs: self.runs.clone(),
-        }
-    }
-}
 
 pub fn runner<PM: config::ProjectsManager + 'static>(
     context: Context<PM>,
@@ -48,11 +33,11 @@ pub fn ping() -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection
 
 pub fn with_call_context<PM: config::ProjectsManager>(
     deps: Deps<PM>,
-) -> impl Filter<Extract = (handlers::CallContext<PM>,), Error = warp::Rejection> + Clone {
+) -> impl Filter<Extract = (CallContext<PM>,), Error = warp::Rejection> + Clone {
     warp::any()
         .and(with_validation())
         .and(with_deps(deps))
-        .map(handlers::CallContext::for_handler)
+        .map(CallContext::for_handler)
 }
 
 pub fn with_deps<PM: config::ProjectsManager>(

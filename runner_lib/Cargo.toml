@@ -1,5 +1,5 @@
 [package]
-name = "runner"
+name = "runner_lib"
 version = "0.1.0"
 edition = "2021"
 
@@ -15,10 +15,8 @@ tokio = { version = "1.24.2", features = ["macros", "rt", "rt-multi-thread", "pr
 warp = "0.3.3"
 common = { path = "../common" }
 worker_lib = { path = "../worker_lib" }
-runner_lib = { path = "../runner_lib" }
 serde_yaml = "0.9.19"
 anyhow = "1.0.70"
-clap = { version = "4.1.11", features = ["derive"] }
 futures = "0.3.27"
 reqwest = { version = "0.11.15", features = ["json"] }
 async-trait = "0.1.68"

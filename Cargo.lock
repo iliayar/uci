@@ -1644,6 +1644,31 @@ dependencies = [
  "pretty_env_logger",
  "regex",
  "reqwest",
+ "runner_lib",
+ "serde",
+ "serde_json",
+ "serde_yaml",
+ "thiserror",
+ "tokio",
+ "tokio-stream",
+ "uuid",
+ "warp",
+ "worker_lib",
+]
+
+[[package]]
+name = "runner_lib"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "common",
+ "futures",
+ "log 0.4.17",
+ "logger",
+ "pretty_env_logger",
+ "regex",
+ "reqwest",
  "serde",
  "serde_json",
  "serde_yaml",

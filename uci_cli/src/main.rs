@@ -9,8 +9,7 @@ mod utils;
 
 use clap::Parser;
 
-use std::io::Write;
-use termion::{color, raw::IntoRawMode, style};
+use termion::{color, style};
 
 use log::*;
 

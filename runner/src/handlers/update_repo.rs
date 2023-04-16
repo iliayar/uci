@@ -1,7 +1,6 @@
-use crate::imp::{
-    config,
-    filters::{with_call_context, AuthRejection, Deps},
-};
+use runner_lib::{call_context, config};
+
+use crate::filters::{with_call_context, AuthRejection};
 
 use reqwest::StatusCode;
 use warp::Filter;
@@ -9,7 +8,7 @@ use warp::Filter;
 use log::*;
 
 pub fn filter<PM: config::ProjectsManager + 'static>(
-    context: Deps<PM>,
+    context: call_context::Deps<PM>,
 ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
     warp::any()
         .and(with_call_context(context))
@@ -19,7 +18,7 @@ pub fn filter<PM: config::ProjectsManager + 'static>(
 }
 
 async fn update_repo<PM: config::ProjectsManager + 'static>(
-    mut call_context: super::CallContext<PM>,
+    mut call_context: call_context::CallContext<PM>,
     project_id: String,
     repo_id: String,
 ) -> Result<impl warp::Reply, warp::Rejection> {

@@ -1,9 +1,23 @@
 use std::{collections::HashMap, sync::Arc};
 
-use crate::imp::{
-    config,
-    filters::{ContextPtr, Deps},
-};
+use crate::config;
+use crate::context::Context;
+
+pub type ContextPtr<PM> = Arc<Context<PM>>;
+
+pub struct Deps<PM: config::ProjectsManager> {
+    pub context: Arc<Context<PM>>,
+    pub runs: Runs,
+}
+
+impl<PM: config::ProjectsManager> Clone for Deps<PM> {
+    fn clone(&self) -> Self {
+        Self {
+            context: self.context.clone(),
+            runs: self.runs.clone(),
+        }
+    }
+}
 
 use log::*;
 use tokio::sync::{mpsc, Mutex};
@@ -47,6 +61,12 @@ impl RunContext {
             buffer: Mutex::new(Vec::new()),
             enable_buffering: ENABLE_BUFFERING,
         }
+    }
+}
+
+impl Default for RunContext {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -105,13 +125,13 @@ impl RunContext {
     async fn make_client_receiver(&self) -> WsClientReciever {
         let (tx, rx) = mpsc::unbounded_channel();
 
-	// NOTE: Avoiding dead lock in send_buffered
+        // NOTE: Avoiding dead lock in send_buffered
         let (old_count, new_count) = {
             let mut txs = self.txs.lock().await;
             let old_count = txs.len();
             txs.push(tx);
             let new_count = txs.len();
-	    (old_count, new_count)
+            (old_count, new_count)
         };
 
         debug!(
@@ -181,7 +201,9 @@ impl<PM: config::ProjectsManager> CallContext<PM> {
         if let Some(run_context) = self.run_context.as_ref() {
             state.set(run_context.as_ref());
         }
-        self.context.call_trigger(&state, project_id, trigger_id).await
+        self.context
+            .call_trigger(&state, project_id, trigger_id)
+            .await
     }
 
     pub async fn check_permissions(

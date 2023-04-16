@@ -2,7 +2,7 @@ use std::{collections::HashMap, path::PathBuf, sync::Arc};
 
 use tokio::sync::Mutex;
 
-use crate::imp::git;
+use crate::git;
 
 use anyhow::anyhow;
 use log::*;
