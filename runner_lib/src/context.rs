@@ -48,6 +48,8 @@ impl<PM: config::ProjectsManager> Context<PM> {
         Ok(())
     }
 
+    // FIXME: There is a race. The pipeline might be running
+    // when pulling changes. It may cause problems...
     pub async fn update_repo<'a>(
         &self,
         state: &State<'a>,
@@ -99,6 +101,17 @@ impl<PM: config::ProjectsManager> Context<PM> {
         self.projects_store
             .get_project_info(&state, project_id)
             .await
+    }
+
+    pub async fn get_project<'a>(
+        &self,
+        state: &State<'a>,
+        project_id: &str,
+    ) -> Result<config::Project, anyhow::Error> {
+        let mut state = state.clone();
+        let config = self.config.lock().await.clone();
+        state.set(config.as_ref());
+        self.projects_store.load_project(&state, project_id).await
     }
 }
 

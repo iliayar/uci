@@ -45,11 +45,31 @@ pub enum Event {
     },
 }
 
+pub struct ActionsDescription {
+    pub actions: Vec<ActionDescription>,
+}
+
+pub struct ActionDescription {
+    pub name: String,
+}
+
 pub const ACTIONS_CONFIG: &str = "actions.yaml";
 
 impl Actions {
     pub async fn load<'a>(state: &State<'a>) -> Result<Actions, anyhow::Error> {
         raw::load(state).await
+    }
+
+    pub async fn list_actions<'a>(&self) -> ActionsDescription {
+        let mut actions = Vec::new();
+
+        for (action_id, triggers) in self.actions.iter() {
+            actions.push(ActionDescription {
+                name: action_id.clone(),
+            });
+        }
+
+        ActionsDescription { actions }
     }
 
     pub async fn get_matched_actions(

@@ -1,5 +1,3 @@
-use std::collections::HashSet;
-
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -12,7 +10,42 @@ pub struct ErrorResponse {
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ProjectsListResponse {
-    pub projects: HashSet<String>,
+    pub projects: Vec<Project>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct Project {
+    pub id: String,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct ActionsListResponse {
+    pub actions: Vec<Action>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct Action {
+    pub id: String,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct ServicesListResponse {
+    pub services: Vec<Service>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct Service {
+    pub id: String,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct PipelinesListResponse {
+    pub pipelines: Vec<Pipeline>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct Pipeline {
+    pub id: String,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -41,7 +74,6 @@ impl AsRef<UpdateRepoMessage> for UpdateRepoMessage {
         self
     }
 }
-
 
 impl AsRef<CloneMissingRepos> for CloneMissingRepos {
     fn as_ref(&self) -> &CloneMissingRepos {

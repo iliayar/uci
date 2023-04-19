@@ -2,10 +2,9 @@ use std::collections::HashMap;
 
 use common::{state::State, utils::run_command_with_output};
 
-use crate::{
-    docker::{self, Docker},
-    utils::tempfile,
-};
+use crate::docker::{self, Docker};
+
+use common::utils::tempfile;
 
 use super::task;
 
@@ -65,7 +64,7 @@ impl task::Task for common::RunShellConfig {
                 )
                 .await?;
         } else {
-            let tempdir = crate::utils::tempfile::TempFile::dir().await?;
+            let tempdir = tempfile::TempFile::dir().await?;
             info!("Using context directory: {:?}", tempdir.path);
 
             for (link, path) in task_context.links.iter() {

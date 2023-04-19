@@ -8,6 +8,14 @@ pub struct Pipelines {
     pipelines: HashMap<String, common::Pipeline>,
 }
 
+pub struct PipelinesDescription {
+    pub pipelines: Vec<PipelineDescription>,
+}
+
+pub struct PipelineDescription {
+    pub name: String,
+}
+
 impl Pipelines {
     pub async fn load<'a>(state: &State<'a>) -> Result<Pipelines, anyhow::Error> {
         raw::load(state)
@@ -17,6 +25,16 @@ impl Pipelines {
 
     pub fn get(&self, pipeline: &str) -> Option<&common::Pipeline> {
         self.pipelines.get(pipeline)
+    }
+
+    pub async fn list_pipelines(&self) -> PipelinesDescription {
+        let mut pipelines = Vec::new();
+        for (pipeline_id, pipeline) in self.pipelines.iter() {
+            pipelines.push(PipelineDescription {
+                name: pipeline_id.clone(),
+            });
+        }
+        PipelinesDescription { pipelines }
     }
 }
 

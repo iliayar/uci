@@ -12,6 +12,10 @@ impl Secrets {
             secrets: serde_yaml::from_str(&content)?,
         })
     }
+
+    pub fn get(&self, k: impl AsRef<str>) -> Option<String> {
+        self.secrets.get(k.as_ref()).cloned()
+    }
 }
 
 impl From<&Secrets> for common::vars::Vars {

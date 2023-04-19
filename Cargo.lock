@@ -1670,6 +1670,7 @@ dependencies = [
  "thiserror",
  "tokio",
  "tokio-stream",
+ "tokio-tar",
  "worker_lib",
 ]
 
@@ -2097,6 +2098,21 @@ dependencies = [
  "futures-core",
  "pin-project-lite",
  "tokio",
+]
+
+[[package]]
+name = "tokio-tar"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a50188549787c32c1c3d9c8c71ad7e003ccf2f102489c5a96e385c84760477f4"
+dependencies = [
+ "filetime",
+ "futures-core",
+ "libc",
+ "redox_syscall",
+ "tokio",
+ "tokio-stream",
+ "xattr",
 ]
 
 [[package]]

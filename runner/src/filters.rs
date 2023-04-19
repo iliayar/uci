@@ -16,7 +16,10 @@ pub fn runner<PM: config::ProjectsManager + 'static>(
         .or(handlers::reload_config::filter(deps.clone()))
         .or(handlers::update_repo::filter(deps.clone()))
         .or(handlers::list_projects::filter(deps.clone()))
-        .or(handlers::ws::filter(deps))
+        .or(handlers::ws::filter(deps.clone()))
+        .or(handlers::list_actions::filter(deps.clone()))
+        .or(handlers::list_pipelines::filter(deps.clone()))
+        .or(handlers::list_services::filter(deps))
         .recover(report_rejection)
 }
 

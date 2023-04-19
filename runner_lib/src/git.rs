@@ -2,7 +2,7 @@ use std::{path::PathBuf, process::ExitStatus};
 
 use tokio::process::Command;
 
-use common::utils::run_command_with_output;
+use common::utils::{run_command_with_output, tempfile::TempFile};
 
 use anyhow::anyhow;
 use log::*;
@@ -29,6 +29,24 @@ pub async fn clone(repo: String, path: PathBuf) -> Result<(), GitError> {
     )
     .await
     .map(|_| ())
+}
+
+pub async fn archive(path: PathBuf) -> Result<TempFile, GitError> {
+    let tempfile = TempFile::dir().await?;
+    let archive_path = tempfile.path.join("repo.tar.xz");
+    git(
+        path.clone(),
+        &[
+            String::from("archive"),
+            String::from("--format"),
+            String::from("tar.gz"),
+            String::from("HEAD"),
+            String::from("-o"),
+            archive_path.to_string_lossy().to_string(),
+        ],
+    )
+	.await?;
+    Ok(tempfile)
 }
 
 pub async fn check_exists(path: PathBuf) -> Result<bool, GitError> {

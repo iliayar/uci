@@ -2,11 +2,12 @@ use std::path::PathBuf;
 
 use crate::{
     docker::{self, Docker},
-    utils::{file_utils, tempfile},
+    utils::file_utils,
 };
 
 use anyhow::anyhow;
 use common::state::State;
+use common::utils::tempfile;
 
 #[async_trait::async_trait]
 impl super::Task for common::BuildImageConfig {

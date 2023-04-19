@@ -31,6 +31,10 @@ impl Tokens {
             self.anonymous.check_allowed(action)
         }
     }
+
+    pub fn add(&mut self, token: String, perms: Permissions) {
+        self.tokens.insert(token, perms);
+    }
 }
 
 impl Permissions {
@@ -39,6 +43,14 @@ impl Permissions {
             ActionType::Write => self.write,
             ActionType::Read => self.read,
             ActionType::Execute => self.execute,
+        }
+    }
+
+    pub fn superuser() -> Permissions {
+        Permissions {
+            read: true,
+            write: true,
+            execute: true,
         }
     }
 }

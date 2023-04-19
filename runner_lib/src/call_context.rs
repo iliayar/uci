@@ -31,7 +31,7 @@ impl<PM: config::ProjectsManager> Clone for Deps<PM> {
 
 pub struct CallContext<PM: config::ProjectsManager> {
     pub token: Option<String>,
-    pub check_permisions: bool,
+    check_permisions: bool,
     pub context: ContextPtr<PM>,
     pub runs: Arc<Mutex<HashMap<String, Arc<RunContext>>>>,
     pub run_context: Option<Arc<RunContext>>,
@@ -65,6 +65,15 @@ impl<PM: config::ProjectsManager> CallContext<PM> {
     pub async fn list_projects(&self) -> Result<Vec<config::ProjectInfo>, anyhow::Error> {
         let state = self.state.as_ref().clone();
         self.context.list_projects(&state).await
+    }
+
+    pub async fn get_project(&self, project_id: &str) -> Result<config::Project, anyhow::Error> {
+        let mut state = self.state.as_ref().clone();
+
+	let run_context = RunContext::empty();
+	state.set(&run_context);
+
+        self.context.get_project(&state, project_id).await
     }
 
     pub async fn call_trigger(

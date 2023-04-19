@@ -48,14 +48,15 @@ pub async fn json<T: for<'a> Deserialize<'a>>(
             if response.status().is_success() {
                 Ok(response.json().await.map_err(Into::<anyhow::Error>::into)?)
             } else {
+                let status = response.status();
                 let text = response.text().await.map_err(Into::<anyhow::Error>::into)?;
                 match serde_json::from_str::<common::runner::ErrorResponse>(&text) {
                     Ok(error_response) => {
                         Err(super::execute::ExecuteError::Fatal(error_response.message))
                     }
                     Err(err) => Err(super::execute::ExecuteError::Fatal(format!(
-                        "Failed to parse response as json ({}). Got: {}",
-                        err, text
+                        "Failed to parse response as json ({}). Got {}: {}",
+                        err, status, text
                     ))),
                 }
             }

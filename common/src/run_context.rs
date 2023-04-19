@@ -48,6 +48,15 @@ impl RunContext {
             enable_buffering: ENABLE_BUFFERING,
         }
     }
+
+    pub fn empty() -> Self {
+        Self {
+            id: "(none)".to_string(),
+            txs: Mutex::new(Vec::new()),
+            buffer: Mutex::new(Vec::new()),
+            enable_buffering: false,
+        }
+    }
 }
 
 impl Default for RunContext {

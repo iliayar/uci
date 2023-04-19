@@ -23,7 +23,7 @@ pub async fn execute(
     command: Commands,
 ) -> Result<(), ExecuteError> {
     match command {
-        Commands::Projects { command } => project::execute_project(config, command).await?,
+        Commands::Projects { command } => project::command::execute_project(config, command).await?,
         Commands::Config { command } => config::execute_config(config, command).await?,
     }
 

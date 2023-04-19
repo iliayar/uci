@@ -59,6 +59,10 @@ impl TempFile {
         TempFile::new_permissions(text, Some(Permissions::from_mode(0o700))).await
     }
 
+    pub async fn new_empty() -> Result<TempFile, tokio::io::Error> {
+	TempFile::new("").await
+    }
+
     pub async fn new_permissions(
         text: &str,
         perms: Option<Permissions>,

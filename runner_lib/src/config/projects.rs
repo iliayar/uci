@@ -97,6 +97,8 @@ impl<PL: ProjectsManager> ProjectsStore<PL> {
             }
         }
 
+        let service_config: &super::ServiceConfig = state.get()?;
+
         let gen_caddy = caddy_builder.build();
         let gen_bind = bind_builder.build();
         let gen_project = super::codegen::project::GenProject {
@@ -104,7 +106,6 @@ impl<PL: ProjectsManager> ProjectsStore<PL> {
             bind: !gen_bind.is_empty(),
         };
 
-        let service_config: &super::ServiceConfig = state.get()?;
         let internal_data_dir = service_config.internal_path.clone();
         if !gen_caddy.is_empty() {
             let path = internal_data_dir.join(super::CADDY_DATA_DIR);
@@ -127,12 +128,17 @@ impl<PL: ProjectsManager> ProjectsStore<PL> {
             info!("Generating internal project in {:?}", project_root);
             gen_project.gen(project_root.clone()).await?;
 
+	    let mut tokens = super::Tokens::default();
+	    if let Some(token) = service_config.secrets.get("admin-token") {
+		tokens.add(token, super::Permissions::superuser());
+	    }
+
             let project_info = ProjectInfo {
+                tokens,
                 id: project_id.clone(),
                 path: project_root,
                 enabled: true,
                 repos: super::Repos::default(),
-                tokens: super::Tokens::default(),
                 secrets: super::Secrets::default(),
                 data_path: internal_data_dir,
             };

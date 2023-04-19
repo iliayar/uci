@@ -41,6 +41,14 @@ struct Build {
 
 pub const SERVICES_CONFIG: &str = "services.yaml";
 
+pub struct ServicesDescription {
+    pub services: Vec<ServiceDescription>,
+}
+
+pub struct ServiceDescription {
+    pub name: String,
+}
+
 impl Services {
     pub async fn load<'a>(state: &State<'a>) -> Result<Services, anyhow::Error> {
         raw::load(state).await
@@ -48,6 +56,16 @@ impl Services {
 
     pub fn get(&self, service: &str) -> Option<&Service> {
         self.services.get(service)
+    }
+
+    pub async fn list_services(&self) -> ServicesDescription {
+        let mut services = Vec::new();
+        for (pipeline_id, pipeline) in self.services.iter() {
+            services.push(ServiceDescription {
+                name: pipeline_id.clone(),
+            });
+        }
+        ServicesDescription { services }
     }
 
     pub fn get_network_name<S: AsRef<str>>(
