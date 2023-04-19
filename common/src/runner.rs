@@ -36,6 +36,18 @@ pub struct ServicesListResponse {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Service {
     pub id: String,
+    pub status: ServiceStatus,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub enum ServiceStatus {
+    Running,
+    Starting,
+    NotRunning,
+    Dead,
+    Exited,
+    Restarting,
+    Unknown,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]

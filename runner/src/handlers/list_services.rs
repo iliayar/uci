@@ -46,9 +46,30 @@ async fn list_services_impl<PM: config::ProjectsManager>(
     let project = call_context.get_project(project_id).await?;
 
     let mut services = Vec::new();
-    let services_description = project.services.list_services().await;
+    let services_description = project
+        .services
+        .list_services(call_context.state.as_ref())
+        .await?;
     for service in services_description.services.into_iter() {
-        services.push(common::runner::Service { id: service.name });
+        let status = match service.status {
+            worker_lib::docker::ContainerStatus::Running => common::runner::ServiceStatus::Running,
+            worker_lib::docker::ContainerStatus::NotRunning => {
+                common::runner::ServiceStatus::NotRunning
+            }
+            worker_lib::docker::ContainerStatus::Starting => {
+                common::runner::ServiceStatus::Starting
+            }
+            worker_lib::docker::ContainerStatus::Restarting => {
+                common::runner::ServiceStatus::Restarting
+            }
+            worker_lib::docker::ContainerStatus::Dead => common::runner::ServiceStatus::Dead,
+            worker_lib::docker::ContainerStatus::Exited => common::runner::ServiceStatus::Exited,
+            worker_lib::docker::ContainerStatus::Unknown => common::runner::ServiceStatus::Unknown,
+        };
+        services.push(common::runner::Service {
+            id: service.name,
+            status,
+        });
     }
 
     Ok(common::runner::ServicesListResponse { services })

@@ -119,11 +119,61 @@ fn default_restart() -> String {
     String::from("on_failure")
 }
 
+pub enum ContainerStatus {
+    Running,
+    NotRunning,
+    Starting,
+    Restarting,
+    Dead,
+    Exited,
+    Unknown,
+}
+
 impl Docker {
     pub fn init() -> Result<Docker, DockerError> {
         let docker = bollard::Docker::connect_with_socket_defaults()?;
 
         Ok(Docker { con: docker })
+    }
+
+    pub async fn status(&self, name: impl AsRef<str>) -> Result<ContainerStatus, DockerError> {
+        if let Ok(info) = self.con.inspect_container(name.as_ref(), None).await {
+            if let Some(state) = info.state {
+                if let Some(status) = state.status {
+                    let status = match status {
+                        bollard::models::ContainerStateStatusEnum::EMPTY => {
+                            ContainerStatus::Unknown
+                        }
+                        bollard::models::ContainerStateStatusEnum::CREATED => {
+                            ContainerStatus::Starting
+                        }
+                        bollard::models::ContainerStateStatusEnum::RUNNING => {
+                            ContainerStatus::Running
+                        }
+                        bollard::models::ContainerStateStatusEnum::PAUSED => {
+                            ContainerStatus::NotRunning
+                        }
+                        bollard::models::ContainerStateStatusEnum::RESTARTING => {
+                            ContainerStatus::Restarting
+                        }
+                        bollard::models::ContainerStateStatusEnum::REMOVING => {
+                            ContainerStatus::NotRunning
+                        }
+                        bollard::models::ContainerStateStatusEnum::EXITED => {
+                            ContainerStatus::Exited
+                        }
+                        bollard::models::ContainerStateStatusEnum::DEAD => ContainerStatus::Dead,
+                    };
+                    return Ok(status);
+                }
+
+                Ok(ContainerStatus::Unknown)
+            } else {
+                Ok(ContainerStatus::Unknown)
+            }
+        } else {
+            Ok(ContainerStatus::NotRunning)
+        }
     }
 
     pub async fn pull(&self, params: PullParams) -> Result<(), DockerError> {

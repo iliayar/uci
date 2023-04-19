@@ -22,6 +22,7 @@ pub struct Volume {
 
 #[derive(Debug)]
 pub struct Service {
+    id: String,
     container: String,
     build: Option<Build>,
     image: String,
@@ -47,6 +48,7 @@ pub struct ServicesDescription {
 
 pub struct ServiceDescription {
     pub name: String,
+    pub status: worker_lib::docker::ContainerStatus,
 }
 
 impl Services {
@@ -58,14 +60,15 @@ impl Services {
         self.services.get(service)
     }
 
-    pub async fn list_services(&self) -> ServicesDescription {
+    pub async fn list_services<'a>(
+        &self,
+        state: &State<'a>,
+    ) -> Result<ServicesDescription, anyhow::Error> {
         let mut services = Vec::new();
-        for (pipeline_id, pipeline) in self.services.iter() {
-            services.push(ServiceDescription {
-                name: pipeline_id.clone(),
-            });
+        for (service_id, service) in self.services.iter() {
+            services.push(service.describe(state).await?);
         }
-        ServicesDescription { services }
+        Ok(ServicesDescription { services })
     }
 
     pub fn get_network_name<S: AsRef<str>>(
@@ -95,6 +98,19 @@ impl Services {
 }
 
 impl Service {
+    pub async fn describe<'a>(
+        &self,
+        state: &State<'a>,
+    ) -> Result<ServiceDescription, anyhow::Error> {
+        let docker: &worker_lib::docker::Docker = state.get()?;
+        let status = docker.status(&self.container).await?;
+
+        Ok(ServiceDescription {
+            name: self.id.clone(),
+            status,
+        })
+    }
+
     pub fn get_build_config(&self) -> Option<common::BuildImageConfig> {
         let source = self
             .build
@@ -277,6 +293,8 @@ mod raw {
         type Output = super::Service;
 
         fn load_raw(self, state: &State) -> Result<Self::Output, anyhow::Error> {
+            let service_id: &String = state.get_named("service_id")?;
+
             let build = if let Some(build) = self.build {
                 Some(build.load_raw(state)?)
             } else {
@@ -287,6 +305,7 @@ mod raw {
             let volumes = config::utils::get_volumes_names(state, self.volumes)?;
 
             Ok(super::Service {
+                id: service_id.clone(),
                 image: get_image_name(state, self.image, self.global)?,
                 container: get_container_name(state, self.global)?,
                 command: self.command,
