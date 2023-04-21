@@ -9,7 +9,8 @@ pub async fn execute_services_list(
 ) -> Result<(), execute::ExecuteError> {
     debug!("Executing services list command");
 
-    let response = crate::runner::get(config, format!("/projects/{}/services/list", project_id))?
+    let query = common::runner::ListServicesQuery { project_id };
+    let response = crate::runner::get_query(config, "/projects/services/list", &query)?
         .send()
         .await;
     let response: common::runner::ServicesListResponse = crate::runner::json(response).await?;

@@ -1,5 +1,6 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap, HashSet, LinkedList};
 use std::path::PathBuf;
+use std::sync::Arc;
 
 use crate::docker::Docker;
 
@@ -10,20 +11,214 @@ use common::Pipeline;
 use common::state::State;
 use futures::stream::FuturesUnordered;
 use futures::StreamExt;
+use tokio::sync::Mutex;
 
 use anyhow::anyhow;
 use log::*;
 
-pub struct Executor {}
+pub struct Executor {
+    pub runs: Mutex<Runs>,
+}
+
+const RUNS_LOGS_DIR: &str = "/tmp/uci-runs";
+
+pub struct Runs {
+    projects: HashMap<String, ProjectRuns>,
+}
+
+#[derive(Default)]
+pub struct ProjectRuns {
+    pipelines: HashMap<String, PipelineRuns>,
+}
+
+pub struct PipelineRuns {
+    queue_limit: usize,
+    runs: HashMap<String, Arc<PipelineRun>>,
+    runs_queue: LinkedList<String>,
+}
+
+pub struct PipelineRun {
+    pub id: String,
+    pub started: chrono::DateTime<chrono::Utc>,
+    pub status: Mutex<PipelineStatus>,
+    pub jobs: Mutex<HashMap<String, PipelineJob>>,
+}
+
+#[derive(Clone)]
+pub enum PipelineStatus {
+    Starting,
+    Running,
+    Finished(PipelineFinishedStatus),
+}
+
+#[derive(Clone)]
+pub struct PipelineJob {
+    pub status: JobStatus,
+}
+
+#[derive(Clone)]
+pub enum JobStatus {
+    Pending,
+    Running { step: usize },
+    Finished,
+}
+
+#[derive(Clone)]
+pub enum PipelineFinishedStatus {
+    Success,
+    Error { message: String },
+}
+
+impl Runs {
+    pub async fn init() -> Result<Self, anyhow::Error> {
+        let path: PathBuf = RUNS_LOGS_DIR.into();
+
+        if path.exists() {
+            tokio::fs::remove_dir_all(&path).await?;
+        }
+
+        tokio::fs::create_dir_all(&path).await?;
+
+        Ok(Self {
+            projects: Default::default(),
+        })
+    }
+
+    pub fn get_project_runs(&self, project: impl AsRef<str>) -> Option<&ProjectRuns> {
+        self.projects.get(project.as_ref())
+    }
+
+    pub fn get_projects(&self) -> Vec<String> {
+        self.projects.iter().map(|(k, v)| k.clone()).collect()
+    }
+
+    pub fn init_run(
+        &mut self,
+        project: impl AsRef<str>,
+        pipeline: impl AsRef<str>,
+        run_id: impl AsRef<str>,
+    ) -> Arc<PipelineRun> {
+        if !self.projects.contains_key(project.as_ref()) {
+            self.projects
+                .insert(project.as_ref().to_string(), ProjectRuns::default());
+        }
+
+        self.projects
+            .get_mut(project.as_ref())
+            .unwrap()
+            .init_run(pipeline, run_id)
+    }
+}
+
+impl ProjectRuns {
+    pub fn init_run(
+        &mut self,
+        pipeline: impl AsRef<str>,
+        run_id: impl AsRef<str>,
+    ) -> Arc<PipelineRun> {
+        if !self.pipelines.contains_key(pipeline.as_ref()) {
+            self.pipelines
+                .insert(pipeline.as_ref().to_string(), PipelineRuns::default());
+        }
+
+        self.pipelines
+            .get_mut(pipeline.as_ref())
+            .unwrap()
+            .init_run(run_id)
+    }
+
+    pub fn get_pipeline_runs(&self, pipeline: impl AsRef<str>) -> Option<&PipelineRuns> {
+        self.pipelines.get(pipeline.as_ref())
+    }
+
+    pub fn get_pipelines(&self) -> Vec<String> {
+        self.pipelines.iter().map(|(k, v)| k.clone()).collect()
+    }
+}
+
+impl Default for PipelineRuns {
+    fn default() -> Self {
+        Self {
+            queue_limit: 1,
+            runs: Default::default(),
+            runs_queue: Default::default(),
+        }
+    }
+}
+
+impl PipelineRuns {
+    pub fn init_run(&mut self, run_id: impl AsRef<str>) -> Arc<PipelineRun> {
+        if self.runs_queue.len() >= self.queue_limit {
+            let run_to_delete = self.runs_queue.pop_front().unwrap();
+            self.runs.remove(&run_to_delete);
+        }
+
+        let run = Arc::new(PipelineRun::new(run_id.as_ref().to_string()));
+        self.runs_queue.push_back(run_id.as_ref().to_string());
+        self.runs.insert(run_id.as_ref().to_string(), run.clone());
+        run
+    }
+
+    pub fn get_runs(&self) -> Vec<Arc<PipelineRun>> {
+        self.runs.iter().map(|(k, v)| v.clone()).collect()
+    }
+}
+
+impl PipelineRun {
+    pub fn new(id: String) -> Self {
+        let started = chrono::Utc::now();
+        Self {
+            id,
+            started,
+            status: Mutex::new(PipelineStatus::Starting),
+            jobs: Mutex::new(HashMap::default()),
+        }
+    }
+
+    pub async fn set_status(&self, status: PipelineStatus) {
+        *self.status.lock().await = status;
+    }
+
+    pub async fn status(&self) -> PipelineStatus {
+        self.status.lock().await.clone()
+    }
+
+    pub async fn init_job(&self, job: impl AsRef<str>) {
+        self.jobs
+            .lock()
+            .await
+            .insert(job.as_ref().to_string(), PipelineJob::default());
+    }
+
+    pub async fn set_job_status(&self, job: impl AsRef<str>, status: JobStatus) {
+        if let Some(job) = self.jobs.lock().await.get_mut(job.as_ref()) {
+            job.status = status;
+        }
+    }
+
+    pub async fn jobs(&self) -> HashMap<String, PipelineJob> {
+        self.jobs.lock().await.clone()
+    }
+}
+
+impl Default for PipelineJob {
+    fn default() -> Self {
+        Self {
+            status: JobStatus::Pending,
+        }
+    }
+}
 
 impl Executor {
-    pub fn new() -> Result<Executor, anyhow::Error> {
-        Ok(Executor {})
+    pub async fn new() -> Result<Executor, anyhow::Error> {
+        Ok(Executor {
+            runs: Mutex::new(Runs::init().await?),
+        })
     }
 
     pub async fn run<'a>(&self, state: &State<'a>, config: Pipeline) {
         debug!("Running pipeline: {:?}", config);
-        if let Err(err) = self.run_impl(state, config).await {
+        if let Err(err) = self.run_impl_with_run(state, config).await {
             error!("Executor failed: {}", err);
         }
     }
@@ -33,7 +228,7 @@ impl Executor {
         state: &State<'a>,
         config: Pipeline,
     ) -> Result<(), anyhow::Error> {
-        self.run_impl(state, config).await
+        self.run_impl_with_run(state, config).await
     }
 
     async fn make_task_context(
@@ -54,18 +249,52 @@ impl Executor {
         Ok(tasks::TaskContext { links })
     }
 
+    pub async fn run_impl_with_run<'a>(
+        &self,
+        state: &State<'a>,
+        pipeline: Pipeline,
+    ) -> Result<(), anyhow::Error> {
+        let run_context: &common::run_context::RunContext = state.get()?;
+        let project: String = state.get_named("project").cloned()?;
+
+        let pipeline_run: Arc<PipelineRun> =
+            self.runs
+                .lock()
+                .await
+                .init_run(project, pipeline.id.clone(), run_context.id.clone());
+
+        let mut state = state.clone();
+        state.set(pipeline_run.as_ref());
+
+        let res = self.run_impl(&state, pipeline).await;
+
+        let finished_status = match res.as_ref() {
+            Ok(_) => PipelineFinishedStatus::Success,
+            Err(err) => PipelineFinishedStatus::Error {
+                message: err.to_string(),
+            },
+        };
+        pipeline_run
+            .set_status(PipelineStatus::Finished(finished_status))
+            .await;
+
+        res
+    }
+
     pub async fn run_impl<'a>(
         &self,
         state: &State<'a>,
-        config: Pipeline,
+        pipeline: Pipeline,
     ) -> Result<(), anyhow::Error> {
         info!("Running execution");
-        let mut state = state.clone();
+        let pipeline_run: &PipelineRun = state.get()?;
 
-        let task_context = self.make_task_context(&config).await?;
+        let task_context = self.make_task_context(&pipeline).await?;
+
+        let mut state = state.clone();
         state.set(&task_context);
 
-        let mut deps: HashMap<String, HashSet<String>> = config
+        let mut deps: HashMap<String, HashSet<String>> = pipeline
             .jobs
             .iter()
             .map(|(k, v)| (k.clone(), v.needs.iter().cloned().collect()))
@@ -77,7 +306,7 @@ impl Executor {
             ));
         }
 
-        self.ensure_resources_exists(&state, &config.networks, &config.volumes)
+        self.ensure_resources_exists(&state, &pipeline.networks, &pipeline.volumes)
             .await?;
 
         let pop_ready =
@@ -91,9 +320,13 @@ impl Executor {
                     deps.remove(j);
                 }
                 res.into_iter()
-                    .map(|id| (id.clone(), config.jobs.get(&id).unwrap().clone()))
+                    .map(|id| (id.clone(), pipeline.jobs.get(&id).unwrap().clone()))
                     .collect()
             };
+
+        for (job_id, _) in pipeline.jobs.iter() {
+            pipeline_run.init_job(job_id).await;
+        }
 
         let mut futs: FuturesUnordered<_> = FuturesUnordered::new();
 
@@ -124,11 +357,16 @@ impl Executor {
         job: common::Job,
     ) -> Result<String, anyhow::Error> {
         info!("Runnig job {}", id);
+        let pipeline_run: &PipelineRun = state.get()?;
 
         for (i, step) in job.steps.into_iter().enumerate() {
+            pipeline_run
+                .set_job_status(&id, JobStatus::Running { step: i })
+                .await;
             step.run(state).await?
         }
 
+        pipeline_run.set_job_status(&id, JobStatus::Finished).await;
         info!("Job {} done", id);
 
         Ok(id)

@@ -35,6 +35,10 @@ struct Args {
     /// Environment identifier to use for parameters
     #[arg(long, default_value_t = String::from("default"))]
     env: String,
+
+    /// Use syslog for logs
+    #[arg(long, default_value_t = false)]
+    syslog: bool,
 }
 
 pub struct App {
@@ -47,9 +51,14 @@ pub struct App {
 
 impl App {
     pub async fn init() -> Result<App, anyhow::Error> {
-        pretty_env_logger::init_timed();
-
         let args = Args::parse();
+
+        if args.syslog {
+            syslog::init_unix(syslog::Facility::LOG_USER, log::LevelFilter::Debug)
+                .expect("Failed to initialize syslog");
+        } else {
+            pretty_env_logger::init_timed();
+        }
 
         Ok(App {
             port: args.port,
@@ -78,16 +87,16 @@ impl App {
             None
         };
 
-	let mut maybe_executor = if self.worker {
-	    Some(worker_lib::executor::Executor::new()?)
-	} else {
-	    None
-	};
+        let mut maybe_executor = if self.worker {
+            Some(worker_lib::executor::Executor::new().await?)
+        } else {
+            None
+        };
 
         if self.worker {
             state.set_named("worker", &());
             state.set_owned(maybe_docker.take().unwrap());
-	    state.set_owned(maybe_executor.take().unwrap());
+            state.set_owned(maybe_executor.take().unwrap());
         }
         state.set_named_owned("env", self.env);
 

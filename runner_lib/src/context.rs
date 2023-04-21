@@ -44,6 +44,10 @@ impl<PM: config::ProjectsManager> Context<PM> {
         let mut state = state.clone();
         let config = self.config.lock().await.clone();
         state.set(config.as_ref());
+
+	let run_context = common::run_context::RunContext::new();
+	state.set(&run_context);
+
         self.projects_store.init(&state).await?;
         Ok(())
     }

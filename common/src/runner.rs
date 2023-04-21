@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -79,6 +81,81 @@ pub enum CloneMissingRepos {
     ClonningRepo { repo_id: String },
     RepoCloned { repo_id: String },
     Finish,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct CallRequest {
+    pub project_id: String,
+    pub trigger_id: String,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct ListActionsQuery {
+    pub project_id: String,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct ListPipelinesQuery {
+    pub project_id: String,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct ListServicesQuery {
+    pub project_id: String,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct UpdateRepoQuery {
+    pub project_id: String,
+    pub repo_id: String,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct ListRunsRequestQuery {
+    pub project_id: Option<String>,
+    pub pipeline_id: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct ListRunsResponse {
+    pub runs: Vec<Run>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct Run {
+    pub project: String,
+    pub pipeline: String,
+    pub run_id: String,
+
+    #[serde(with = "chrono::serde::ts_seconds")]
+    pub started: chrono::DateTime<chrono::Utc>,
+
+    pub status: RunStatus,
+    pub jobs: HashMap<String, Job>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub enum RunStatus {
+    Running,
+    Finished(RunFinishedStatus),
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub enum RunFinishedStatus {
+    Success,
+    Error { message: String }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct Job {
+    pub status: JobStatus,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub enum JobStatus {
+    Pending,
+    Running { step: usize },
+    Finished,
 }
 
 impl AsRef<UpdateRepoMessage> for UpdateRepoMessage {

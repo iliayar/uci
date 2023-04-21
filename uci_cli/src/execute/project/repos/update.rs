@@ -12,7 +12,11 @@ pub async fn execute_repo_update(
 ) -> Result<(), execute::ExecuteError> {
     debug!("Executing action call command");
 
-    let response = crate::runner::post(config, format!("/update/{}/{}", project_id, repo_id))?
+    let body = common::runner::UpdateRepoQuery {
+        project_id,
+        repo_id,
+    };
+    let response = crate::runner::post_body(config, "/update", &body)?
         .send()
         .await;
     let response: common::runner::ContinueReponse = crate::runner::json(response).await?;
@@ -29,8 +33,8 @@ pub async fn execute_repo_update(
             println!(
                 "{}Pulling repo {bold}{}{no_bold} in project {bold}{}{no_bold} {}",
                 color::Fg(color::Blue),
-                repo_id,
-                project_id,
+                body.repo_id,
+                body.project_id,
                 style::Reset,
                 bold = style::Bold,
                 no_bold = style::NoBold,
@@ -60,8 +64,8 @@ pub async fn execute_repo_update(
                     println!(
                         "{}No such repo {bold}{}{no_bold} in project {bold}{}{no_bold} {}",
                         color::Fg(color::Red),
-                        repo_id,
-                        project_id,
+                        body.repo_id,
+                        body.project_id,
                         style::Reset,
                         bold = style::Bold,
                         no_bold = style::NoBold,
@@ -73,7 +77,7 @@ pub async fn execute_repo_update(
                         clear::CurrentLine,
                         color::Fg(color::Green),
                         style::Bold,
-                        repo_id,
+                        body.repo_id,
                         style::NoBold,
                         style::Reset
                     );
@@ -92,7 +96,7 @@ pub async fn execute_repo_update(
                         "{} Failed to pull repo {}{}{}: {}{}",
                         color::Fg(color::Red),
                         style::Bold,
-                        repo_id,
+                        body.repo_id,
                         style::NoBold,
                         err,
                         style::Reset,
@@ -113,7 +117,7 @@ pub async fn execute_repo_update(
             color::Fg(color::Blue),
             spinner.next(),
             style::Reset,
-            repo_id
+            body.repo_id
         );
 
         tokio::time::sleep(std::time::Duration::from_millis(100)).await;

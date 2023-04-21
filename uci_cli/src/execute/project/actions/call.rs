@@ -10,7 +10,12 @@ pub async fn execute_action_call(
 ) -> Result<(), execute::ExecuteError> {
     debug!("Executing action call command");
 
-    let response = crate::runner::post(config, format!("/call/{}/{}", project_id, action_id))?
+    let body = common::runner::CallRequest {
+        project_id,
+        trigger_id: action_id,
+    };
+
+    let response = crate::runner::post_body(config, "/call", &body)?
         .send()
         .await;
     let response: common::runner::ContinueReponse = crate::runner::json(response).await?;
@@ -22,10 +27,10 @@ pub async fn execute_action_call(
         "{}Triggered action {}{}{} on project {}{}{} {}",
         color::Fg(color::Green),
         style::Bold,
-        action_id,
+        body.trigger_id,
         style::NoBold,
         style::Bold,
-        project_id,
+        body.project_id,
         style::NoBold,
         style::Reset
     );

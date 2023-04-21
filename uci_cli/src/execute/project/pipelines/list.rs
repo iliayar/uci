@@ -9,7 +9,8 @@ pub async fn execute_pipelines_list(
 ) -> Result<(), execute::ExecuteError> {
     debug!("Executing pipelines list command");
 
-    let response = crate::runner::get(config, format!("/projects/{}/pipelines/list", project_id))?
+    let query = common::runner::ListPipelinesQuery { project_id };
+    let response = crate::runner::get_query(config, "/projects/pipelines/list", &query)?
         .send()
         .await;
     let response: common::runner::PipelinesListResponse = crate::runner::json(response).await?;

@@ -8,6 +8,9 @@ use crate::git;
 use anyhow::anyhow;
 use log::*;
 
+const INTERNAL_PROJECT_ID: &str = "__internal_project__";
+const ADMIN_TOKEN: &str = "admin-token";
+
 #[async_trait::async_trait]
 pub trait ProjectsManager
 where
@@ -42,6 +45,19 @@ impl<PL: ProjectsManager> ProjectsStore<PL> {
         &self,
         state: &State<'a>,
     ) -> Result<Vec<ProjectInfo>, anyhow::Error> {
+        let mut res = self.manager.lock().await.list_projects(state).await?;
+
+        if let Some(internal_project_info) = self.build_internal_project(state).await? {
+            res.push(internal_project_info);
+        }
+
+        Ok(res)
+    }
+
+    async fn list_projects_raw<'a>(
+        &self,
+        state: &State<'a>,
+    ) -> Result<Vec<ProjectInfo>, anyhow::Error> {
         self.manager.lock().await.list_projects(state).await
     }
 
@@ -50,6 +66,12 @@ impl<PL: ProjectsManager> ProjectsStore<PL> {
         state: &State<'a>,
         project_id: &str,
     ) -> Result<ProjectInfo, anyhow::Error> {
+        if project_id == INTERNAL_PROJECT_ID {
+            if let Some(internal_project_info) = self.build_internal_project(state).await? {
+                return Ok(internal_project_info);
+            }
+        }
+
         self.manager
             .lock()
             .await
@@ -82,11 +104,14 @@ impl<PL: ProjectsManager> ProjectsStore<PL> {
         project.handle_event(state, event).await
     }
 
-    async fn reload_internal_project<'a>(&self, state: &State<'a>) -> Result<(), anyhow::Error> {
+    async fn build_internal_project<'a>(
+        &self,
+        state: &State<'a>,
+    ) -> Result<Option<ProjectInfo>, anyhow::Error> {
         let mut caddy_builder = super::CaddyBuilder::default();
         let mut bind_builder = super::BindBuilder::default();
 
-        for project_info in self.list_projects(state).await?.into_iter() {
+        for project_info in self.list_projects_raw(state).await?.into_iter() {
             let project = project_info.load(state).await?;
             if let Some(caddy) = project.caddy.as_ref() {
                 caddy_builder.add(caddy)?;
@@ -122,34 +147,39 @@ impl<PL: ProjectsManager> ProjectsStore<PL> {
         }
 
         if !gen_project.is_empty() {
-            let project_id = String::from("__internal_project__");
             let project_root = internal_data_dir.join(super::INTERNAL_PROJECT_DATA_DIR);
             reset_dir(project_root.clone()).await?;
             info!("Generating internal project in {:?}", project_root);
             gen_project.gen(project_root.clone()).await?;
 
-	    let mut tokens = super::Tokens::default();
-	    if let Some(token) = service_config.secrets.get("admin-token") {
-		tokens.add(token, super::Permissions::superuser());
-	    }
+            let mut tokens = super::Tokens::default();
+            if let Some(token) = service_config.secrets.get(ADMIN_TOKEN) {
+                tokens.add(token, super::Permissions::superuser());
+            }
 
-            let project_info = ProjectInfo {
+            return Ok(Some(ProjectInfo {
                 tokens,
-                id: project_id.clone(),
+                id: INTERNAL_PROJECT_ID.to_string(),
                 path: project_root,
                 enabled: true,
                 repos: super::Repos::default(),
                 secrets: super::Secrets::default(),
                 data_path: internal_data_dir,
-            };
+            }));
+        }
 
+        Ok(None)
+    }
+
+    async fn reload_internal_project<'a>(&self, state: &State<'a>) -> Result<(), anyhow::Error> {
+        if let Some(project_info) = self.build_internal_project(state).await? {
             let project = project_info.load(state).await?;
             debug!("Loaded internal project {:#?}", project);
             project
                 .handle_event(
                     state,
                     &super::Event::Call {
-                        project_id,
+                        project_id: project_info.id,
                         trigger_id: "__restart__".to_string(),
                     },
                 )

@@ -1,5 +1,6 @@
 mod config;
 mod project;
+mod runs;
 mod utils;
 
 use super::cli::*;
@@ -23,7 +24,10 @@ pub async fn execute(
     command: Commands,
 ) -> Result<(), ExecuteError> {
     match command {
-        Commands::Projects { command } => project::command::execute_project(config, command).await?,
+        Commands::Projects { command } => {
+            project::command::execute_project(config, command).await?
+        }
+        Commands::Runs { command } => runs::command::execute_run(config, command).await?,
         Commands::Config { command } => config::execute_config(config, command).await?,
     }
 

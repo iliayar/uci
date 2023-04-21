@@ -12,15 +12,18 @@ pub fn filter<PM: config::ProjectsManager + 'static>(
 ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
     warp::any()
         .and(with_call_context(context))
-        .and(warp::path!("update" / String / String))
+        .and(warp::path!("update"))
+        .and(warp::body::json::<common::runner::UpdateRepoQuery>())
         .and(warp::post())
         .and_then(update_repo)
 }
 
 async fn update_repo<PM: config::ProjectsManager + 'static>(
     mut call_context: call_context::CallContext<PM>,
-    project_id: String,
-    repo_id: String,
+    common::runner::UpdateRepoQuery {
+        project_id,
+        repo_id,
+    }: common::runner::UpdateRepoQuery,
 ) -> Result<impl warp::Reply, warp::Rejection> {
     if !call_context
         .check_permissions(Some(&project_id), config::ActionType::Write)

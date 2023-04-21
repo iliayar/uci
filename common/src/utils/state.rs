@@ -5,7 +5,8 @@ use anyhow::anyhow;
 #[derive(Default, Clone)]
 pub struct State<'a> {
     // FIXME: I'm pretty sure it's possible to not having separate
-    // maps and somehow store reference to self using Pin somewhere
+    // maps for owned and borrowed and somehow store reference to self
+    // using Pin somewhere
     owned_typed: HashMap<std::any::TypeId, Arc<dyn std::any::Any + Sync + Send>>,
     owned_named: HashMap<String, Arc<dyn std::any::Any + Sync + Send>>,
 

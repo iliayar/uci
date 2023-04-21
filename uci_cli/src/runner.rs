@@ -1,7 +1,7 @@
 use reqwest::{header, Url};
 
 use futures_util::{stream::SplitStream, FutureExt, StreamExt};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 use log::*;
 use tokio::net::TcpStream;
@@ -31,12 +31,34 @@ pub fn post<S: AsRef<str>>(
     Ok(call_runner(config)?.post(format!("{}{}", runner_url, path.as_ref())))
 }
 
+pub fn post_body<S: AsRef<str>, T: Serialize>(
+    config: &super::config::Config,
+    path: S,
+    body: &T,
+) -> Result<reqwest::RequestBuilder, anyhow::Error> {
+    let runner_url = config.runner_url.as_ref().expect("runner_url is not set");
+    Ok(call_runner(config)?
+        .post(format!("{}{}", runner_url, path.as_ref()))
+        .json(body))
+}
+
 pub fn get<S: AsRef<str>>(
     config: &super::config::Config,
     path: S,
 ) -> Result<reqwest::RequestBuilder, anyhow::Error> {
     let runner_url = config.runner_url.as_ref().expect("runner_url is not set");
     Ok(call_runner(config)?.get(format!("{}{}", runner_url, path.as_ref())))
+}
+
+pub fn get_query<S: AsRef<str>, T: serde::Serialize>(
+    config: &super::config::Config,
+    path: S,
+    query: &T,
+) -> Result<reqwest::RequestBuilder, anyhow::Error> {
+    let runner_url = config.runner_url.as_ref().expect("runner_url is not set");
+    Ok(call_runner(config)?
+        .get(format!("{}{}", runner_url, path.as_ref()))
+        .query(query))
 }
 
 pub async fn json<T: for<'a> Deserialize<'a>>(

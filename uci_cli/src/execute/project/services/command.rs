@@ -5,8 +5,8 @@ pub async fn execute_service(
     command: ServiceCommand,
 ) -> Result<(), execute::ExecuteError> {
     match command {
-        ServiceCommand::List { project_id } => {
-            super::list::execute_services_list(config, project_id).await?
+        ServiceCommand::List { project } => {
+            super::list::execute_services_list(config, project).await?
         }
     }
 

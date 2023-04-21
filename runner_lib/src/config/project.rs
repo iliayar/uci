@@ -121,6 +121,7 @@ impl Project {
 
         let pipeline = common::Pipeline {
             jobs,
+            id: format!("service-action@{}_{}", service_id, action.to_string()),
             links: Default::default(),
             networks: Default::default(),
             volumes: Default::default(),
@@ -138,6 +139,9 @@ impl Project {
         state: &State<'a>,
         pipeline: common::Pipeline,
     ) -> Result<(), anyhow::Error> {
+        let mut state = state.clone();
+        state.set_named("project", &self.id);
+
         match id {
             Id::Pipeline(id) => info!("Running pipeline {}", id),
             Id::Service(id) => info!("Running service {} action", id),
@@ -146,7 +150,7 @@ impl Project {
 
         if state.get_named::<(), _>("worker").is_ok() {
             let executor: &worker_lib::executor::Executor = state.get()?;
-            executor.run_result(state, pipeline).await?;
+            executor.run_result(&state, pipeline).await?;
         } else {
             let worker_url: Option<String> = state.get_named("worker_url").cloned().ok();
             let worker_url = worker_url.as_ref().ok_or_else(|| {

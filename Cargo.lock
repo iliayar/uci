@@ -221,14 +221,17 @@ checksum = "baf1de4339761588bc0619e3cbc0120ee582ebb74b53b4efbf79117bd2da40fd"
 
 [[package]]
 name = "chrono"
-version = "0.4.23"
+version = "0.4.24"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "16b0a3d9ed01224b22057780a37bb8c5dbfe1be8ba48678e7bf57ec4b385411f"
+checksum = "4e3c5919066adf22df73762e50cffcde3a758f2a848b113b586d1f86728b673b"
 dependencies = [
  "iana-time-zone",
+ "js-sys",
  "num-integer",
  "num-traits",
  "serde",
+ "time 0.1.45",
+ "wasm-bindgen",
  "winapi",
 ]
 
@@ -298,6 +301,7 @@ name = "common"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "chrono",
  "log 0.4.17",
  "logger",
  "serde",
@@ -519,6 +523,15 @@ checksum = "aa68f1b12764fab894d2755d2518754e71b4fd80ecfb822714a1206c2aab39bf"
 dependencies = [
  "cc",
  "libc",
+]
+
+[[package]]
+name = "error-chain"
+version = "0.12.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2d2f06b9cac1506ece98fe3231e3cc9c4410ec3d5b1f24ae1c8946f0742cdefc"
+dependencies = [
+ "version_check 0.9.4",
 ]
 
 [[package]]
@@ -773,6 +786,17 @@ name = "hex"
 version = "0.4.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7f24254aa9a54b5c858eaee2f5bccdb46aaf0e486a595ed5fd8f86ba55232a70"
+
+[[package]]
+name = "hostname"
+version = "0.3.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3c731c3e10504cc8ed35cfe2f1db4c9274c3d35fa486e3b31df46f068ef3e867"
+dependencies = [
+ "libc",
+ "match_cfg",
+ "winapi",
+]
 
 [[package]]
 name = "http"
@@ -1078,6 +1102,12 @@ dependencies = [
  "log 0.3.9",
  "time 0.1.45",
 ]
+
+[[package]]
+name = "match_cfg"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ffbee8634e0d45d258acb448e7eaab3fce7a0a467395d4d9f228e3c1f01fb2e4"
 
 [[package]]
 name = "matches"
@@ -1633,26 +1663,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "runner"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "clap",
- "common",
- "futures",
- "log 0.4.17",
- "logger",
- "pretty_env_logger",
- "reqwest",
- "runner_lib",
- "thiserror",
- "tokio",
- "tokio-stream",
- "warp",
- "worker_lib",
-]
-
-[[package]]
 name = "runner_lib"
 version = "0.1.0"
 dependencies = [
@@ -1928,6 +1938,19 @@ dependencies = [
  "proc-macro2",
  "quote",
  "unicode-ident",
+]
+
+[[package]]
+name = "syslog"
+version = "6.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "978044cc68150ad5e40083c9f6a725e6fd02d7ba1bcf691ec2ff0d66c0b41acc"
+dependencies = [
+ "error-chain",
+ "hostname",
+ "libc",
+ "log 0.4.17",
+ "time 0.3.17",
 ]
 
 [[package]]
@@ -2280,6 +2303,27 @@ dependencies = [
  "thiserror",
  "tokio",
  "tokio-tungstenite 0.18.0",
+]
+
+[[package]]
+name = "ucid"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "clap",
+ "common",
+ "futures",
+ "log 0.4.17",
+ "logger",
+ "pretty_env_logger",
+ "reqwest",
+ "runner_lib",
+ "syslog",
+ "thiserror",
+ "tokio",
+ "tokio-stream",
+ "warp",
+ "worker_lib",
 ]
 
 [[package]]
@@ -2654,38 +2698,13 @@ dependencies = [
 ]
 
 [[package]]
-name = "worker"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "async-trait",
- "bollard",
- "clap",
- "common",
- "derive_builder",
- "futures",
- "log 0.4.17",
- "logger",
- "pretty_env_logger",
- "reqwest",
- "serde",
- "tar",
- "thiserror",
- "tokio",
- "tokio-stream",
- "tokio-util",
- "uuid",
- "warp",
- "worker_lib",
-]
-
-[[package]]
 name = "worker_lib"
 version = "0.1.0"
 dependencies = [
  "anyhow",
  "async-trait",
  "bollard",
+ "chrono",
  "common",
  "derive_builder",
  "futures",

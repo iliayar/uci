@@ -12,14 +12,15 @@ pub fn filter<PM: config::ProjectsManager>(
 ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
     warp::any()
         .and(with_call_context(deps))
-        .and(warp::path!("projects" / String / "services" / "list"))
+        .and(warp::path!("projects" / "services" / "list"))
+        .and(warp::query::<common::runner::ListActionsQuery>())
         .and(warp::get())
         .and_then(list_services)
 }
 
 async fn list_services<PM: config::ProjectsManager>(
     call_context: call_context::CallContext<PM>,
-    project_id: String,
+    common::runner::ListActionsQuery { project_id }: common::runner::ListActionsQuery,
 ) -> Result<impl warp::Reply, warp::Rejection> {
     match list_services_impl(call_context, &project_id).await {
         Ok(resp) => Ok(warp::reply::with_status(

@@ -12,15 +12,18 @@ pub fn filter<PM: config::ProjectsManager + 'static>(
 ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
     warp::any()
         .and(with_call_context(deps))
-        .and(warp::path!("call" / String / String))
+        .and(warp::path!("call"))
+        .and(warp::body::json::<common::runner::CallRequest>())
         .and(warp::post())
         .and_then(call)
 }
 
 async fn call<PM: config::ProjectsManager + 'static>(
     mut call_context: call_context::CallContext<PM>,
-    project_id: String,
-    trigger_id: String,
+    common::runner::CallRequest {
+        project_id,
+        trigger_id,
+    }: common::runner::CallRequest,
 ) -> Result<impl warp::Reply, warp::Rejection> {
     if !call_context
         .check_permissions(Some(&project_id), config::ActionType::Execute)

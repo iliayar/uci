@@ -9,7 +9,9 @@ pub async fn execute_action_list(
 ) -> Result<(), execute::ExecuteError> {
     debug!("Executing action call command");
 
-    let response = crate::runner::get(config, format!("/projects/{}/actions/list", project_id))?
+    let query = common::runner::ListActionsQuery { project_id };
+
+    let response = crate::runner::get_query(config, "/projects/actions/list", &query)?
         .send()
         .await;
     let response: common::runner::ActionsListResponse = crate::runner::json(response).await?;

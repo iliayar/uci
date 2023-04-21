@@ -48,6 +48,24 @@ pub enum Commands {
         #[command(subcommand)]
         command: ConfigCommands,
     },
+
+    /// Perform actions on pipeline runs
+    Runs {
+        #[command(subcommand)]
+        command: RunCommands,
+    },
+}
+
+#[derive(Subcommand, Debug)]
+pub enum RunCommands {
+    /// List runs
+    List {
+	#[clap(long)]
+	project: Option<String>,
+
+	#[clap(long)]
+	pipeline: Option<String>,
+    },
 }
 
 #[derive(Subcommand, Debug)]
@@ -82,7 +100,7 @@ pub enum ProjectCommands {
 
 #[derive(Subcommand, Debug)]
 pub enum ConfigCommands {
-    /// List projects
+    /// Reload config
     Reload {},
 }
 
@@ -91,16 +109,16 @@ pub enum ActionCommand {
     /// Call action directly
     Call {
         #[clap(short, long)]
-        project_id: String,
+        project: String,
 
         #[clap(short, long)]
-        action_id: String,
+        action: String,
     },
 
     /// List actions
     List {
         #[clap(short, long)]
-        project_id: String,
+        project: String,
     },
 }
 
@@ -109,10 +127,10 @@ pub enum RepoCommand {
     /// Pull repo from remote
     Update {
         #[clap(short, long)]
-        project_id: String,
+        project: String,
 
         #[clap(short, long)]
-        repo_id: String,
+        repo: String,
     },
 }
 
@@ -121,7 +139,7 @@ pub enum PipelineCommand {
     /// List pipeliens
     List {
         #[clap(short, long)]
-        project_id: String,
+        project: String,
     },
 }
 
@@ -130,6 +148,6 @@ pub enum ServiceCommand {
     /// List services
     List {
         #[clap(short, long)]
-        project_id: String,
+        project: String,
     },
 }

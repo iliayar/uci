@@ -1,8 +1,7 @@
 [workspace]
 members = [
+    "uci",
     "common",
-    "runner",
-    "worker",
     "worker_lib",
     "uci_cli",
     "runner_lib",

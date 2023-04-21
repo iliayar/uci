@@ -14,6 +14,7 @@ pub enum Step {
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Pipeline {
+    pub id: String,
     pub jobs: HashMap<String, Job>,
     pub links: HashMap<String, String>,
     pub networks: Vec<String>,

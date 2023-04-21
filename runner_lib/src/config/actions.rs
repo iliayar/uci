@@ -15,6 +15,14 @@ pub enum ServiceAction {
     Deploy,
 }
 
+impl ToString for ServiceAction {
+    fn to_string(&self) -> String {
+        match self {
+            ServiceAction::Deploy => "deploy".to_string(),
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct Trigger {
     on: TriggerType,

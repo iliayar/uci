@@ -5,8 +5,8 @@ pub async fn execute_pipeline(
     command: PipelineCommand,
 ) -> Result<(), execute::ExecuteError> {
     match command {
-        PipelineCommand::List { project_id } => {
-            super::list::execute_pipelines_list(config, project_id).await?
+        PipelineCommand::List { project } => {
+            super::list::execute_pipelines_list(config, project).await?
         }
     }
 

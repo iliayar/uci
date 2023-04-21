@@ -104,9 +104,13 @@ mod raw {
             let mut pipelines: HashMap<String, common::Pipeline> = HashMap::new();
             for (id, PipelineLocation { path }) in self.pipelines.into_iter() {
                 let project_info: &config::ProjectInfo = state.get()?;
-                let pipeline_path = utils::eval_rel_path(state, path, project_info.path.clone())?;
+
+                let mut state = state.clone();
+                state.set_named("_id", &id);
+
+                let pipeline_path = utils::eval_rel_path(&state, path, project_info.path.clone())?;
                 let pipeline: Result<common::Pipeline, anyhow::Error> =
-                    config::load_sync::<Pipeline>(pipeline_path.clone(), state)
+                    config::load_sync::<Pipeline>(pipeline_path.clone(), &state)
                         .await
                         .map_err(|err| {
                             anyhow!("Failed to load pipeline from {:?}: {}", pipeline_path, err)
@@ -123,9 +127,11 @@ mod raw {
 
         fn load_raw(self, state: &State) -> Result<Self::Output, anyhow::Error> {
             let links = config::utils::substitute_vars_dict(state, self.links.unwrap_or_default())?;
+            let id: String = state.get_named("_id").cloned()?;
 
             Ok(common::Pipeline {
                 links,
+                id,
                 jobs: self.jobs.load_raw(state)?,
                 networks: Default::default(),
                 volumes: Default::default(),
