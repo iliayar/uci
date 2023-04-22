@@ -93,47 +93,48 @@ impl Project {
             .get(pipeline_id)
             .ok_or_else(|| anyhow!("Now such pipeline to run {}", pipeline_id))?;
 
-        self.run_pipeline_impl(Id::Pipeline(pipeline_id), state, pipeline.clone())
+        self.run_pipeline_impl(state, pipeline.clone())
             .await?;
 
         Ok(())
     }
 
-    pub async fn run_service_action<'a>(
+    pub async fn run_service_actions<'a>(
         &self,
         state: &State<'a>,
-        service_id: impl AsRef<str>,
-        action: super::ServiceAction,
+        actions: HashMap<String, super::ServiceAction>,
     ) -> Result<(), anyhow::Error> {
-	let service_id = service_id.as_ref();
-        let service = self
-            .services
-            .get(service_id)
-            .ok_or_else(|| anyhow!("Now such service {} to run action on", service_id))?;
-
-        let job = match action {
-            super::ServiceAction::Deploy => service.get_deploy_job().ok_or_else(|| {
-                anyhow!("Cannot construct deploy config for service {}", service_id)
-            })?,
-            super::ServiceAction::Logs { follow, tail } => {
-                service.get_logs_job(follow, tail).ok_or_else(|| {
-                    anyhow!("Cannot construct logs config for service {}", service_id)
-                })?
-            }
-        };
-
         let mut jobs = HashMap::new();
-        jobs.insert(action.to_string(), job);
+        for (service_id, action) in actions.into_iter() {
+            let service_id = service_id.as_ref();
+            let service = self
+                .services
+                .get(service_id)
+                .ok_or_else(|| anyhow!("Now such service {} to run action on", service_id))?;
+
+            let job = match action {
+                super::ServiceAction::Deploy => service.get_deploy_job().ok_or_else(|| {
+                    anyhow!("Cannot construct deploy config for service {}", service_id)
+                })?,
+                super::ServiceAction::Logs { follow, tail } => {
+                    service.get_logs_job(follow, tail).ok_or_else(|| {
+                        anyhow!("Cannot construct logs config for service {}", service_id)
+                    })?
+                }
+            };
+
+            jobs.insert(format!("{}@{}", action.to_string(), service_id), job);
+        }
 
         let pipeline = common::Pipeline {
             jobs,
-            id: format!("service-action@{}", service_id),
+            id: "service-action".to_string(),
             links: Default::default(),
             networks: Default::default(),
             volumes: Default::default(),
         };
 
-        self.run_pipeline_impl(Id::Service(&service_id), state, pipeline)
+        self.run_pipeline_impl(state, pipeline)
             .await?;
 
         Ok(())
@@ -141,18 +142,15 @@ impl Project {
 
     async fn run_pipeline_impl<'a>(
         &self,
-        id: Id<'a>,
         state: &State<'a>,
         pipeline: common::Pipeline,
     ) -> Result<(), anyhow::Error> {
+        let pipeline_id = pipeline.id.clone();
+
         let mut state = state.clone();
         state.set_named("project", &self.id);
 
-        match id {
-            Id::Pipeline(id) => info!("Running pipeline {}", id),
-            Id::Service(id) => info!("Running service {} action", id),
-            Id::Other(id) => info!("Running pipeline for {} action", id),
-        };
+        info!("Running pipeline {}", pipeline_id);
 
         if state.get_named::<(), _>("worker").is_ok() {
             let executor: &worker_lib::executor::Executor = state.get()?;
@@ -174,11 +172,7 @@ impl Project {
             response.error_for_status()?;
         }
 
-        match id {
-            Id::Pipeline(id) => info!("Pipeline {} started", id),
-            Id::Service(id) => info!("Service {} action started", id),
-            Id::Other(id) => info!("Pipeline for {} started", id),
-        }
+        info!("Pipeline {} started", pipeline_id);
 
         Ok(())
     }
@@ -194,7 +188,6 @@ impl Project {
         } = self.actions.get_matched_actions(event).await?;
 
         let mut pipeline_tasks = Vec::new();
-        let mut service_tasks = Vec::new();
 
         info!("Running pipelines {:?}", run_pipelines);
         for pipeline_id in run_pipelines.iter() {
@@ -204,16 +197,10 @@ impl Project {
             pipeline_tasks.push(self.run_pipeline(state, pipeline_id))
         }
 
-        info!("Running service actions {:?}", services);
-        for (service, action) in services.iter() {
-            if self.services.get(service).is_none() {
-                warn!("No such service {}, skiping", service);
-            }
-            service_tasks.push(self.run_service_action(state, service.to_string(), action.clone()));
-        }
+        let services_fut = self.run_service_actions(state, services);
+        let pipelines_fut = futures::future::try_join_all(pipeline_tasks);
 
-        futures::future::try_join_all(pipeline_tasks).await?;
-        futures::future::try_join_all(service_tasks).await?;
+        tokio::try_join!(pipelines_fut, services_fut)?;
 
         Ok(())
     }
@@ -247,10 +234,4 @@ pub async fn load_params<'a>(
     }
 
     Ok(Some(result))
-}
-
-enum Id<'a> {
-    Pipeline(&'a str),
-    Service(&'a str),
-    Other(&'a str),
 }

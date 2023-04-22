@@ -102,7 +102,8 @@ impl<PL: ProjectsManager> ProjectsStore<PL> {
         action: super::ServiceAction,
     ) -> Result<(), anyhow::Error> {
         let project = self.load_project(state, project_id).await?;
-        project.run_service_action(state, service_id, action).await
+        let services = HashMap::from([(service_id.to_string(), action)]);
+        project.run_service_actions(state, services).await
     }
 
     async fn handle_event<'a>(

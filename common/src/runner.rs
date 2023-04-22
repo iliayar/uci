@@ -209,6 +209,7 @@ pub enum PipelineMessage {
 pub enum LogType {
     Regular,
     Error,
+    Warning,
 }
 
 impl AsRef<PipelineMessage> for PipelineMessage {

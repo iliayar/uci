@@ -61,6 +61,14 @@ pub async fn execute_services_logs(
                             style::Reset
                         )
                     }
+                    common::runner::LogType::Warning => {
+                        println!(
+                            "{}{}{}",
+                            color::Fg(color::Yellow),
+                            text.trim_end(),
+                            style::Reset
+                        )
+                    }
                 }
             }
             _ => {}

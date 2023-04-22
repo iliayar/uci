@@ -4,6 +4,7 @@ use futures_util::{stream::SplitStream, FutureExt, StreamExt};
 use serde::{Deserialize, Serialize};
 
 use log::*;
+use termion::{clear, color, style};
 use tokio::net::TcpStream;
 use tokio_tungstenite::{MaybeTlsStream, WebSocketStream};
 
@@ -157,6 +158,19 @@ pub async fn ws(
         .map_err(|err| ExecuteError::Fatal(format!("Failed to connect to socket: {}", err)))?;
 
     let (_, read) = ws_stream.split();
+
+    ctrlc::set_handler(move || {
+        println!(
+            "{}{}Stop watching run{}",
+            clear::CurrentLine,
+            color::Fg(color::Yellow),
+            style::Reset
+        );
+        println!("Run id: {}{}{}", style::Bold, client_id, style::Reset);
+        // TODO: Print command to continue watch run
+        std::process::exit(0);
+    })
+    .map_err(|err| ExecuteError::Warning(format!("Couldn't set Ctrl-C handler: {}", err)))?;
 
     Ok(WsClient { rx: read })
 }

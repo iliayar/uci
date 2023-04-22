@@ -92,6 +92,10 @@ impl LogLine {
         LogLine::new(text, LogLevel::Regular)
     }
 
+    pub fn warning(text: String) -> LogLine {
+        LogLine::new(text, LogLevel::Warning)
+    }
+
     pub fn new(text: String, level: LogLevel) -> LogLine {
         LogLine {
             text,
@@ -133,6 +137,7 @@ impl<'a> Logger<'a> {
                 t: match log.level {
                     LogLevel::Regular => common::runner::LogType::Regular,
                     LogLevel::Error => common::runner::LogType::Error,
+                    LogLevel::Warning => common::runner::LogType::Warning,
                 },
                 text: log.text.clone(),
                 timestamp: log.time,
@@ -156,6 +161,10 @@ impl<'a> Logger<'a> {
         self.log(LogLine::regular(text)).await
     }
 
+    pub async fn warning(&mut self, text: String) -> Result<(), anyhow::Error> {
+        self.log(LogLine::warning(text)).await
+    }
+
     pub fn write_file(&mut self, value: bool) {
         self.write_file = value;
     }
@@ -165,6 +174,7 @@ impl<'a> Logger<'a> {
 pub enum LogLevel {
     Regular,
     Error,
+    Warning,
 }
 
 impl Runs {

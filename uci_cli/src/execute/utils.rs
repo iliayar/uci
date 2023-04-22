@@ -1,6 +1,7 @@
 use std::io::Write;
 use std::{collections::HashMap, sync::Arc};
 
+use crate::utils::ucolor;
 use crate::{runner::WsClient, utils::Spinner};
 
 use termion::{clear, color, scroll, style};
@@ -302,7 +303,7 @@ pub async fn print_pipeline_run(ws_client: &mut WsClient) -> Result<(), super::E
                 print!(
                     "{} [{}{} -> {}{}] ",
                     timestamp,
-                    color::Fg(color::Blue),
+                    ucolor(&(&pipeline, &job_id)),
                     pipeline,
                     job_id,
                     style::Reset
@@ -314,6 +315,14 @@ pub async fn print_pipeline_run(ws_client: &mut WsClient) -> Result<(), super::E
                         println!(
                             "{}{}{}",
                             color::Fg(color::Red),
+                            text.trim_end(),
+                            style::Reset
+                        )
+                    }
+                    common::runner::LogType::Warning => {
+                        println!(
+                            "{}{}{}",
+                            color::Fg(color::Yellow),
                             text.trim_end(),
                             style::Reset
                         )

@@ -329,6 +329,8 @@ impl Docker {
         state: &State<'a>,
         params: CreateContainerParams,
     ) -> Result<String, DockerError> {
+        let mut logger = super::executor::Logger::new(state).await?;
+
         let exposed_ports: HashMap<_, _> = params
             .ports
             .iter()
@@ -378,6 +380,10 @@ impl Docker {
                 )
                 .await?;
         }
+
+        logger
+            .regular(format!("Created container {}", name))
+            .await?;
         info!("Created container {}", name);
 
         Ok(name)
@@ -388,7 +394,12 @@ impl Docker {
         state: &State<'a>,
         params: StartContainerParams,
     ) -> Result<(), DockerError> {
-        info!("Starting container {}", params.name);
+        let mut logger = super::executor::Logger::new(state).await?;
+
+        logger
+            .regular(format!("Starting container {}", params.name))
+            .await?;
+
         self.con
             .start_container::<&str>(&params.name, None)
             .await
@@ -504,27 +515,45 @@ impl Docker {
         state: &State<'a>,
         stop_params: StopContainerParams,
     ) -> Result<(), DockerError> {
+        let mut logger = super::executor::Logger::new(state).await?;
+
         let params = match self.con.inspect_container(&stop_params.name, None).await {
             Ok(params) => params,
             Err(err) => {
-                error!("Cannot inspect container: {}", err);
-                warn!("Assuming container doesn't exists, do not remove it");
+                logger
+                    .warning(format!(
+                        "Cannot inspect container: {}. Assuming doesn't exists",
+                        err
+                    ))
+                    .await?;
+                error!("Cannot inspect container: {}. Assuming doesn't exists", err);
                 return Ok(());
             }
         };
 
         if let Some(state) = params.state {
             if let Some(true) = state.running {
-                info!("Stopping container {}", stop_params.name);
+                logger
+                    .regular(format!("Stopping container {}", stop_params.name))
+                    .await?;
                 self.con.stop_container(&stop_params.name, None).await?;
             } else {
-                error!("Cannot get container runnig state, do not stop");
+                logger
+                    .warning("Cannot get container runnig state, do not stop".to_string())
+                    .await?;
+                warn!("Cannot get container runnig state, do not stop");
             }
         } else {
-            error!("Cannot get container state, do not stop");
+            logger
+                .warning("Cannot get container state, do not stop".to_string())
+                .await?;
+            warn!("Cannot get container state, do not stop");
         }
 
-        info!("Container stopped {}, removing", stop_params.name);
+        logger
+            .regular(format!("Container stopped {}, removing", stop_params.name))
+            .await?;
+
         self.con.remove_container(&stop_params.name, None).await?;
 
         Ok(())
