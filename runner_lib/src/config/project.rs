@@ -102,26 +102,32 @@ impl Project {
     pub async fn run_service_action<'a>(
         &self,
         state: &State<'a>,
-        service_id: String,
+        service_id: impl AsRef<str>,
         action: super::ServiceAction,
     ) -> Result<(), anyhow::Error> {
+	let service_id = service_id.as_ref();
         let service = self
             .services
-            .get(&service_id)
+            .get(service_id)
             .ok_or_else(|| anyhow!("Now such service {} to run action on", service_id))?;
 
         let job = match action {
             super::ServiceAction::Deploy => service.get_deploy_job().ok_or_else(|| {
                 anyhow!("Cannot construct deploy config for service {}", service_id)
             })?,
+            super::ServiceAction::Logs { follow, tail } => {
+                service.get_logs_job(follow, tail).ok_or_else(|| {
+                    anyhow!("Cannot construct logs config for service {}", service_id)
+                })?
+            }
         };
 
         let mut jobs = HashMap::new();
-        jobs.insert(String::from("deploy"), job);
+        jobs.insert(action.to_string(), job);
 
         let pipeline = common::Pipeline {
             jobs,
-            id: format!("service-action@{}_{}", service_id, action.to_string()),
+            id: format!("service-action@{}", service_id),
             links: Default::default(),
             networks: Default::default(),
             volumes: Default::default(),

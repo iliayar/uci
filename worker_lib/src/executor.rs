@@ -101,21 +101,42 @@ impl LogLine {
     }
 }
 
-pub struct Logger {
+pub struct Logger<'a> {
     job_id: String,
     log_file: tokio::fs::File,
+    write_file: bool,
+    run_context: &'a RunContext,
 }
 
-impl Logger {
-    pub async fn new<'a>(state: &State<'a>) -> Result<Logger, anyhow::Error> {
+impl<'a> Logger<'a> {
+    pub async fn new<'b>(state: &'b State<'a>) -> Result<Logger<'a>, anyhow::Error>
+    where
+        'b: 'a,
+    {
         let job_id: String = state.get_named("job").cloned()?;
         let run_context: &RunContext = state.get()?;
         let pipeline_run: &PipelineRun = state.get()?;
         let log_file = pipeline_run.job_log_file(&job_id).await?;
-        Ok(Logger { job_id, log_file })
+        Ok(Logger {
+            job_id,
+            log_file,
+            write_file: true,
+            run_context,
+        })
     }
 
     pub async fn log(&mut self, log: LogLine) -> Result<(), anyhow::Error> {
+        self.run_context
+            .send(common::runner::PipelineMessage::Log {
+                t: match log.level {
+                    LogLevel::Regular => common::runner::LogType::Regular,
+                    LogLevel::Error => common::runner::LogType::Error,
+                },
+                text: log.text.clone(),
+                timestamp: log.time,
+            })
+            .await;
+
         let mut log_line_text = serde_json::to_string(&log)?;
         debug!("{}: {}", self.job_id, log_line_text);
         log_line_text.push('\n');
@@ -129,6 +150,10 @@ impl Logger {
 
     pub async fn regular(&mut self, text: String) -> Result<(), anyhow::Error> {
         self.log(LogLine::regular(text)).await
+    }
+
+    pub fn write_file(&mut self, value: bool) {
+        self.write_file = value;
     }
 }
 

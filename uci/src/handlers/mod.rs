@@ -7,3 +7,4 @@ pub mod list_actions;
 pub mod list_pipelines;
 pub mod list_services;
 pub mod list_runs;
+pub mod service_logs;

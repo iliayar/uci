@@ -111,6 +111,23 @@ impl Service {
         })
     }
 
+    pub fn get_logs_job(&self, follow: bool, tail: Option<usize>) -> Option<common::Job> {
+        let config = common::ServiceLogsConfig {
+            container: self.container.clone(),
+            follow,
+            tail,
+        };
+
+        let steps = vec![common::Step::ServiceLogs(config)];
+
+        let job = common::Job {
+            needs: vec![],
+            steps,
+        };
+
+        Some(job)
+    }
+
     pub fn get_build_config(&self) -> Option<common::BuildImageConfig> {
         let source = self
             .build

@@ -60,11 +60,11 @@ pub enum Commands {
 pub enum RunCommands {
     /// List runs
     List {
-	#[clap(long)]
-	project: Option<String>,
+        #[clap(long)]
+        project: Option<String>,
 
-	#[clap(long)]
-	pipeline: Option<String>,
+        #[clap(long)]
+        pipeline: Option<String>,
     },
 }
 
@@ -143,11 +143,32 @@ pub enum PipelineCommand {
     },
 }
 
+fn default_logs_follow() -> bool {
+    false
+}
+
 #[derive(Subcommand, Debug)]
 pub enum ServiceCommand {
     /// List services
     List {
         #[clap(short, long)]
         project: String,
+    },
+
+    /// List services
+    Logs {
+        #[clap(short, long)]
+        project: String,
+
+        #[clap(short, long)]
+        service: String,
+
+	/// Keep watching logs
+        #[clap(short, long, default_value_t = default_logs_follow())]
+        follow: bool,
+
+	/// Watch last TAIL logs if specified, otherwise from container start
+        #[clap(short, long)]
+        tail: Option<usize>,
     },
 }

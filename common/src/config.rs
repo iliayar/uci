@@ -10,6 +10,8 @@ pub enum Step {
     StopContainer(StopContainerConfig),
     Request(RequestConfig),
     Parallel(ParallelConfig),
+
+    ServiceLogs(ServiceLogsConfig),
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -50,6 +52,13 @@ pub struct RunContainerConfig {
     pub ports: Vec<PortMapping>,
     pub restart_policy: String,
     pub env: HashMap<String, String>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct ServiceLogsConfig {
+    pub container: String,
+    pub follow: bool,
+    pub tail: Option<usize>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]

@@ -25,6 +25,7 @@ impl Task for common::Step {
             common::Step::RunContainer(config) => config.run(state).await,
             common::Step::Parallel(config) => config.run(state).await,
             common::Step::StopContainer(config) => config.run(state).await,
+            common::Step::ServiceLogs(config) => config.run(state).await,
         }
     }
 }

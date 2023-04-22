@@ -13,12 +13,14 @@ pub struct Actions {
 #[derive(Debug, Clone)]
 pub enum ServiceAction {
     Deploy,
+    Logs { follow: bool, tail: Option<usize> },
 }
 
 impl ToString for ServiceAction {
     fn to_string(&self) -> String {
         match self {
             ServiceAction::Deploy => "deploy".to_string(),
+            ServiceAction::Logs { .. } => "logs".to_string(),
         }
     }
 }

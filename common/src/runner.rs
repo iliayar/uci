@@ -105,6 +105,14 @@ pub struct ListServicesQuery {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct ServiceLogsQuery {
+    pub project_id: String,
+    pub service_id: String,
+    pub follow: bool,
+    pub tail: Option<usize>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct UpdateRepoQuery {
     pub project_id: String,
     pub repo_id: String,
@@ -143,7 +151,7 @@ pub enum RunStatus {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum RunFinishedStatus {
     Success,
-    Error { message: String }
+    Error { message: String },
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -156,6 +164,37 @@ pub enum JobStatus {
     Pending,
     Running { step: usize },
     Finished,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub enum PipelineMessage {
+    Start,
+    Finish,
+    Log {
+        t: LogType,
+        text: String,
+        #[serde(with = "chrono::serde::ts_milliseconds")]
+        timestamp: chrono::DateTime<chrono::Utc>,
+    },
+    ContainerLog {
+	container: String,
+        t: LogType,
+        text: String,
+        #[serde(with = "chrono::serde::ts_milliseconds")]
+        timestamp: chrono::DateTime<chrono::Utc>,
+    },
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub enum LogType {
+    Regular,
+    Error,
+}
+
+impl AsRef<PipelineMessage> for PipelineMessage {
+    fn as_ref(&self) -> &PipelineMessage {
+        self
+    }
 }
 
 impl AsRef<UpdateRepoMessage> for UpdateRepoMessage {

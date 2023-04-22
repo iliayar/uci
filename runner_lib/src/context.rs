@@ -45,8 +45,8 @@ impl<PM: config::ProjectsManager> Context<PM> {
         let config = self.config.lock().await.clone();
         state.set(config.as_ref());
 
-	let run_context = common::run_context::RunContext::new();
-	state.set(&run_context);
+        let run_context = common::run_context::RunContext::new();
+        state.set(&run_context);
 
         self.projects_store.init(&state).await?;
         Ok(())
@@ -65,6 +65,22 @@ impl<PM: config::ProjectsManager> Context<PM> {
         state.set(config.as_ref());
         self.projects_store
             .update_repo(&state, project_id, repo_id)
+            .await?;
+        Ok(())
+    }
+
+    pub async fn run_service_action<'a>(
+        &self,
+        state: &State<'a>,
+        project_id: &str,
+        service_id: &str,
+        action: config::ServiceAction,
+    ) -> Result<(), anyhow::Error> {
+        let mut state = state.clone();
+        let config = self.config.lock().await.clone();
+        state.set(config.as_ref());
+        self.projects_store
+            .run_service_action(&state, project_id, service_id, action)
             .await?;
         Ok(())
     }

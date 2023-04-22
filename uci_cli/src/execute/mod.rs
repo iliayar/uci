@@ -19,6 +19,12 @@ pub enum ExecuteError {
     Other(#[from] anyhow::Error),
 }
 
+impl ExecuteError {
+    pub fn unexpected_message() -> ExecuteError {
+        ExecuteError::Warning("Unexpected_message".to_string())
+    }
+}
+
 pub async fn execute(
     config: &super::config::Config,
     command: Commands,

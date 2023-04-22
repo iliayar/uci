@@ -94,6 +94,17 @@ impl<PL: ProjectsManager> ProjectsStore<PL> {
         Ok(())
     }
 
+    pub async fn run_service_action<'a>(
+        &self,
+        state: &State<'a>,
+        project_id: &str,
+        service_id: &str,
+        action: super::ServiceAction,
+    ) -> Result<(), anyhow::Error> {
+        let project = self.load_project(state, project_id).await?;
+        project.run_service_action(state, service_id, action).await
+    }
+
     async fn handle_event<'a>(
         &self,
         state: &State<'a>,

@@ -5,6 +5,7 @@ mod parallel;
 mod request;
 mod run_shell;
 mod task;
+mod service_logs;
 
 pub use docker_build::*;
 pub use docker_run::*;
@@ -12,5 +13,6 @@ pub use docker_stop::*;
 pub use parallel::*;
 pub use request::*;
 pub use run_shell::*;
+pub use service_logs::*;
 
 pub use task::{Task, TaskContext};

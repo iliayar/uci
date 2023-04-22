@@ -1,7 +1,7 @@
 use std::{collections::HashMap, path::PathBuf};
 
 use bollard::{
-    container::{self, CreateContainerOptions, RemoveContainerOptions},
+    container::{self, CreateContainerOptions, LogsOptions, RemoveContainerOptions},
     exec::{CreateExecOptions, StartExecResults},
     image::{BuildImageOptions, CreateImageOptions},
     models::HostConfig,
@@ -10,7 +10,7 @@ use bollard::{
 };
 
 use anyhow::anyhow;
-use common::state::State;
+use common::{run_context::RunContext, state::State};
 use log::*;
 
 use futures::StreamExt;
@@ -52,6 +52,13 @@ pub struct BuildParams {
 
     #[builder(default = "default_dockerfile()")]
     dockerfile: String,
+}
+
+#[derive(derive_builder::Builder)]
+pub struct LogsParams {
+    container: String,
+    follow: bool,
+    tail: Option<usize>,
 }
 
 #[derive(derive_builder::Builder)]
@@ -245,6 +252,72 @@ impl Docker {
         Ok(())
     }
 
+    pub async fn logs<'a>(
+        &self,
+        state: &State<'a>,
+        params: LogsParams,
+    ) -> Result<(), anyhow::Error> {
+        let run_context: &RunContext = state.get()?;
+
+        let mut logs = self.con.logs(
+            &params.container,
+            Some(LogsOptions {
+                follow: params.follow,
+                stdout: true,
+                stderr: true,
+                timestamps: true,
+                tail: params
+                    .tail
+                    .map(|v| v.to_string())
+                    .unwrap_or("all".to_string()),
+                ..Default::default()
+            }),
+        );
+
+        while let Some(log) = logs.next().await {
+            if !run_context.has_clients().await {
+                break;
+            }
+
+            let (t, text) = match log? {
+                container::LogOutput::StdErr { message } => {
+                    let bytes: Vec<u8> = message.into_iter().collect();
+                    (
+                        common::runner::LogType::Error,
+                        String::from_utf8_lossy(&bytes).to_string(),
+                    )
+                }
+                container::LogOutput::StdOut { message }
+                | container::LogOutput::StdIn { message }
+                | container::LogOutput::Console { message } => {
+                    let bytes: Vec<u8> = message.into_iter().collect();
+                    (
+                        common::runner::LogType::Regular,
+                        String::from_utf8_lossy(&bytes).to_string(),
+                    )
+                }
+            };
+
+            let (timestamp, text) = text
+                .split_once(" ")
+                .ok_or_else(|| anyhow!("No timestamp in docker log output"))?;
+
+            let timestamp = chrono::DateTime::parse_from_rfc3339(timestamp)
+                .map_err(|err| anyhow!("Failed to parse docker timestamp in log: {}", err))?;
+
+            run_context
+                .send(common::runner::PipelineMessage::ContainerLog {
+                    container: params.container.clone(),
+                    t,
+                    text: text.to_string(),
+                    timestamp: timestamp.into(),
+                })
+                .await;
+        }
+
+        Ok(())
+    }
+
     pub async fn create_container<'a>(
         &self,
         state: &State<'a>,
@@ -383,8 +456,8 @@ impl Docker {
         if let StartExecResults::Attached { mut output, .. } =
             self.con.start_exec(&exec, None).await?
         {
-            while let Some(Ok(msg)) = output.next().await {
-                match msg {
+            while let Some(msg) = output.next().await {
+                match msg? {
                     container::LogOutput::StdErr { message } => {
                         let bytes: Vec<u8> = message.into_iter().collect();
                         logger
