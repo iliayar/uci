@@ -1,10 +1,14 @@
 use std::collections::HashMap;
+use std::process::{ExitStatus, Stdio};
 
-use common::{state::State, utils::run_command_with_output};
+use common::state::State;
 
 use crate::docker::{self, Docker};
+use crate::executor::Logger;
 
 use common::utils::tempfile;
+use tokio::io::{AsyncBufReadExt, BufReader};
+use tokio_stream::{wrappers::LinesStream, StreamExt};
 
 use super::task;
 
@@ -58,6 +62,7 @@ impl task::Task for common::RunShellConfig {
 
             docker
                 .run_command(
+                    state,
                     run_command_builder
                         .build()
                         .map_err(|e| anyhow!("Invalid run commands params: {}", e))?,
@@ -76,7 +81,7 @@ impl task::Task for common::RunShellConfig {
             command.args(args);
             command.arg(&script_file.path);
 
-            run_command_with_output(command).await?;
+            run_command_with_log(state, command).await?;
         };
 
         Ok(())
@@ -100,4 +105,40 @@ fn get_interpreter_args(
             DEFAULT_ARGS.iter().map(|s| String::from(*s)).collect(),
         ))
     }
+}
+
+pub async fn run_command_with_log<'a>(
+    state: &State<'a>,
+    mut command: tokio::process::Command,
+) -> Result<ExitStatus, anyhow::Error> {
+    let mut logger = Logger::new(state).await?;
+
+    command.stdout(Stdio::piped());
+    command.stderr(Stdio::piped());
+
+    let mut child = command.spawn()?;
+    let stdout = LinesStream::new(BufReader::new(child.stdout.take().unwrap()).lines());
+    let stderr = LinesStream::new(BufReader::new(child.stderr.take().unwrap()).lines());
+
+    let mut child_out = stdout
+        .map(OutputLine::Out)
+        .merge(stderr.map(OutputLine::Err));
+
+    while let Some(line) = child_out.next().await {
+        let log_line = match line {
+            OutputLine::Out(text) => logger.regular(text?).await?,
+            OutputLine::Err(text) => logger.error(text?).await?,
+        };
+    }
+
+    let status = child.wait().await?;
+
+    info!("Script done with exit status {}", status);
+
+    Ok(status)
+}
+
+enum OutputLine<T> {
+    Out(T),
+    Err(T),
 }

@@ -10,6 +10,7 @@ use bollard::{
 };
 
 use anyhow::anyhow;
+use common::state::State;
 use log::*;
 
 use futures::StreamExt;
@@ -176,8 +177,9 @@ impl Docker {
         }
     }
 
-    pub async fn pull(&self, params: PullParams) -> Result<(), DockerError> {
+    pub async fn pull<'a>(&self, state: &State<'a>, params: PullParams) -> Result<(), DockerError> {
         info!("Pulling image {} done", params.image);
+        let mut logger = super::executor::Logger::new(state).await?;
 
         let mut results = self.con.create_image::<&str>(
             Some(CreateImageOptions {
@@ -193,13 +195,13 @@ impl Docker {
             let result = result?;
 
             if let Some(status) = result.status {
-                info!("{}", status);
+                logger.regular(status).await?;
             }
             if let Some(error) = result.error {
-                error!("{}", error);
+                logger.error(error).await?;
             }
             if let Some(progress) = result.progress {
-                info!("{}", progress);
+                logger.regular(progress).await?;
             }
         }
 
@@ -208,7 +210,12 @@ impl Docker {
         Ok(())
     }
 
-    pub async fn build(&self, params: BuildParams) -> Result<(), DockerError> {
+    pub async fn build<'a>(
+        &self,
+        state: &State<'a>,
+        params: BuildParams,
+    ) -> Result<(), DockerError> {
+        let mut logger = super::executor::Logger::new(state).await?;
         let body = file_utils::open_async_stream(params.tar_path).await?;
 
         let tag = format!("{}:{}", params.image, params.tag);
@@ -226,17 +233,11 @@ impl Docker {
         while let Some(result) = results.next().await {
             let result = result?;
 
-            if let Some(status) = result.status {
-                info!("{}", status);
-            }
             if let Some(stream) = result.stream {
-                info!("{}", stream);
-            }
-            if let Some(progress) = result.progress {
-                info!("{}", progress);
+                logger.regular(stream).await?;
             }
             if let Some(error) = result.error {
-                error!("{}", error);
+                logger.error(error).await?;
             }
         }
         info!("Building image {} done", params.image);
@@ -244,8 +245,9 @@ impl Docker {
         Ok(())
     }
 
-    pub async fn create_container(
+    pub async fn create_container<'a>(
         &self,
+        state: &State<'a>,
         params: CreateContainerParams,
     ) -> Result<String, DockerError> {
         let exposed_ports: HashMap<_, _> = params
@@ -302,7 +304,11 @@ impl Docker {
         Ok(name)
     }
 
-    pub async fn start_container(&self, params: StartContainerParams) -> Result<(), DockerError> {
+    pub async fn start_container<'a>(
+        &self,
+        state: &State<'a>,
+        params: StartContainerParams,
+    ) -> Result<(), DockerError> {
         info!("Starting container {}", params.name);
         self.con
             .start_container::<&str>(&params.name, None)
@@ -310,7 +316,13 @@ impl Docker {
             .map_err(Into::into)
     }
 
-    pub async fn run_command(&self, params: RunCommandParams) -> Result<(), DockerError> {
+    pub async fn run_command<'a>(
+        &self,
+        state: &State<'a>,
+        params: RunCommandParams,
+    ) -> Result<(), DockerError> {
+        let mut logger = super::executor::Logger::new(state).await?;
+
         let host_config = HostConfig {
             binds: Some(binds_from_map(params.mounts)),
             ..Default::default()
@@ -372,7 +384,22 @@ impl Docker {
             self.con.start_exec(&exec, None).await?
         {
             while let Some(Ok(msg)) = output.next().await {
-                info!("{}", msg);
+                match msg {
+                    container::LogOutput::StdErr { message } => {
+                        let bytes: Vec<u8> = message.into_iter().collect();
+                        logger
+                            .error(String::from_utf8_lossy(&bytes).to_string())
+                            .await?;
+                    }
+                    container::LogOutput::StdOut { message }
+                    | container::LogOutput::StdIn { message }
+                    | container::LogOutput::Console { message } => {
+                        let bytes: Vec<u8> = message.into_iter().collect();
+                        logger
+                            .regular(String::from_utf8_lossy(&bytes).to_string())
+                            .await?;
+                    }
+                }
             }
         } else {
             unreachable!();
@@ -393,8 +420,9 @@ impl Docker {
         Ok(())
     }
 
-    pub async fn stop_container(
+    pub async fn stop_container<'a>(
         &self,
+        state: &State<'a>,
         stop_params: StopContainerParams,
     ) -> Result<(), DockerError> {
         let params = match self.con.inspect_container(&stop_params.name, None).await {

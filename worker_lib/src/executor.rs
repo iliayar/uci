@@ -8,10 +8,14 @@ use super::tasks::{self, Task};
 
 use common::Pipeline;
 
+use common::run_context::RunContext;
 use common::state::State;
 use futures::stream::FuturesUnordered;
 use futures::StreamExt;
+use tokio::io::AsyncWriteExt;
 use tokio::sync::Mutex;
+
+use serde::{Deserialize, Serialize};
 
 use anyhow::anyhow;
 use log::*;
@@ -32,12 +36,14 @@ pub struct ProjectRuns {
 }
 
 pub struct PipelineRuns {
+    pipeline_id: String,
     queue_limit: usize,
     runs: HashMap<String, Arc<PipelineRun>>,
     runs_queue: LinkedList<String>,
 }
 
 pub struct PipelineRun {
+    pipeline_id: String,
     pub id: String,
     pub started: chrono::DateTime<chrono::Utc>,
     pub status: Mutex<PipelineStatus>,
@@ -69,6 +75,69 @@ pub enum PipelineFinishedStatus {
     Error { message: String },
 }
 
+#[derive(Serialize, Deserialize)]
+pub struct LogLine {
+    #[serde(with = "chrono::serde::ts_milliseconds")]
+    pub time: chrono::DateTime<chrono::Utc>,
+    pub text: String,
+    pub level: LogLevel,
+}
+
+impl LogLine {
+    pub fn error(text: String) -> LogLine {
+        LogLine::new(text, LogLevel::Error)
+    }
+
+    pub fn regular(text: String) -> LogLine {
+        LogLine::new(text, LogLevel::Regular)
+    }
+
+    pub fn new(text: String, level: LogLevel) -> LogLine {
+        LogLine {
+            text,
+            level,
+            time: chrono::Utc::now(),
+        }
+    }
+}
+
+pub struct Logger {
+    job_id: String,
+    log_file: tokio::fs::File,
+}
+
+impl Logger {
+    pub async fn new<'a>(state: &State<'a>) -> Result<Logger, anyhow::Error> {
+        let job_id: String = state.get_named("job").cloned()?;
+        let run_context: &RunContext = state.get()?;
+        let pipeline_run: &PipelineRun = state.get()?;
+        let log_file = pipeline_run.job_log_file(&job_id).await?;
+        Ok(Logger { job_id, log_file })
+    }
+
+    pub async fn log(&mut self, log: LogLine) -> Result<(), anyhow::Error> {
+        let mut log_line_text = serde_json::to_string(&log)?;
+        debug!("{}: {}", self.job_id, log_line_text);
+        log_line_text.push('\n');
+        self.log_file.write_all(log_line_text.as_bytes()).await?;
+        Ok(())
+    }
+
+    pub async fn error(&mut self, text: String) -> Result<(), anyhow::Error> {
+        self.log(LogLine::error(text)).await
+    }
+
+    pub async fn regular(&mut self, text: String) -> Result<(), anyhow::Error> {
+        self.log(LogLine::regular(text)).await
+    }
+}
+
+#[derive(Serialize, Deserialize)]
+pub enum LogLevel {
+    Regular,
+    Error,
+}
+
 impl Runs {
     pub async fn init() -> Result<Self, anyhow::Error> {
         let path: PathBuf = RUNS_LOGS_DIR.into();
@@ -92,12 +161,12 @@ impl Runs {
         self.projects.iter().map(|(k, v)| k.clone()).collect()
     }
 
-    pub fn init_run(
+    pub async fn init_run(
         &mut self,
         project: impl AsRef<str>,
         pipeline: impl AsRef<str>,
         run_id: impl AsRef<str>,
-    ) -> Arc<PipelineRun> {
+    ) -> Result<Arc<PipelineRun>, anyhow::Error> {
         if !self.projects.contains_key(project.as_ref()) {
             self.projects
                 .insert(project.as_ref().to_string(), ProjectRuns::default());
@@ -107,24 +176,28 @@ impl Runs {
             .get_mut(project.as_ref())
             .unwrap()
             .init_run(pipeline, run_id)
+            .await
     }
 }
 
 impl ProjectRuns {
-    pub fn init_run(
+    pub async fn init_run(
         &mut self,
         pipeline: impl AsRef<str>,
         run_id: impl AsRef<str>,
-    ) -> Arc<PipelineRun> {
+    ) -> Result<Arc<PipelineRun>, anyhow::Error> {
         if !self.pipelines.contains_key(pipeline.as_ref()) {
-            self.pipelines
-                .insert(pipeline.as_ref().to_string(), PipelineRuns::default());
+            self.pipelines.insert(
+                pipeline.as_ref().to_string(),
+                PipelineRuns::new(pipeline.as_ref().to_string()).await,
+            );
         }
 
         self.pipelines
             .get_mut(pipeline.as_ref())
             .unwrap()
             .init_run(run_id)
+            .await
     }
 
     pub fn get_pipeline_runs(&self, pipeline: impl AsRef<str>) -> Option<&PipelineRuns> {
@@ -136,27 +209,51 @@ impl ProjectRuns {
     }
 }
 
-impl Default for PipelineRuns {
-    fn default() -> Self {
+impl PipelineRuns {
+    pub async fn new(pipeline_id: String) -> Self {
         Self {
+            pipeline_id,
             queue_limit: 1,
             runs: Default::default(),
             runs_queue: Default::default(),
         }
     }
-}
 
-impl PipelineRuns {
-    pub fn init_run(&mut self, run_id: impl AsRef<str>) -> Arc<PipelineRun> {
+    pub async fn init_run(
+        &mut self,
+        run_id: impl AsRef<str>,
+    ) -> Result<Arc<PipelineRun>, anyhow::Error> {
+        let run_logs_dir = PathBuf::from(RUNS_LOGS_DIR)
+            .join(run_id.as_ref())
+            .join(&self.pipeline_id);
+        tokio::fs::create_dir_all(run_logs_dir).await?;
+
         if self.runs_queue.len() >= self.queue_limit {
             let run_to_delete = self.runs_queue.pop_front().unwrap();
             self.runs.remove(&run_to_delete);
+            let run_logs_dir = PathBuf::from(RUNS_LOGS_DIR)
+                .join(&run_to_delete)
+                .join(&self.pipeline_id);
+            tokio::fs::remove_dir_all(run_logs_dir).await?;
+
+            let run_logs_dir = PathBuf::from(RUNS_LOGS_DIR).join(&run_to_delete);
+
+            if let Ok(mut dir) = run_logs_dir.read_dir() {
+                // Is empty
+                if !dir.any(|_| true) {
+                    tokio::fs::remove_dir(run_logs_dir).await?;
+                }
+            }
         }
 
-        let run = Arc::new(PipelineRun::new(run_id.as_ref().to_string()));
+        let run = Arc::new(PipelineRun::new(
+            run_id.as_ref().to_string(),
+            self.pipeline_id.clone(),
+        ));
         self.runs_queue.push_back(run_id.as_ref().to_string());
         self.runs.insert(run_id.as_ref().to_string(), run.clone());
-        run
+
+        Ok(run)
     }
 
     pub fn get_runs(&self) -> Vec<Arc<PipelineRun>> {
@@ -165,9 +262,10 @@ impl PipelineRuns {
 }
 
 impl PipelineRun {
-    pub fn new(id: String) -> Self {
+    pub fn new(id: String, pipeline_id: String) -> Self {
         let started = chrono::Utc::now();
         Self {
+            pipeline_id,
             id,
             started,
             status: Mutex::new(PipelineStatus::Starting),
@@ -198,6 +296,21 @@ impl PipelineRun {
 
     pub async fn jobs(&self) -> HashMap<String, PipelineJob> {
         self.jobs.lock().await.clone()
+    }
+
+    pub async fn job_log_file(
+        &self,
+        job: impl AsRef<str>,
+    ) -> Result<tokio::fs::File, anyhow::Error> {
+        let log_path = PathBuf::from(RUNS_LOGS_DIR)
+            .join(&self.id)
+            .join(&self.pipeline_id)
+            .join(format!("{}.log", job.as_ref()));
+
+        let mut options = tokio::fs::OpenOptions::new();
+        let file = options.append(true).create(true).open(log_path).await?;
+
+        Ok(file)
     }
 }
 
@@ -257,11 +370,12 @@ impl Executor {
         let run_context: &common::run_context::RunContext = state.get()?;
         let project: String = state.get_named("project").cloned()?;
 
-        let pipeline_run: Arc<PipelineRun> =
-            self.runs
-                .lock()
-                .await
-                .init_run(project, pipeline.id.clone(), run_context.id.clone());
+        let pipeline_run: Arc<PipelineRun> = self
+            .runs
+            .lock()
+            .await
+            .init_run(project, pipeline.id.clone(), run_context.id.clone())
+            .await?;
 
         let mut state = state.clone();
         state.set(pipeline_run.as_ref());
@@ -356,6 +470,9 @@ impl Executor {
         id: String,
         job: common::Job,
     ) -> Result<String, anyhow::Error> {
+        let mut state = state.clone();
+        state.set_named("job", &id);
+
         info!("Runnig job {}", id);
         let pipeline_run: &PipelineRun = state.get()?;
 
@@ -363,7 +480,7 @@ impl Executor {
             pipeline_run
                 .set_job_status(&id, JobStatus::Running { step: i })
                 .await;
-            step.run(state).await?
+            step.run(&state).await?
         }
 
         pipeline_run.set_job_status(&id, JobStatus::Finished).await;

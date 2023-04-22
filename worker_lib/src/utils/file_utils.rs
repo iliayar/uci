@@ -21,11 +21,11 @@ pub async fn create_temp_tar(directory: PathBuf) -> Result<tempfile::TempFile, t
 
     // TODO: Get rid of this sync
     info!("Creating temporary tar in {:?}", tempfile.path);
-    let file = std::fs::File::create(&tempfile.path)?;
+    let file = tokio::fs::File::create(&tempfile.path).await?;
 
     info!("Writing tar");
-    let mut tar = tar::Builder::new(file);
-    tar.append_dir_all(".", directory)?;
+    let mut tar = tokio_tar::Builder::new(file);
+    tar.append_dir_all(".", directory).await?;
 
     Ok(tempfile)
 }

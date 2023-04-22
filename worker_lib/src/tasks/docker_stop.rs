@@ -12,6 +12,7 @@ impl super::Task for common::StopContainerConfig {
 
         docker
             .stop_container(
+                state,
                 stop_params_builder
                     .build()
                     .map_err(|e| anyhow!("Invalid stop container params: {}", e))?,
