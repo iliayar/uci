@@ -37,15 +37,6 @@ pub async fn execute_services_logs(
 
     while let Some(message) = ws_client.receive::<common::runner::PipelineMessage>().await {
         match message {
-            common::runner::PipelineMessage::Start => {
-                return Err(execute::ExecuteError::unexpected_message())
-            }
-            common::runner::PipelineMessage::Finish => {
-                return Err(execute::ExecuteError::unexpected_message())
-            }
-            common::runner::PipelineMessage::Log { t, text, timestamp } => {
-                return Err(execute::ExecuteError::unexpected_message())
-            }
             common::runner::PipelineMessage::ContainerLog {
                 t,
                 text,
@@ -61,12 +52,18 @@ pub async fn execute_services_logs(
                 );
 
                 match t {
-                    common::runner::LogType::Regular => print!("{}", text),
+                    common::runner::LogType::Regular => println!("{}", text.trim_end()),
                     common::runner::LogType::Error => {
-                        print!("{}{}{}", color::Fg(color::Red), text, style::Reset)
+                        println!(
+                            "{}{}{}",
+                            color::Fg(color::Red),
+                            text.trim_end(),
+                            style::Reset
+                        )
                     }
                 }
             }
+            _ => {}
         }
     }
 

@@ -37,5 +37,7 @@ pub async fn execute_action_call(
 
     execute::utils::print_clone_repos(&mut ws_client).await?;
 
+    execute::utils::print_pipeline_run(&mut ws_client).await?;
+
     Ok(())
 }

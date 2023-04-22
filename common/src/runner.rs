@@ -168,16 +168,36 @@ pub enum JobStatus {
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum PipelineMessage {
-    Start,
-    Finish,
+    Start {
+        pipeline: String,
+    },
+    Finish {
+        pipeline: String,
+        error: Option<String>,
+    },
+    JobPending {
+        pipeline: String,
+        job_id: String,
+    },
+    JobProgress {
+        pipeline: String,
+        job_id: String,
+        step: usize,
+    },
+    JobFinished {
+        pipeline: String,
+        job_id: String,
+    },
     Log {
+        pipeline: String,
+        job_id: String,
         t: LogType,
         text: String,
         #[serde(with = "chrono::serde::ts_milliseconds")]
         timestamp: chrono::DateTime<chrono::Utc>,
     },
     ContainerLog {
-	container: String,
+        container: String,
         t: LogType,
         text: String,
         #[serde(with = "chrono::serde::ts_milliseconds")]

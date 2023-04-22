@@ -43,7 +43,7 @@ pub struct PipelineRuns {
 }
 
 pub struct PipelineRun {
-    pipeline_id: String,
+    pub pipeline_id: String,
     pub id: String,
     pub started: chrono::DateTime<chrono::Utc>,
     pub status: Mutex<PipelineStatus>,
@@ -102,6 +102,7 @@ impl LogLine {
 }
 
 pub struct Logger<'a> {
+    pipeline_id: String,
     job_id: String,
     log_file: tokio::fs::File,
     write_file: bool,
@@ -122,6 +123,7 @@ impl<'a> Logger<'a> {
             log_file,
             write_file: true,
             run_context,
+            pipeline_id: pipeline_run.pipeline_id.clone(),
         })
     }
 
@@ -134,6 +136,8 @@ impl<'a> Logger<'a> {
                 },
                 text: log.text.clone(),
                 timestamp: log.time,
+                pipeline: self.pipeline_id.clone(),
+                job_id: self.job_id.clone(),
             })
             .await;
 
@@ -392,7 +396,7 @@ impl Executor {
         state: &State<'a>,
         pipeline: Pipeline,
     ) -> Result<(), anyhow::Error> {
-        let run_context: &common::run_context::RunContext = state.get()?;
+        let run_context: &RunContext = state.get()?;
         let project: String = state.get_named("project").cloned()?;
 
         let pipeline_run: Arc<PipelineRun> = self
@@ -413,8 +417,21 @@ impl Executor {
                 message: err.to_string(),
             },
         };
+
         pipeline_run
             .set_status(PipelineStatus::Finished(finished_status))
+            .await;
+
+        let error = match res.as_ref() {
+            Ok(_) => None,
+            Err(err) => Some(err.to_string()),
+        };
+
+        run_context
+            .send(common::runner::PipelineMessage::Finish {
+                pipeline: pipeline_run.pipeline_id.clone(),
+                error,
+            })
             .await;
 
         res
@@ -427,6 +444,7 @@ impl Executor {
     ) -> Result<(), anyhow::Error> {
         info!("Running execution");
         let pipeline_run: &PipelineRun = state.get()?;
+        let run_context: &RunContext = state.get()?;
 
         let task_context = self.make_task_context(&pipeline).await?;
 
@@ -463,8 +481,21 @@ impl Executor {
                     .collect()
             };
 
+        pipeline_run.set_status(PipelineStatus::Running).await;
+        run_context
+            .send(common::runner::PipelineMessage::Start {
+                pipeline: pipeline.id.clone(),
+            })
+            .await;
+
         for (job_id, _) in pipeline.jobs.iter() {
             pipeline_run.init_job(job_id).await;
+            run_context
+                .send(common::runner::PipelineMessage::JobPending {
+                    pipeline: pipeline.id.clone(),
+                    job_id: job_id.clone(),
+                })
+                .await;
         }
 
         let mut futs: FuturesUnordered<_> = FuturesUnordered::new();
@@ -495,6 +526,8 @@ impl Executor {
         id: String,
         job: common::Job,
     ) -> Result<String, anyhow::Error> {
+        let run_context: &RunContext = state.get()?;
+
         let mut state = state.clone();
         state.set_named("job", &id);
 
@@ -505,10 +538,23 @@ impl Executor {
             pipeline_run
                 .set_job_status(&id, JobStatus::Running { step: i })
                 .await;
+            run_context
+                .send(common::runner::PipelineMessage::JobProgress {
+                    pipeline: pipeline_run.pipeline_id.clone(),
+                    job_id: id.clone(),
+                    step: i,
+                })
+                .await;
             step.run(&state).await?
         }
 
         pipeline_run.set_job_status(&id, JobStatus::Finished).await;
+        run_context
+            .send(common::runner::PipelineMessage::JobFinished {
+                pipeline: pipeline_run.pipeline_id.clone(),
+                job_id: id.clone(),
+            })
+            .await;
         info!("Job {} done", id);
 
         Ok(id)

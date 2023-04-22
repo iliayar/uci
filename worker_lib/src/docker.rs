@@ -202,13 +202,17 @@ impl Docker {
             let result = result?;
 
             if let Some(status) = result.status {
-                logger.regular(status).await?;
+                if !status.is_empty() {
+                    logger.regular(status).await?;
+                }
             }
             if let Some(error) = result.error {
                 logger.error(error).await?;
             }
             if let Some(progress) = result.progress {
-                logger.regular(progress).await?;
+                if !progress.is_empty() {
+                    logger.regular(progress).await?;
+                }
             }
         }
 
@@ -241,7 +245,9 @@ impl Docker {
             let result = result?;
 
             if let Some(stream) = result.stream {
-                logger.regular(stream).await?;
+                if !stream.is_empty() {
+                    logger.regular(stream).await?;
+                }
             }
             if let Some(error) = result.error {
                 logger.error(error).await?;
