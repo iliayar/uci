@@ -111,6 +111,50 @@ impl Service {
         })
     }
 
+    pub fn get_start_job(&self, build: bool) -> Option<common::Job> {
+        let mut steps = Vec::new();
+
+        if build {
+            steps.push(common::Step::BuildImage(self.get_build_config()?));
+        }
+
+        steps.push(common::Step::RunContainer(self.get_run_config()?));
+
+        let job = common::Job {
+            needs: vec![],
+            steps,
+        };
+
+        Some(job)
+    }
+
+    pub fn get_stop_job(&self) -> Option<common::Job> {
+        let steps = vec![common::Step::StopContainer(self.get_stop_config()?)];
+
+        let job = common::Job {
+            needs: vec![],
+            steps,
+        };
+
+        Some(job)
+    }
+
+    pub fn get_restart_job(&self, build: bool) -> Option<common::Job> {
+        let mut steps = Vec::new();
+        steps.push(common::Step::StopContainer(self.get_stop_config()?));
+        if build {
+            steps.push(common::Step::BuildImage(self.get_build_config()?));
+        }
+        steps.push(common::Step::RunContainer(self.get_run_config()?));
+
+        let job = common::Job {
+            needs: vec![],
+            steps,
+        };
+
+        Some(job)
+    }
+
     pub fn get_logs_job(&self, follow: bool, tail: Option<usize>) -> Option<common::Job> {
         let config = common::ServiceLogsConfig {
             container: self.container.clone(),
@@ -165,23 +209,6 @@ impl Service {
     pub fn get_stop_config(&self) -> Option<common::StopContainerConfig> {
         Some(common::StopContainerConfig {
             name: self.container.clone(),
-        })
-    }
-
-    pub fn get_deploy_job(&self) -> Option<common::Job> {
-        let build_config = self.get_build_config()?;
-        let run_config = self.get_run_config()?;
-        let stop_config = self.get_stop_config()?;
-
-        let steps = vec![
-            common::Step::BuildImage(build_config),
-            common::Step::StopContainer(stop_config),
-            common::Step::RunContainer(run_config),
-        ];
-
-        Some(common::Job {
-            needs: Vec::new(),
-            steps,
         })
     }
 }

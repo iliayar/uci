@@ -38,9 +38,7 @@ async fn list_projects_impl<PM: config::ProjectsManager>(
             .check_permissions(Some(&project.id), config::ActionType::Read)
             .await
         {
-	    projects.push(common::runner::Project {
-		id: project.id,
-	    });
+            projects.push(common::runner::Project { id: project.id });
         }
     }
     Ok(common::runner::ProjectsListResponse { projects })

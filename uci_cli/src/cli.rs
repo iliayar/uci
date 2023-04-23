@@ -147,6 +147,10 @@ fn default_logs_follow() -> bool {
     false
 }
 
+fn default_start_no_build() -> bool {
+    false
+}
+
 #[derive(Subcommand, Debug)]
 pub enum ServiceCommand {
     /// List services
@@ -161,14 +165,49 @@ pub enum ServiceCommand {
         project: String,
 
         #[clap(short, long)]
-        service: String,
+        service: Option<Vec<String>>,
 
-	/// Keep watching logs
+        /// Keep watching logs
         #[clap(short, long, default_value_t = default_logs_follow())]
         follow: bool,
 
-	/// Watch last TAIL logs if specified, otherwise from container start
+        /// Watch last TAIL logs if specified, otherwise from container start
         #[clap(short, long)]
         tail: Option<usize>,
+    },
+
+    /// Start services
+    Start {
+        #[clap(short, long)]
+        project: String,
+
+        #[clap(short, long)]
+        service: Option<Vec<String>>,
+
+        /// Do not build image before starting
+        #[clap(long, default_value_t = default_start_no_build())]
+        no_build: bool,
+    },
+
+    /// Stop services
+    Stop {
+        #[clap(short, long)]
+        project: String,
+
+        #[clap(short, long)]
+        service: Option<Vec<String>>,
+    },
+
+    /// Stop services
+    Restart {
+        #[clap(short, long)]
+        project: String,
+
+        #[clap(short, long)]
+        service: Option<Vec<String>>,
+
+        /// Do not build image before starting
+        #[clap(long, default_value_t = default_start_no_build())]
+        no_build: bool,
     },
 }

@@ -46,5 +46,5 @@ fn get_color(n: u64) -> String {
 }
 
 fn get_ansi_color(n: u64) -> String {
-    color::AnsiValue((n % 256) as u8).fg_string().to_string()
+    color::AnsiValue((n % 256) as u8).fg_string()
 }

@@ -1,10 +1,11 @@
 pub mod call;
-pub mod list_projects;
-pub mod reload_config;
-pub mod update_repo;
-pub mod ws;
 pub mod list_actions;
 pub mod list_pipelines;
-pub mod list_services;
+pub mod list_projects;
 pub mod list_runs;
+pub mod list_services;
+pub mod reload_config;
+pub mod service_command;
 pub mod service_logs;
+pub mod update_repo;
+pub mod ws;

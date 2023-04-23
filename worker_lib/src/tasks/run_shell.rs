@@ -125,7 +125,7 @@ pub async fn run_command_with_log<'a>(
         .merge(stderr.map(OutputLine::Err));
 
     while let Some(line) = child_out.next().await {
-        let log_line = match line {
+        match line {
             OutputLine::Out(text) => logger.regular(text?).await?,
             OutputLine::Err(text) => logger.error(text?).await?,
         };

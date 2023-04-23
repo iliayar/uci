@@ -93,8 +93,7 @@ impl Project {
             .get(pipeline_id)
             .ok_or_else(|| anyhow!("Now such pipeline to run {}", pipeline_id))?;
 
-        self.run_pipeline_impl(state, pipeline.clone())
-            .await?;
+        self.run_pipeline_impl(state, pipeline.clone()).await?;
 
         Ok(())
     }
@@ -113,9 +112,24 @@ impl Project {
                 .ok_or_else(|| anyhow!("Now such service {} to run action on", service_id))?;
 
             let job = match action {
-                super::ServiceAction::Deploy => service.get_deploy_job().ok_or_else(|| {
-                    anyhow!("Cannot construct deploy config for service {}", service_id)
+                super::ServiceAction::Deploy => {
+                    service.get_restart_job(/* build */ true).ok_or_else(|| {
+                        anyhow!("Cannot construct deploy config for service {}", service_id)
+                    })?
+                }
+                super::ServiceAction::Start { build } => {
+                    service.get_start_job(build).ok_or_else(|| {
+                        anyhow!("Cannot construct start config for service {}", service_id)
+                    })?
+                }
+                super::ServiceAction::Stop => service.get_stop_job().ok_or_else(|| {
+                    anyhow!("Cannot construct stop config for service {}", service_id)
                 })?,
+                super::ServiceAction::Restart { build } => {
+                    service.get_restart_job(build).ok_or_else(|| {
+                        anyhow!("Cannot construct restart config for service {}", service_id)
+                    })?
+                }
                 super::ServiceAction::Logs { follow, tail } => {
                     service.get_logs_job(follow, tail).ok_or_else(|| {
                         anyhow!("Cannot construct logs config for service {}", service_id)
@@ -134,8 +148,7 @@ impl Project {
             volumes: Default::default(),
         };
 
-        self.run_pipeline_impl(state, pipeline)
-            .await?;
+        self.run_pipeline_impl(state, pipeline).await?;
 
         Ok(())
     }

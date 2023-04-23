@@ -69,6 +69,22 @@ impl<PM: config::ProjectsManager> Context<PM> {
         Ok(())
     }
 
+    pub async fn run_services_actions<'a>(
+        &self,
+        state: &State<'a>,
+        project_id: &str,
+        services: Vec<String>,
+        action: config::ServiceAction,
+    ) -> Result<(), anyhow::Error> {
+        let mut state = state.clone();
+        let config = self.config.lock().await.clone();
+        state.set(config.as_ref());
+        self.projects_store
+            .run_services_actions(&state, project_id, services, action)
+            .await?;
+        Ok(())
+    }
+
     pub async fn run_service_action<'a>(
         &self,
         state: &State<'a>,
@@ -76,13 +92,8 @@ impl<PM: config::ProjectsManager> Context<PM> {
         service_id: &str,
         action: config::ServiceAction,
     ) -> Result<(), anyhow::Error> {
-        let mut state = state.clone();
-        let config = self.config.lock().await.clone();
-        state.set(config.as_ref());
-        self.projects_store
-            .run_service_action(&state, project_id, service_id, action)
-            .await?;
-        Ok(())
+        self.run_services_actions(state, project_id, vec![service_id.to_string()], action)
+            .await
     }
 
     pub async fn call_trigger<'a>(

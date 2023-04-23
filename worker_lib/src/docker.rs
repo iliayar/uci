@@ -263,7 +263,11 @@ impl Docker {
         state: &State<'a>,
         params: LogsParams,
     ) -> Result<(), anyhow::Error> {
+        let mut logger = super::executor::Logger::new(state).await?;
         let run_context: &RunContext = state.get()?;
+
+        // Trigger check for clients if there is no logs to interrupt
+        let mut interval = tokio::time::interval(std::time::Duration::from_secs(1));
 
         let mut logs = self.con.logs(
             &params.container,
@@ -275,17 +279,45 @@ impl Docker {
                 tail: params
                     .tail
                     .map(|v| v.to_string())
-                    .unwrap_or("all".to_string()),
+                    .unwrap_or_else(|| "all".to_string()),
                 ..Default::default()
             }),
         );
 
-        while let Some(log) = logs.next().await {
+        loop {
             if !run_context.has_clients().await {
                 break;
             }
 
-            let (t, text) = match log? {
+            // If there is a log, then process it
+            // If clock ticks then check for clients
+            let log = tokio::select! {
+            log = logs.next() => log,
+            _ = interval.tick() => {
+                continue;
+            }
+            };
+
+            let log = if let Some(log) = log {
+                log
+            } else {
+                break;
+            };
+
+            let log = match log {
+                Ok(log) => log,
+                Err(err) => {
+                    logger
+                        .error(format!(
+                            "Cannot view logs for container {}: {}",
+                            params.container, err
+                        ))
+                        .await?;
+                    return Ok(());
+                }
+            };
+
+            let (t, text) = match log {
                 container::LogOutput::StdErr { message } => {
                     let bytes: Vec<u8> = message.into_iter().collect();
                     (
@@ -305,7 +337,7 @@ impl Docker {
             };
 
             let (timestamp, text) = text
-                .split_once(" ")
+                .split_once(' ')
                 .ok_or_else(|| anyhow!("No timestamp in docker log output"))?;
 
             let timestamp = chrono::DateTime::parse_from_rfc3339(timestamp)
@@ -330,6 +362,17 @@ impl Docker {
         params: CreateContainerParams,
     ) -> Result<String, DockerError> {
         let mut logger = super::executor::Logger::new(state).await?;
+
+        if let Some(name) = params.name.as_ref() {
+            if let Ok(container) = self.con.inspect_container(name, None).await {
+                if let Some(id) = container.id {
+                    logger
+                        .warning(format!("Container {} already exists. Skip creating", name))
+                        .await?;
+                    return Ok(id);
+                }
+            }
+        }
 
         let exposed_ports: HashMap<_, _> = params
             .ports

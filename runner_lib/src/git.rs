@@ -45,7 +45,7 @@ pub async fn archive(path: PathBuf) -> Result<TempFile, GitError> {
             archive_path.to_string_lossy().to_string(),
         ],
     )
-	.await?;
+    .await?;
     Ok(tempfile)
 }
 

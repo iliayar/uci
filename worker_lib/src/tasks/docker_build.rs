@@ -40,7 +40,7 @@ impl super::Task for common::BuildImageConfig {
 
             docker
                 .build(
-		    state,
+                    state,
                     params_builder
                         .build()
                         .map_err(|e| anyhow!("Invalid build params: {}", e))?,

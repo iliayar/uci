@@ -113,7 +113,7 @@ async fn list_runs_impl<PM: config::ProjectsManager>(
                             project: project.clone(),
                             pipeline: pipeline.clone(),
                             run_id: run.id.clone(),
-                            started: run.started.clone(),
+                            started: run.started,
                             status,
                             jobs,
                         })

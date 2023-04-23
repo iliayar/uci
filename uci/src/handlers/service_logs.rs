@@ -15,6 +15,7 @@ pub fn filter<PM: config::ProjectsManager + 'static>(
         .and(with_call_context(deps))
         .and(warp::path!("projects" / "services" / "logs"))
         .and(warp::query::<common::runner::ServiceLogsQuery>())
+        .and(warp::body::json::<common::runner::ServiceLogsBody>())
         .and(warp::get())
         .and_then(service_logs)
 }
@@ -22,8 +23,9 @@ pub fn filter<PM: config::ProjectsManager + 'static>(
 async fn service_logs<PM: config::ProjectsManager + 'static>(
     call_context: call_context::CallContext<PM>,
     query: common::runner::ServiceLogsQuery,
+    body: common::runner::ServiceLogsBody,
 ) -> Result<impl warp::Reply, warp::Rejection> {
-    match service_logs_impl(call_context, query).await {
+    match service_logs_impl(call_context, query, body).await {
         Ok(resp) => Ok(warp::reply::with_status(
             warp::reply::json(&resp),
             StatusCode::OK,
@@ -36,12 +38,12 @@ async fn service_logs<PM: config::ProjectsManager + 'static>(
 
 async fn service_logs_impl<PM: config::ProjectsManager + 'static>(
     mut call_context: call_context::CallContext<PM>,
-    common::runner::ServiceLogsQuery {
-        project_id,
-        service_id,
+    common::runner::ServiceLogsQuery { project_id }: common::runner::ServiceLogsQuery,
+    common::runner::ServiceLogsBody {
+        services,
         follow,
         tail,
-    }: common::runner::ServiceLogsQuery,
+    }: common::runner::ServiceLogsBody,
 ) -> Result<common::runner::ContinueReponse, anyhow::Error> {
     if !call_context
         .check_permissions(Some(&project_id), config::ActionType::Read)
@@ -53,9 +55,9 @@ async fn service_logs_impl<PM: config::ProjectsManager + 'static>(
     let run_id = call_context.init_run_buffered().await;
     tokio::spawn(async move {
         if let Err(err) = call_context
-            .run_service_action(
+            .run_services_actions(
                 &project_id,
-                &service_id,
+                services,
                 config::ServiceAction::Logs { follow, tail },
             )
             .await
@@ -64,5 +66,6 @@ async fn service_logs_impl<PM: config::ProjectsManager + 'static>(
         }
         call_context.finish_run().await;
     });
-    return Ok(common::runner::ContinueReponse { run_id });
+
+    Ok(common::runner::ContinueReponse { run_id })
 }

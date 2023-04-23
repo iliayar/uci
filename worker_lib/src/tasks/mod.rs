@@ -4,8 +4,8 @@ mod docker_stop;
 mod parallel;
 mod request;
 mod run_shell;
-mod task;
 mod service_logs;
+mod task;
 
 pub use docker_build::*;
 pub use docker_run::*;

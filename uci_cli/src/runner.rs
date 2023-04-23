@@ -62,6 +62,19 @@ pub fn get_query<S: AsRef<str>, T: serde::Serialize>(
         .query(query))
 }
 
+pub fn get_query_body<S: AsRef<str>, T: serde::Serialize, E: serde::Serialize>(
+    config: &super::config::Config,
+    path: S,
+    query: &T,
+    body: &E,
+) -> Result<reqwest::RequestBuilder, anyhow::Error> {
+    let runner_url = config.runner_url.as_ref().expect("runner_url is not set");
+    Ok(call_runner(config)?
+        .get(format!("{}{}", runner_url, path.as_ref()))
+        .query(query)
+        .json(body))
+}
+
 pub async fn json<T: for<'a> Deserialize<'a>>(
     response: reqwest::Result<reqwest::Response>,
 ) -> Result<T, super::execute::ExecuteError> {
@@ -159,7 +172,7 @@ pub async fn ws(
 
     let (_, read) = ws_stream.split();
 
-    ctrlc::set_handler(move || {
+    if let Err(err) = ctrlc::set_handler(move || {
         println!(
             "{}{}Stop watching run{}",
             clear::CurrentLine,
@@ -169,8 +182,24 @@ pub async fn ws(
         println!("Run id: {}{}{}", style::Bold, client_id, style::Reset);
         // TODO: Print command to continue watch run
         std::process::exit(0);
-    })
-    .map_err(|err| ExecuteError::Warning(format!("Couldn't set Ctrl-C handler: {}", err)))?;
+    }) {
+        error!("Failed to set Ctrl-C handler: {}", err);
+    }
 
     Ok(WsClient { rx: read })
+}
+
+pub mod api {
+    use crate::{config::Config, execute::ExecuteError};
+
+    pub async fn list_services(
+        config: &Config,
+        project_id: String,
+    ) -> Result<common::runner::ServicesListResponse, ExecuteError> {
+        let query = common::runner::ListServicesQuery { project_id };
+        let response = crate::runner::get_query(config, "/projects/services/list", &query)?
+            .send()
+            .await;
+        crate::runner::json(response).await
+    }
 }

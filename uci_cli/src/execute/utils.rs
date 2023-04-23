@@ -242,7 +242,7 @@ impl RunState {
         }
 
         let pipeline = self.pipelines.get_mut(&pipeline).unwrap();
-        pipeline.jobs.insert(job.to_string(), status);
+        pipeline.jobs.insert(job, status);
     }
 }
 

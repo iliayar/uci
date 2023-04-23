@@ -11,20 +11,33 @@ services:
     networks:
       - test-net
       - test-global-net
+
+  test-service-duplicate:
+    build:
+      path: ${project.repos.test.path}/app
+    volumes:
+      '/test/vol': test-vol
+      '/test/vol-global': global-test-vol
+      '/test/repo': ${project.repos.test.path}
+    env:
+      TEST_ENV: aboba
+    networks:
+      - test-net
+      - test-global-net
         
   common-service:
     image: ealen/echo-server
     global: true
     networks:
       - test-global-net
-
-  ubuntu-nc:
-    build:
-      path: ${project.repos.ubuntu-with-nc.path}
-    command: ["nc", "-l", "-p", "8080"]
-    ports:
-      - 8080:8080
-    restart: always
+        
+  # ubuntu-nc:
+  #   build:
+  #     path: ${project.repos.ubuntu-with-nc.path}
+  #   command: ["nc", "-l", "-p", "8080"]
+  #   ports:
+  #     - 8080:8080
+  #   restart: always
 
 volumes:
   test-vol:

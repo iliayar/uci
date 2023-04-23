@@ -90,6 +90,20 @@ pub struct CallRequest {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct ServiceCommandRequest {
+    pub project_id: String,
+    pub services: Vec<String>,
+    pub command: ServiceCommand,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub enum ServiceCommand {
+    Stop,
+    Start { build: bool },
+    Restart { build: bool },
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ListActionsQuery {
     pub project_id: String,
 }
@@ -107,7 +121,11 @@ pub struct ListServicesQuery {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ServiceLogsQuery {
     pub project_id: String,
-    pub service_id: String,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct ServiceLogsBody {
+    pub services: Vec<String>,
     pub follow: bool,
     pub tail: Option<usize>,
 }

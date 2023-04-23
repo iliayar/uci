@@ -50,10 +50,10 @@ impl<PM: config::ProjectsManager> CallContext<PM> {
         }
     }
 
-    pub async fn run_service_action(
+    pub async fn run_services_actions(
         &self,
         project: &str,
-        service: &str,
+        services: Vec<String>,
         action: config::ServiceAction,
     ) -> Result<(), anyhow::Error> {
         let mut state = self.state.as_ref().clone();
@@ -61,7 +61,17 @@ impl<PM: config::ProjectsManager> CallContext<PM> {
             state.set(run_context.as_ref());
         }
         self.context
-            .run_service_action(&state, project, service, action)
+            .run_services_actions(&state, project, services, action)
+            .await
+    }
+
+    pub async fn run_service_action(
+        &self,
+        project: &str,
+        service: &str,
+        action: config::ServiceAction,
+    ) -> Result<(), anyhow::Error> {
+        self.run_services_actions(project, vec![service.to_string()], action)
             .await
     }
 

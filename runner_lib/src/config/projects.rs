@@ -94,6 +94,18 @@ impl<PL: ProjectsManager> ProjectsStore<PL> {
         Ok(())
     }
 
+    pub async fn run_services_actions<'a>(
+        &self,
+        state: &State<'a>,
+        project_id: &str,
+        services: Vec<String>,
+        action: super::ServiceAction,
+    ) -> Result<(), anyhow::Error> {
+        let project = self.load_project(state, project_id).await?;
+        let services = services.into_iter().map(|s| (s, action.clone())).collect();
+        project.run_service_actions(state, services).await
+    }
+
     pub async fn run_service_action<'a>(
         &self,
         state: &State<'a>,
@@ -101,9 +113,8 @@ impl<PL: ProjectsManager> ProjectsStore<PL> {
         service_id: &str,
         action: super::ServiceAction,
     ) -> Result<(), anyhow::Error> {
-        let project = self.load_project(state, project_id).await?;
-        let services = HashMap::from([(service_id.to_string(), action)]);
-        project.run_service_actions(state, services).await
+        self.run_services_actions(state, project_id, vec![service_id.to_string()], action)
+            .await
     }
 
     async fn handle_event<'a>(

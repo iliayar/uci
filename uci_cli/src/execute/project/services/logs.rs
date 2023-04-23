@@ -1,4 +1,4 @@
-use crate::execute;
+use crate::{execute, utils::ucolor};
 
 use log::*;
 use termion::{color, style};
@@ -6,15 +6,25 @@ use termion::{color, style};
 pub async fn execute_services_logs(
     config: &crate::config::Config,
     project_id: String,
-    service_id: String,
+    service: Option<Vec<String>>,
     follow: bool,
     tail: Option<usize>,
 ) -> Result<(), execute::ExecuteError> {
     debug!("Executing service logs command");
 
-    let query = common::runner::ServiceLogsQuery {
-        project_id,
-        service_id,
+    let services = if let Some(services) = service {
+        services
+    } else {
+        crate::runner::api::list_services(config, project_id.clone())
+            .await?
+            .services
+            .into_iter()
+            .map(|s| s.id)
+            .collect()
+    };
+
+    let body = common::runner::ServiceLogsBody {
+        services,
         follow,
 
         // If follow then default tail to 10
@@ -24,7 +34,10 @@ pub async fn execute_services_logs(
             tail
         },
     };
-    let response = crate::runner::get_query(config, "/projects/services/logs", &query)?
+
+    let query = common::runner::ServiceLogsQuery { project_id };
+
+    let response = crate::runner::get_query_body(config, "/projects/services/logs", &query, &body)?
         .send()
         .await;
     let response: common::runner::ContinueReponse = crate::runner::json(response).await?;
@@ -46,7 +59,7 @@ pub async fn execute_services_logs(
                 print!(
                     "{} [{}{}{}] ",
                     timestamp,
-                    color::Fg(color::Blue),
+                    ucolor(&container),
                     container,
                     style::Reset
                 );
@@ -70,6 +83,18 @@ pub async fn execute_services_logs(
                         )
                     }
                 }
+            }
+            common::runner::PipelineMessage::Log {
+                t: common::runner::LogType::Error,
+                text,
+                ..
+            } => {
+                println!(
+                    "Failed to view logs: {}{}{}",
+                    color::Fg(color::Red),
+                    text.trim_end(),
+                    style::Reset
+                )
             }
             _ => {}
         }
