@@ -160,6 +160,7 @@ pub async fn ws(
     config: &super::config::Config,
     client_id: String,
 ) -> Result<WsClient, ExecuteError> {
+    debug!("Connecting with client id {}", client_id);
     let runner_url = config
         .ws_runner_url
         .as_ref()
@@ -186,6 +187,8 @@ pub async fn ws(
         error!("Failed to set Ctrl-C handler: {}", err);
     }
 
+    debug!("WS Connected");
+
     Ok(WsClient { rx: read })
 }
 
@@ -198,6 +201,21 @@ pub mod api {
     ) -> Result<common::runner::ServicesListResponse, ExecuteError> {
         let query = common::runner::ListServicesQuery { project_id };
         let response = crate::runner::get_query(config, "/projects/services/list", &query)?
+            .send()
+            .await;
+        crate::runner::json(response).await
+    }
+
+    pub async fn runs_list(
+        config: &Config,
+        project_id: Option<String>,
+        pipeline_id: Option<String>,
+    ) -> Result<common::runner::ListRunsResponse, ExecuteError> {
+        let query = common::runner::ListRunsRequestQuery {
+            project_id,
+            pipeline_id,
+        };
+        let response = crate::runner::get_query(config, "/runs/list", &query)?
             .send()
             .await;
         crate::runner::json(response).await

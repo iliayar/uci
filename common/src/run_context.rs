@@ -23,38 +23,57 @@ impl ToString for WsMessage {
 pub type WsClientReciever = mpsc::UnboundedReceiver<Result<WsMessage, anyhow::Error>>;
 pub type WsSender = mpsc::UnboundedSender<Result<WsMessage, anyhow::Error>>;
 
+enum HelperMsg {
+    NewClient,
+}
+
 pub struct RunContext {
     pub id: String,
     pub txs: Mutex<Vec<WsSender>>,
     pub buffer: Mutex<Vec<String>>,
     pub enable_buffering: bool,
+
+    helper_rx: Mutex<mpsc::Receiver<HelperMsg>>,
+    helper_tx: mpsc::Sender<HelperMsg>,
 }
 
 impl RunContext {
     pub fn new() -> Self {
+        let (helper_tx, helper_rx) = mpsc::channel(1);
+        let helper_rx = Mutex::new(helper_rx);
         Self {
             id: uuid::Uuid::new_v4().to_string(),
             txs: Mutex::new(Vec::new()),
             buffer: Mutex::new(Vec::new()),
             enable_buffering: false,
+            helper_rx,
+            helper_tx,
         }
     }
 
     pub fn new_buffered() -> Self {
+        let (helper_tx, helper_rx) = mpsc::channel(1);
+        let helper_rx = Mutex::new(helper_rx);
         Self {
             id: uuid::Uuid::new_v4().to_string(),
             txs: Mutex::new(Vec::new()),
             buffer: Mutex::new(Vec::new()),
             enable_buffering: ENABLE_BUFFERING,
+            helper_rx,
+            helper_tx,
         }
     }
 
     pub fn empty() -> Self {
+        let (helper_tx, helper_rx) = mpsc::channel(1);
+        let helper_rx = Mutex::new(helper_rx);
         Self {
             id: "(none)".to_string(),
             txs: Mutex::new(Vec::new()),
             buffer: Mutex::new(Vec::new()),
             enable_buffering: false,
+            helper_rx,
+            helper_tx,
         }
     }
 }
@@ -66,6 +85,17 @@ impl Default for RunContext {
 }
 
 impl RunContext {
+    pub async fn wait_for_client(&self, time_limit: std::time::Duration) -> bool {
+        match tokio::time::timeout(time_limit, self.helper_rx.lock().await.recv()).await {
+            Ok(Some(HelperMsg::NewClient)) => true,
+            _ => false,
+        }
+    }
+
+    pub async fn heartbeat(&self) {
+        self.send(super::runner::PipelineMessage::Heartbeat).await
+    }
+
     pub async fn send<T: serde::Serialize, TR: AsRef<T>>(&self, msg: TR) {
         let content = match serde_json::to_string(msg.as_ref()) {
             Err(err) => {
@@ -138,6 +168,10 @@ impl RunContext {
             self.id, old_count, new_count
         );
         self.send_buffered().await;
+
+	// FIXME: This is kostil'
+        self.helper_tx.try_send(HelperMsg::NewClient).ok();
+
         rx
     }
 

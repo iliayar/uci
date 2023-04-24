@@ -66,6 +66,26 @@ pub enum RunCommands {
         #[clap(long)]
         pipeline: Option<String>,
     },
+
+    /// List runs
+    Logs {
+        #[clap(short, long)]
+        project: String,
+
+        #[clap(long)]
+        pipeline: String,
+
+	#[clap(short, long)]
+	run_id: String,
+
+	/// Keep watching logs
+	#[clap(short, long)]
+	follow: bool,
+
+	/// Print overall runs status bottom
+	#[clap(short, long)]
+	status: bool,
+    },
 }
 
 #[derive(Subcommand, Debug)]

@@ -8,4 +8,5 @@ pub mod reload_config;
 pub mod service_command;
 pub mod service_logs;
 pub mod update_repo;
+pub mod run_logs;
 pub mod ws;

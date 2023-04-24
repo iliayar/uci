@@ -11,14 +11,7 @@ pub async fn execute_runs_list(
 ) -> Result<(), execute::ExecuteError> {
     debug!("Executing runs list command");
 
-    let query = common::runner::ListRunsRequestQuery {
-        project_id,
-        pipeline_id,
-    };
-    let response = crate::runner::get_query(config, "/runs/list", &query)?
-        .send()
-        .await;
-    let response: common::runner::ListRunsResponse = crate::runner::json(response).await?;
+    let response = crate::runner::api::runs_list(config, project_id, pipeline_id).await?;
 
     println!("{}Runs{}:", style::Bold, style::Reset);
     for run in response.runs.into_iter() {

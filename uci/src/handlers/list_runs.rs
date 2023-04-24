@@ -45,14 +45,12 @@ async fn list_runs_impl<PM: config::ProjectsManager>(
     pipeline_id: Option<String>,
 ) -> Result<common::runner::ListRunsResponse, anyhow::Error> {
     let executor: &worker_lib::executor::Executor = call_context.state.get()?;
-    let runs = executor.runs.lock().await;
-
     let mut res = Vec::new();
 
     let projects = if let Some(project_id) = project_id {
         vec![project_id]
     } else {
-        runs.get_projects()
+        executor.runs.lock().await.get_projects()
     };
 
     for project in projects.into_iter() {
@@ -63,7 +61,7 @@ async fn list_runs_impl<PM: config::ProjectsManager>(
             continue;
         }
 
-        if let Some(project_runs) = runs.get_project_runs(&project) {
+        if let Some(project_runs) = executor.runs.lock().await.get_project_runs(&project) {
             let pipelines = if let Some(pipeline_id) = pipeline_id.as_ref() {
                 vec![pipeline_id.clone()]
             } else {

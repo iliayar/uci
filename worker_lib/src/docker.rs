@@ -10,7 +10,7 @@ use bollard::{
 };
 
 use anyhow::anyhow;
-use common::{run_context::RunContext, state::State};
+use common::state::State;
 use log::*;
 
 use futures::StreamExt;
@@ -258,17 +258,10 @@ impl Docker {
         Ok(())
     }
 
-    pub async fn logs<'a>(
+    pub fn logs<'a>(
         &self,
-        state: &State<'a>,
         params: LogsParams,
-    ) -> Result<(), anyhow::Error> {
-        let mut logger = super::executor::Logger::new(state).await?;
-        let run_context: &RunContext = state.get()?;
-
-        // Trigger check for clients if there is no logs to interrupt
-        let mut interval = tokio::time::interval(std::time::Duration::from_secs(1));
-
+    ) -> impl futures::Stream<Item = Result<common::runner::PipelineMessage, anyhow::Error>> {
         let mut logs = self.con.logs(
             &params.container,
             Some(LogsOptions {
@@ -284,76 +277,12 @@ impl Docker {
             }),
         );
 
-        loop {
-            if !run_context.has_clients().await {
-                break;
+        #[rustfmt::skip]
+        async_stream::try_stream! {
+            while let Some(log) = logs.next().await {
+                yield make_pipeline_log(params.container.clone(), log?)?;
             }
-
-            // If there is a log, then process it
-            // If clock ticks then check for clients
-            let log = tokio::select! {
-            log = logs.next() => log,
-            _ = interval.tick() => {
-                continue;
-            }
-            };
-
-            let log = if let Some(log) = log {
-                log
-            } else {
-                break;
-            };
-
-            let log = match log {
-                Ok(log) => log,
-                Err(err) => {
-                    logger
-                        .error(format!(
-                            "Cannot view logs for container {}: {}",
-                            params.container, err
-                        ))
-                        .await?;
-                    return Ok(());
-                }
-            };
-
-            let (t, text) = match log {
-                container::LogOutput::StdErr { message } => {
-                    let bytes: Vec<u8> = message.into_iter().collect();
-                    (
-                        common::runner::LogType::Error,
-                        String::from_utf8_lossy(&bytes).to_string(),
-                    )
-                }
-                container::LogOutput::StdOut { message }
-                | container::LogOutput::StdIn { message }
-                | container::LogOutput::Console { message } => {
-                    let bytes: Vec<u8> = message.into_iter().collect();
-                    (
-                        common::runner::LogType::Regular,
-                        String::from_utf8_lossy(&bytes).to_string(),
-                    )
-                }
-            };
-
-            let (timestamp, text) = text
-                .split_once(' ')
-                .ok_or_else(|| anyhow!("No timestamp in docker log output"))?;
-
-            let timestamp = chrono::DateTime::parse_from_rfc3339(timestamp)
-                .map_err(|err| anyhow!("Failed to parse docker timestamp in log: {}", err))?;
-
-            run_context
-                .send(common::runner::PipelineMessage::ContainerLog {
-                    container: params.container.clone(),
-                    t,
-                    text: text.to_string(),
-                    timestamp: timestamp.into(),
-                })
-                .await;
         }
-
-        Ok(())
     }
 
     pub async fn create_container<'a>(
@@ -713,4 +642,44 @@ fn get_env(env: HashMap<String, String>) -> Vec<String> {
     env.into_iter()
         .map(|(k, v)| format!("{}={}", k, v))
         .collect()
+}
+
+fn make_pipeline_log(
+    container: String,
+    log: bollard::container::LogOutput,
+) -> Result<common::runner::PipelineMessage, anyhow::Error> {
+    let (t, text) = match log {
+        container::LogOutput::StdErr { message } => {
+            let bytes: Vec<u8> = message.into_iter().collect();
+            (
+                common::runner::LogType::Error,
+                String::from_utf8_lossy(&bytes).to_string(),
+            )
+        }
+        container::LogOutput::StdOut { message }
+        | container::LogOutput::StdIn { message }
+        | container::LogOutput::Console { message } => {
+            let bytes: Vec<u8> = message.into_iter().collect();
+            (
+                common::runner::LogType::Regular,
+                String::from_utf8_lossy(&bytes).to_string(),
+            )
+        }
+    };
+
+    let (timestamp, text) = text
+        .split_once(' ')
+        .ok_or_else(|| anyhow!("No timestamp in docker log output"))?;
+
+    let timestamp = chrono::DateTime::parse_from_rfc3339(timestamp)
+        .map_err(|err| anyhow!("Failed to parse docker timestamp in log: {}", err))?;
+
+    let log = common::runner::PipelineMessage::ContainerLog {
+        container,
+        t,
+        text: text.to_string(),
+        timestamp: timestamp.into(),
+    };
+
+    Ok(log)
 }

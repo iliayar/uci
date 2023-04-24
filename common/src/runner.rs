@@ -148,6 +148,14 @@ pub struct ListRunsResponse {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct RunsLogsRequestQuery {
+    pub run: String,
+    pub project: String,
+    pub pipeline: String,
+    // TODO: Maybe add filters
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Run {
     pub project: String,
     pub pipeline: String,
@@ -221,6 +229,7 @@ pub enum PipelineMessage {
         #[serde(with = "chrono::serde::ts_milliseconds")]
         timestamp: chrono::DateTime<chrono::Utc>,
     },
+    Heartbeat,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]

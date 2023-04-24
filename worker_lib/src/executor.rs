@@ -12,7 +12,7 @@ use common::run_context::RunContext;
 use common::state::State;
 use futures::stream::FuturesUnordered;
 use futures::StreamExt;
-use tokio::io::AsyncWriteExt;
+use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::sync::Mutex;
 
 use serde::{Deserialize, Serialize};
@@ -48,6 +48,7 @@ pub struct PipelineRun {
     pub started: chrono::DateTime<chrono::Utc>,
     pub status: Mutex<PipelineStatus>,
     pub jobs: Mutex<HashMap<String, PipelineJob>>,
+    pub log_file: Arc<Mutex<Option<tokio::fs::File>>>,
 }
 
 #[derive(Clone)]
@@ -78,29 +79,26 @@ pub enum PipelineFinishedStatus {
 #[derive(Serialize, Deserialize)]
 pub struct LogLine {
     #[serde(with = "chrono::serde::ts_milliseconds")]
-    pub time: chrono::DateTime<chrono::Utc>,
-    pub text: String,
-    pub level: LogLevel,
+    time: chrono::DateTime<chrono::Utc>,
+    text: String,
+    level: LogLevel,
+    pipeline: Option<String>,
+    job: Option<String>,
 }
 
 impl LogLine {
-    pub fn error(text: String) -> LogLine {
-        LogLine::new(text, LogLevel::Error)
-    }
-
-    pub fn regular(text: String) -> LogLine {
-        LogLine::new(text, LogLevel::Regular)
-    }
-
-    pub fn warning(text: String) -> LogLine {
-        LogLine::new(text, LogLevel::Warning)
-    }
-
-    pub fn new(text: String, level: LogLevel) -> LogLine {
+    pub fn new(
+        text: String,
+        level: LogLevel,
+        pipeline: Option<String>,
+        job: Option<String>,
+    ) -> LogLine {
         LogLine {
             text,
             level,
             time: chrono::Utc::now(),
+            pipeline,
+            job,
         }
     }
 }
@@ -108,8 +106,7 @@ impl LogLine {
 pub struct Logger<'a> {
     pipeline_id: String,
     job_id: String,
-    log_file: tokio::fs::File,
-    write_file: bool,
+    log_file: Arc<Mutex<Option<tokio::fs::File>>>,
     run_context: &'a RunContext,
 }
 
@@ -118,14 +115,34 @@ impl<'a> Logger<'a> {
     where
         'b: 'a,
     {
+        Logger::new_impl(state, true).await
+    }
+
+    pub async fn new_no_log_file<'b>(state: &'b State<'a>) -> Result<Logger<'a>, anyhow::Error>
+    where
+        'b: 'a,
+    {
+        Logger::new_impl(state, false).await
+    }
+
+    async fn new_impl<'b>(
+        state: &'b State<'a>,
+        write_log: bool,
+    ) -> Result<Logger<'a>, anyhow::Error>
+    where
+        'b: 'a,
+    {
         let job_id: String = state.get_named("job").cloned()?;
         let run_context: &RunContext = state.get()?;
         let pipeline_run: &PipelineRun = state.get()?;
-        let log_file = pipeline_run.job_log_file(&job_id).await?;
+        let log_file = if write_log {
+            pipeline_run.log_file.clone()
+        } else {
+            Arc::new(Mutex::new(None))
+        };
         Ok(Logger {
             job_id,
             log_file,
-            write_file: true,
             run_context,
             pipeline_id: pipeline_run.pipeline_id.clone(),
         })
@@ -149,24 +166,37 @@ impl<'a> Logger<'a> {
         let mut log_line_text = serde_json::to_string(&log)?;
         debug!("{}: {}", self.job_id, log_line_text);
         log_line_text.push('\n');
-        self.log_file.write_all(log_line_text.as_bytes()).await?;
+        if let Some(log_file) = self.log_file.lock().await.as_mut() {
+            log_file.write_all(log_line_text.as_bytes()).await?;
+        }
         Ok(())
     }
 
+    async fn log_impl(&mut self, text: String, level: LogLevel) -> Result<(), anyhow::Error> {
+        self.log(LogLine::new(
+            text,
+            level,
+            Some(self.pipeline_id.clone()),
+            Some(self.job_id.clone()),
+        ))
+        .await
+    }
+
     pub async fn error(&mut self, text: String) -> Result<(), anyhow::Error> {
-        self.log(LogLine::error(text)).await
+        self.log_impl(text, LogLevel::Error).await
     }
 
     pub async fn regular(&mut self, text: String) -> Result<(), anyhow::Error> {
-        self.log(LogLine::regular(text)).await
+        self.log_impl(text, LogLevel::Regular).await
     }
 
     pub async fn warning(&mut self, text: String) -> Result<(), anyhow::Error> {
-        self.log(LogLine::warning(text)).await
+        self.log_impl(text, LogLevel::Warning).await
     }
 
-    pub fn write_file(&mut self, value: bool) {
-        self.write_file = value;
+    pub async fn heartbeat(&mut self) -> Result<(), anyhow::Error> {
+        self.run_context.heartbeat().await;
+        Ok(())
     }
 }
 
@@ -217,6 +247,61 @@ impl Runs {
             .init_run(pipeline, run_id)
             .await
     }
+
+    pub async fn logs<'a>(
+        &self,
+        project: impl AsRef<str>,
+        pipeline: impl AsRef<str>,
+        run_id: impl AsRef<str>,
+    ) -> Result<
+        impl futures::Stream<Item = Result<common::runner::PipelineMessage, anyhow::Error>>,
+        anyhow::Error,
+    > {
+        let log_file = if let Some(project) = self.get_project_runs(project.as_ref()) {
+            if let Some(pipeline) = project.get_pipeline_runs(pipeline.as_ref()) {
+                pipeline.get_log_file(run_id).await?
+            } else {
+                return Err(anyhow!("No such pipeline {}", pipeline.as_ref()));
+            }
+        } else {
+            return Err(anyhow!("No such project {}", project.as_ref()));
+        };
+        let log_file = BufReader::new(log_file);
+
+        let mut lines = log_file.lines();
+
+        #[rustfmt::skip]
+        let s = async_stream::try_stream! {
+            while let Some(line) = lines.next_line().await? {
+                if let Some(log) = parse_log(line)? {
+                    yield log;
+                }
+            }
+        };
+
+        Ok(s)
+    }
+}
+
+fn parse_log(log: String) -> Result<Option<common::runner::PipelineMessage>, anyhow::Error> {
+    let log: LogLine = serde_json::from_str(&log)?;
+    if let Some(pipeline) = log.pipeline {
+        if let Some(job_id) = log.job {
+            let t = match log.level {
+                LogLevel::Regular => common::runner::LogType::Regular,
+                LogLevel::Error => common::runner::LogType::Error,
+                LogLevel::Warning => common::runner::LogType::Warning,
+            };
+            return Ok(Some(common::runner::PipelineMessage::Log {
+                pipeline,
+                job_id,
+                t,
+                text: log.text,
+                timestamp: log.time,
+            }));
+        }
+    }
+    Ok(None)
 }
 
 impl ProjectRuns {
@@ -258,36 +343,39 @@ impl PipelineRuns {
         }
     }
 
+    fn get_log_filename(&self, run_id: &str) -> PathBuf {
+        PathBuf::from(RUNS_LOGS_DIR).join(format!("{}-{}.log", run_id, self.pipeline_id))
+    }
+
+    pub async fn get_log_file(
+        &self,
+        run_id: impl AsRef<str>,
+    ) -> Result<tokio::fs::File, anyhow::Error> {
+        if !self.runs.contains_key(run_id.as_ref()) {
+            return Err(anyhow!("No such run {}", run_id.as_ref()));
+        }
+
+        Ok(tokio::fs::File::open(self.get_log_filename(run_id.as_ref())).await?)
+    }
+
     pub async fn init_run(
         &mut self,
         run_id: impl AsRef<str>,
     ) -> Result<Arc<PipelineRun>, anyhow::Error> {
-        let run_logs_dir = PathBuf::from(RUNS_LOGS_DIR)
-            .join(run_id.as_ref())
-            .join(&self.pipeline_id);
-        tokio::fs::create_dir_all(run_logs_dir).await?;
+        let log_path = self.get_log_filename(run_id.as_ref());
 
         if self.runs_queue.len() >= self.queue_limit {
             let run_to_delete = self.runs_queue.pop_front().unwrap();
             self.runs.remove(&run_to_delete);
-            let run_logs_dir = PathBuf::from(RUNS_LOGS_DIR)
-                .join(&run_to_delete)
-                .join(&self.pipeline_id);
-            tokio::fs::remove_dir_all(run_logs_dir).await?;
-
-            let run_logs_dir = PathBuf::from(RUNS_LOGS_DIR).join(&run_to_delete);
-
-            if let Ok(mut dir) = run_logs_dir.read_dir() {
-                // Is empty
-                if !dir.any(|_| true) {
-                    tokio::fs::remove_dir(run_logs_dir).await?;
-                }
-            }
+            let run_log_path = self.get_log_filename(&run_to_delete);
+            tokio::fs::remove_file(run_log_path).await?;
         }
 
+        let log_file = tokio::fs::File::create(log_path).await?;
         let run = Arc::new(PipelineRun::new(
             run_id.as_ref().to_string(),
             self.pipeline_id.clone(),
+            log_file,
         ));
         self.runs_queue.push_back(run_id.as_ref().to_string());
         self.runs.insert(run_id.as_ref().to_string(), run.clone());
@@ -301,7 +389,7 @@ impl PipelineRuns {
 }
 
 impl PipelineRun {
-    pub fn new(id: String, pipeline_id: String) -> Self {
+    pub fn new(id: String, pipeline_id: String, log_file: tokio::fs::File) -> Self {
         let started = chrono::Utc::now();
         Self {
             pipeline_id,
@@ -309,6 +397,7 @@ impl PipelineRun {
             started,
             status: Mutex::new(PipelineStatus::Starting),
             jobs: Mutex::new(HashMap::default()),
+            log_file: Arc::new(Mutex::new(Some(log_file))),
         }
     }
 
@@ -337,19 +426,9 @@ impl PipelineRun {
         self.jobs.lock().await.clone()
     }
 
-    pub async fn job_log_file(
-        &self,
-        job: impl AsRef<str>,
-    ) -> Result<tokio::fs::File, anyhow::Error> {
-        let log_path = PathBuf::from(RUNS_LOGS_DIR)
-            .join(&self.id)
-            .join(&self.pipeline_id)
-            .join(format!("{}.log", job.as_ref()));
-
-        let mut options = tokio::fs::OpenOptions::new();
-        let file = options.append(true).create(true).open(log_path).await?;
-
-        Ok(file)
+    pub async fn finish(&self) -> Result<(), anyhow::Error> {
+        self.log_file.lock().await.take();
+        Ok(())
     }
 }
 
@@ -443,6 +522,7 @@ impl Executor {
                 error,
             })
             .await;
+        pipeline_run.finish().await?;
 
         res
     }

@@ -211,6 +211,29 @@ impl Service {
             name: self.container.clone(),
         })
     }
+
+    pub fn logs<'a>(
+        &self,
+        state: &State<'a>,
+        follow: bool,
+        tail: Option<usize>,
+    ) -> Result<
+        impl futures::Stream<Item = Result<common::runner::PipelineMessage, anyhow::Error>>,
+        anyhow::Error,
+    > {
+        let docker: &worker_lib::docker::Docker = state.get()?;
+        let mut params = worker_lib::docker::LogsParamsBuilder::default();
+        params
+            .container(self.container.clone())
+            .follow(follow)
+            .tail(tail);
+
+        Ok(docker.logs(
+            params
+                .build()
+                .map_err(|e| anyhow!("Invalid stop container params: {}", e))?,
+        ))
+    }
 }
 
 mod raw {

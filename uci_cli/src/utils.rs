@@ -18,6 +18,10 @@ impl Spinner {
         self.pos = (self.pos + 1) % SPINNER.len();
         ch
     }
+
+    pub fn peek(&self) -> char {
+        SPINNER[self.pos]
+    }
 }
 
 pub fn ucolor<T: std::hash::Hash>(value: &T) -> String {

@@ -39,6 +39,18 @@ pub struct CallContext<PM: config::ProjectsManager> {
 }
 
 impl<PM: config::ProjectsManager> CallContext<PM> {
+    pub async fn with_state<'a, R, F, Fut>(&'a self, f: F) -> R
+    where
+        Fut: futures::Future<Output = R>,
+        F: FnOnce(State<'a>) -> Fut,
+    {
+        let mut state = self.state.as_ref().clone();
+        if let Some(run_context) = self.run_context.as_ref() {
+            state.set(run_context.as_ref());
+        }
+        f(state).await
+    }
+
     pub fn for_handler(token: Option<String>, deps: Deps<PM>) -> CallContext<PM> {
         CallContext {
             token,

@@ -7,6 +7,8 @@ use crate::{runner::WsClient, utils::Spinner};
 use termion::{clear, color, scroll, style};
 use tokio::sync::Mutex;
 
+use log::*;
+
 pub async fn print_clone_repos(ws_client: &mut WsClient) -> Result<(), super::ExecuteError> {
     match ws_client
         .receive::<common::runner::CloneMissingRepos>()
@@ -104,7 +106,7 @@ struct RunState {
     pipelines: HashMap<String, PipelineState>,
     prev_lines: usize,
     spinner: Spinner,
-    spinner_char: char,
+    print_state: bool,
 }
 
 struct PipelineState {
@@ -124,17 +126,59 @@ enum JobStatus {
     Finished,
 }
 
+impl Default for RunState {
+    fn default() -> Self {
+        RunState::new(true)
+    }
+}
+
 impl RunState {
-    fn new() -> Self {
-        let mut spinner = Spinner::new();
+    fn from_runs_list(
+        print_state: bool,
+        run_id: String,
+        runs_list: common::runner::ListRunsResponse,
+    ) -> Self {
+        let mut state = RunState::new(print_state);
+
+        for run in runs_list.runs.into_iter() {
+            if run.run_id == run_id {
+                for (job_id, job) in run.jobs {
+                    let job_status = match job.status {
+                        common::runner::JobStatus::Pending => JobStatus::Pending,
+                        common::runner::JobStatus::Running { step } => JobStatus::Running { step },
+                        common::runner::JobStatus::Finished => JobStatus::Finished,
+                    };
+
+                    state.set_job_status(run.pipeline.clone(), job_id, job_status);
+                }
+
+                if let common::runner::RunStatus::Finished(finished_status) = run.status {
+                    let error = match finished_status {
+                        common::runner::RunFinishedStatus::Success => None,
+                        common::runner::RunFinishedStatus::Error { message } => Some(message),
+                    };
+
+                    state.finish_pipeline(run.pipeline, error);
+                }
+            }
+        }
+
+        state
+    }
+
+    fn new(print_state: bool) -> Self {
         Self {
             pipelines: HashMap::new(),
             prev_lines: 0,
-            spinner_char: spinner.next(),
-            spinner,
+            spinner: Spinner::new(),
+            print_state,
         }
     }
     fn print(&mut self) -> Result<(), super::ExecuteError> {
+        if !self.print_state {
+            return Ok(());
+        }
+
         self.clear()?;
         let mut lines = 0usize;
 
@@ -172,7 +216,7 @@ impl RunState {
                     JobStatus::Running { step } => print!(
                         "[{}{}{}] #{}",
                         color::Fg(color::Blue),
-                        self.spinner_char,
+                        self.spinner.peek(),
                         style::Reset,
                         step
                     ),
@@ -247,14 +291,123 @@ impl RunState {
 }
 
 pub async fn print_pipeline_run(ws_client: &mut WsClient) -> Result<(), super::ExecuteError> {
-    let state = Arc::new(Mutex::new(RunState::new()));
+    let state = Arc::new(Mutex::new(RunState::new(true)));
+    print_pipeline_run_impl(ws_client, state, None).await?;
+    Ok(())
+}
+
+pub async fn print_pipeline_run_init(
+    ws_client: &mut WsClient,
+    run_id: String,
+    runs_list: common::runner::ListRunsResponse,
+) -> Result<(), super::ExecuteError> {
+    let state = Arc::new(Mutex::new(get_state_with_init(
+        true,
+        Some((run_id, runs_list)),
+    )));
+    print_pipeline_run_impl(ws_client, state, None).await?;
+    Ok(())
+}
+
+pub async fn print_pipeline_run_follow(
+    ws_client: &mut WsClient,
+    follow_ws_client: &mut WsClient,
+    init_state: common::runner::ListRunsResponse,
+) -> Result<(), super::ExecuteError> {
+    print_pipeline_run_follow_impl(ws_client, follow_ws_client, true, None).await
+}
+
+pub async fn print_pipeline_run_follow_init(
+    ws_client: &mut WsClient,
+    follow_ws_client: &mut WsClient,
+    run_id: String,
+    runs_list: common::runner::ListRunsResponse,
+) -> Result<(), super::ExecuteError> {
+    print_pipeline_run_follow_impl(ws_client, follow_ws_client, true, Some((run_id, runs_list)))
+        .await
+}
+
+pub async fn print_pipeline_run_no_state(
+    ws_client: &mut WsClient,
+) -> Result<(), super::ExecuteError> {
+    let state = Arc::new(Mutex::new(get_state_with_init(false, None)));
+    print_pipeline_run_impl(ws_client, state, None).await?;
+    Ok(())
+}
+
+pub async fn print_pipeline_run_no_state_init(
+    ws_client: &mut WsClient,
+    run_id: String,
+    runs_list: common::runner::ListRunsResponse,
+) -> Result<(), super::ExecuteError> {
+    let state = Arc::new(Mutex::new(get_state_with_init(
+        false,
+        Some((run_id, runs_list)),
+    )));
+    print_pipeline_run_impl(ws_client, state, None).await?;
+    Ok(())
+}
+
+pub async fn print_pipeline_run_no_state_follow(
+    ws_client: &mut WsClient,
+    follow_ws_client: &mut WsClient,
+) -> Result<(), super::ExecuteError> {
+    print_pipeline_run_follow_impl(ws_client, follow_ws_client, false, None).await
+}
+
+pub async fn print_pipeline_run_no_state_follow_init(
+    ws_client: &mut WsClient,
+    follow_ws_client: &mut WsClient,
+    run_id: String,
+    runs_list: common::runner::ListRunsResponse,
+) -> Result<(), super::ExecuteError> {
+    print_pipeline_run_follow_impl(
+        ws_client,
+        follow_ws_client,
+        false,
+        Some((run_id, runs_list)),
+    )
+    .await
+}
+
+// FIXME: Prints mess
+pub async fn print_pipeline_run_follow_impl(
+    ws_client: &mut WsClient,
+    follow_ws_client: &mut WsClient,
+    print_state: bool,
+    init_state: Option<(String, common::runner::ListRunsResponse)>,
+) -> Result<(), super::ExecuteError> {
+    let state = Arc::new(Mutex::new(get_state_with_init(print_state, init_state)));
+    let last_log = print_pipeline_run_impl(ws_client, state.clone(), None).await?;
+    print_pipeline_run_impl(follow_ws_client, state, last_log).await?;
+    Ok(())
+}
+
+fn get_state_with_init(
+    print_state: bool,
+    init_state: Option<(String, common::runner::ListRunsResponse)>,
+) -> RunState {
+    if let Some((run_id, runs_list)) = init_state {
+        RunState::from_runs_list(print_state, run_id, runs_list)
+    } else {
+        RunState::new(print_state)
+    }
+}
+
+async fn print_pipeline_run_impl(
+    ws_client: &mut WsClient,
+    state: Arc<Mutex<RunState>>,
+    since: Option<chrono::DateTime<chrono::Utc>>,
+) -> Result<Option<chrono::DateTime<chrono::Utc>>, super::ExecuteError> {
+    debug!("Running print_pipeline_run_impl with since ({:?})", since);
+    let mut last_log: Option<chrono::DateTime<chrono::Utc>> = None;
 
     let spinner_state = state.clone();
     let spinner_update = tokio::spawn(async move {
         loop {
             {
                 let mut run_state = spinner_state.lock().await;
-                run_state.spinner_char = run_state.spinner.next();
+                run_state.spinner.next();
                 run_state.print().ok();
             }
             tokio::time::sleep(std::time::Duration::from_millis(100)).await;
@@ -299,6 +452,18 @@ pub async fn print_pipeline_run(ws_client: &mut WsClient) -> Result<(), super::E
                 text,
                 timestamp,
             } => {
+                if let Some(last_log_ts) = last_log.take() {
+                    last_log = Some(last_log_ts.max(timestamp));
+                } else {
+                    last_log = Some(timestamp)
+                };
+
+                if let Some(since) = since.as_ref() {
+                    if &timestamp <= since {
+                        continue;
+                    }
+                }
+
                 let _state_lock = state.lock().await;
                 print!(
                     "{} [{}{} -> {}{}] ",
@@ -337,5 +502,5 @@ pub async fn print_pipeline_run(ws_client: &mut WsClient) -> Result<(), super::E
 
     spinner_update.abort();
 
-    Ok(())
+    Ok(last_log)
 }
