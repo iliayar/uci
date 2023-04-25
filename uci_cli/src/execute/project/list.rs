@@ -9,8 +9,7 @@ pub async fn execute_project_list(
 ) -> Result<(), execute::ExecuteError> {
     debug!("Executing project list command");
 
-    let response = crate::runner::get(config, "/projects/list")?.send().await;
-    let response: common::runner::ProjectsListResponse = crate::runner::json(response).await?;
+    let response = crate::runner::api::projects_list(config).await?;
 
     println!("{}Projects{}:", style::Bold, style::Reset);
     for project in response.projects.into_iter() {

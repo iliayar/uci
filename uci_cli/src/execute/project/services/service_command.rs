@@ -4,21 +4,24 @@ use log::*;
 
 pub async fn execute_services_command(
     config: &crate::config::Config,
-    project_id: String,
     service: Option<Vec<String>>,
     command: common::runner::ServiceCommand,
+    all: bool,
 ) -> Result<(), execute::ExecuteError> {
+    let project_id = config.get_project();
     debug!("Executing service logs command");
 
     let services = if let Some(services) = service {
         services
-    } else {
+    } else if all {
         crate::runner::api::list_services(config, project_id.clone())
             .await?
             .services
             .into_iter()
             .map(|s| s.id)
             .collect()
+    } else {
+        crate::prompts::promp_services(config, project_id.clone()).await?
     };
 
     let body = common::runner::ServiceCommandRequest {

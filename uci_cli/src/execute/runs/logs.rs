@@ -5,13 +5,23 @@ use termion::{color, style};
 
 pub async fn execute_runs_logs(
     config: &crate::config::Config,
-    project_id: String,
-    pipeline_id: String,
-    run_id: String,
+    pipeline_id: Option<String>,
+    run_id: Option<String>,
     follow: bool,
     status: bool,
 ) -> Result<(), execute::ExecuteError> {
+    let project_id = config.get_project();
     debug!("Executing service logs command");
+
+    let (pipeline_id, run_id) = match (pipeline_id, run_id) {
+        (Some(pipeline_id), Some(run_id)) => (pipeline_id, run_id),
+        (pipeline_id, run_id) => {
+            let run =
+                crate::prompts::promp_run(config, Some(project_id.clone()), run_id, pipeline_id)
+                    .await?;
+            (run.pipeline_id, run.run_id)
+        }
+    };
 
     let follow_ws_client = if follow {
         match crate::runner::ws(config, run_id.clone()).await {
@@ -31,7 +41,7 @@ pub async fn execute_runs_logs(
 
     let runs_list = if status {
         Some(
-            crate::runner::api::runs_list(
+            crate::runner::api::list_runs(
                 config,
                 Some(project_id.clone()),
                 Some(pipeline_id.clone()),

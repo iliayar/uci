@@ -7,9 +7,9 @@ use termion::{clear, color, scroll, style};
 
 pub async fn execute_repo_update(
     config: &crate::config::Config,
-    project_id: String,
     repo_id: String,
 ) -> Result<(), execute::ExecuteError> {
+    let project_id = config.get_project();
     debug!("Executing action call command");
 
     let body = common::runner::UpdateRepoQuery {

@@ -15,6 +15,9 @@ pub enum ExecuteError {
     #[error("{0}")]
     Warning(String),
 
+    #[error("Interrupted")]
+    Interrupted,
+
     #[error(transparent)]
     Other(#[from] anyhow::Error),
 }

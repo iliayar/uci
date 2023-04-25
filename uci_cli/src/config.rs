@@ -1,15 +1,57 @@
 use std::path::PathBuf;
 
+use clap::CommandFactory;
+
+use termion::{color, style};
+
 #[derive(Debug, Default)]
 pub struct Config {
     pub runner_url: Option<String>,
     pub ws_runner_url: Option<String>,
     pub token: Option<String>,
+    pub default_project: Option<String>,
+    pub project_arg: Option<String>,
 }
 
 impl Config {
-    pub async fn load(path: PathBuf, env: String) -> Result<Config, anyhow::Error> {
-        raw::load(path, env).await
+    pub async fn load(
+        path: PathBuf,
+        env: String,
+        project: Option<String>,
+    ) -> Result<Config, anyhow::Error> {
+        raw::load(path, env, project).await
+    }
+
+    pub fn try_get_project(&self) -> Option<String> {
+        if let Some(project_id) = self.project_arg.as_ref() {
+            Some(project_id.to_string())
+        } else if let Some(project_id) = self.default_project.as_ref() {
+            eprintln!(
+                "{}Using default project {}{}{}",
+                color::Fg(color::Yellow),
+		style::Bold,
+                project_id,
+                style::Reset
+            );
+            Some(project_id.to_string())
+        } else {
+            None
+        }
+    }
+
+    pub fn get_project(&self) -> String {
+        if let Some(project_id) = self.try_get_project() {
+            project_id
+        } else {
+            eprintln!(
+                "{}No project specified either in args nor in config{}",
+                color::Fg(color::Red),
+                style::Reset
+            );
+            let mut cmd = super::cli::Cli::command();
+            cmd.print_help().ok();
+            std::process::exit(1);
+        }
     }
 }
 
@@ -27,9 +69,14 @@ mod raw {
         pub ws_runner_url: Option<String>,
         pub runner_url: Option<String>,
         pub token: Option<String>,
+        pub default_project: Option<String>,
     }
 
-    pub async fn load(path: PathBuf, env: String) -> Result<super::Config, anyhow::Error> {
+    pub async fn load(
+        path: PathBuf,
+        env: String,
+        project: Option<String>,
+    ) -> Result<super::Config, anyhow::Error> {
         if !path.exists() {
             warn!("Config doesn't exists, loading default");
             return Ok(super::Config::default());
@@ -46,6 +93,10 @@ mod raw {
         config.runner_url = config_env.runner_url.or(config_default.runner_url);
         config.token = config_env.token.or(config_default.token);
         config.ws_runner_url = config_env.ws_runner_url.or(config_default.ws_runner_url);
+        config.default_project = config_env
+            .default_project
+            .or(config_default.default_project);
+        config.project_arg = project;
 
         Ok(config)
     }

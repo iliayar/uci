@@ -4,7 +4,7 @@ use std::{collections::HashMap, sync::Arc};
 use crate::utils::ucolor;
 use crate::{runner::WsClient, utils::Spinner};
 
-use termion::{clear, color, scroll, style};
+use termion::{clear, color, cursor, raw::IntoRawMode, style};
 use tokio::sync::Mutex;
 
 use log::*;
@@ -52,10 +52,11 @@ pub async fn print_clone_repos(ws_client: &mut WsClient) -> Result<(), super::Ex
                 }
                 common::runner::CloneMissingRepos::Finish => {
                     if !repos_to_clone.is_empty() {
-                        print!("{}{}", scroll::Down(1), clear::CurrentLine);
-                        std::io::stdout()
-                            .flush()
-                            .map_err(|err| super::ExecuteError::Fatal(err.to_string()))?;
+			let mut stdout = std::io::stdout().into_raw_mode().unwrap();
+                        print!("{}{}", cursor::Up(1), clear::AfterCursor);
+			stdout.flush().ok();
+			drop(stdout);
+
                         println!(
                             "{}Missing repos cloned{}",
                             color::Fg(color::Green),
@@ -92,10 +93,14 @@ pub async fn print_clone_repos(ws_client: &mut WsClient) -> Result<(), super::Ex
 
         tokio::time::sleep(std::time::Duration::from_millis(100)).await;
         if !repos_to_clone.is_empty() {
-            print!("{}", scroll::Down(repos_to_clone.len() as u16));
-            std::io::stdout()
-                .flush()
-                .map_err(|err| super::ExecuteError::Fatal(err.to_string()))?;
+            let mut stdout = std::io::stdout().into_raw_mode().unwrap();
+            write!(
+                stdout,
+                "{}{}",
+                cursor::Up(repos_to_clone.len() as u16),
+                clear::AfterCursor
+            ).ok();
+            stdout.flush().ok();
         }
     }
 
@@ -238,14 +243,14 @@ impl RunState {
             return Ok(());
         }
 
-        print!(
+        let mut stdout = std::io::stdout().into_raw_mode().unwrap();
+        write!(
+            stdout,
             "{}{}",
-            scroll::Down(self.prev_lines as u16),
-            clear::CurrentLine
-        );
-        std::io::stdout()
-            .flush()
-            .map_err(|err| super::ExecuteError::Fatal(err.to_string()))?;
+            cursor::Up(self.prev_lines as u16),
+            clear::AfterCursor
+        ).ok();
+        stdout.flush().ok();
         self.prev_lines = 0;
         Ok(())
     }

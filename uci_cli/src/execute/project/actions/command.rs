@@ -5,12 +5,8 @@ pub async fn execute_action(
     command: ActionCommand,
 ) -> Result<(), execute::ExecuteError> {
     match command {
-        ActionCommand::Call { project, action } => {
-            super::call::execute_action_call(config, project, action).await?
-        }
-        ActionCommand::List { project } => {
-            super::list::execute_action_list(config, project).await?
-        }
+        ActionCommand::Call { action } => super::call::execute_action_call(config, action).await?,
+        ActionCommand::List {} => super::list::execute_action_list(config).await?,
     }
 
     Ok(())

@@ -6,12 +6,12 @@ use log::*;
 
 pub async fn execute_runs_list(
     config: &crate::config::Config,
-    project_id: Option<String>,
     pipeline_id: Option<String>,
 ) -> Result<(), execute::ExecuteError> {
+    let project_id = config.try_get_project();
     debug!("Executing runs list command");
 
-    let response = crate::runner::api::runs_list(config, project_id, pipeline_id).await?;
+    let response = crate::runner::api::list_runs(config, project_id, pipeline_id).await?;
 
     println!("{}Runs{}:", style::Bold, style::Reset);
     for run in response.runs.into_iter() {

@@ -5,8 +5,8 @@ use termion::style;
 
 pub async fn execute_pipelines_list(
     config: &crate::config::Config,
-    project_id: String,
 ) -> Result<(), execute::ExecuteError> {
+    let project_id = config.get_project();
     debug!("Executing pipelines list command");
 
     let query = common::runner::ListPipelinesQuery { project_id };

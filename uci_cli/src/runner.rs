@@ -206,7 +206,7 @@ pub mod api {
         crate::runner::json(response).await
     }
 
-    pub async fn runs_list(
+    pub async fn list_runs(
         config: &Config,
         project_id: Option<String>,
         pipeline_id: Option<String>,
@@ -218,6 +218,24 @@ pub mod api {
         let response = crate::runner::get_query(config, "/runs/list", &query)?
             .send()
             .await;
+        crate::runner::json(response).await
+    }
+
+    pub async fn actions_list(
+        config: &Config,
+        project_id: String,
+    ) -> Result<common::runner::ActionsListResponse, ExecuteError> {
+        let query = common::runner::ListActionsQuery { project_id };
+        let response = crate::runner::get_query(config, "/projects/actions/list", &query)?
+            .send()
+            .await;
+        crate::runner::json(response).await
+    }
+
+    pub async fn projects_list(
+        config: &Config,
+    ) -> Result<common::runner::ProjectsListResponse, ExecuteError> {
+        let response = crate::runner::get(config, "/projects/list")?.send().await;
         crate::runner::json(response).await
     }
 }

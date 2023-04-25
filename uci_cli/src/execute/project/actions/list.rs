@@ -5,16 +5,11 @@ use termion::style;
 
 pub async fn execute_action_list(
     config: &crate::config::Config,
-    project_id: String,
 ) -> Result<(), execute::ExecuteError> {
+    let project_id = config.get_project();
     debug!("Executing action call command");
 
-    let query = common::runner::ListActionsQuery { project_id };
-
-    let response = crate::runner::get_query(config, "/projects/actions/list", &query)?
-        .send()
-        .await;
-    let response: common::runner::ActionsListResponse = crate::runner::json(response).await?;
+    let response = crate::runner::api::actions_list(config, project_id).await?;
 
     println!("{}Actions{}:", style::Bold, style::Reset);
     for action in response.actions.into_iter() {

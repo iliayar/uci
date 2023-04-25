@@ -5,8 +5,8 @@ use termion::{color, style};
 
 pub async fn execute_services_list(
     config: &crate::config::Config,
-    project_id: String,
 ) -> Result<(), execute::ExecuteError> {
+    let project_id = config.get_project();
     debug!("Executing services list command");
 
     let response = crate::runner::api::list_services(config, project_id).await?;

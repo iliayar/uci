@@ -19,6 +19,10 @@ pub struct Cli {
     #[clap(short, long, action = clap::ArgAction::Count)]
     pub verbose: u8,
 
+    /// Project. Can be ommited if `default_project` is specified in config
+    #[clap(long)]
+    pub project: Option<String>,
+
     #[command(subcommand)]
     pub command: Commands,
 }
@@ -61,30 +65,24 @@ pub enum RunCommands {
     /// List runs
     List {
         #[clap(long)]
-        project: Option<String>,
-
-        #[clap(long)]
         pipeline: Option<String>,
     },
 
     /// List runs
     Logs {
-        #[clap(short, long)]
-        project: String,
-
         #[clap(long)]
-        pipeline: String,
+        pipeline: Option<String>,
 
-	#[clap(short, long)]
-	run_id: String,
+        #[clap(short, long)]
+        run_id: Option<String>,
 
-	/// Keep watching logs
-	#[clap(short, long)]
-	follow: bool,
+        /// Keep watching logs
+        #[clap(short, long)]
+        follow: bool,
 
-	/// Print overall runs status bottom
-	#[clap(short, long)]
-	status: bool,
+        /// Print overall runs status bottom
+        #[clap(short, long)]
+        status: bool,
     },
 }
 
@@ -129,26 +127,17 @@ pub enum ActionCommand {
     /// Call action directly
     Call {
         #[clap(short, long)]
-        project: String,
-
-        #[clap(short, long)]
-        action: String,
+        action: Option<String>,
     },
 
     /// List actions
-    List {
-        #[clap(short, long)]
-        project: String,
-    },
+    List {},
 }
 
 #[derive(Subcommand, Debug)]
 pub enum RepoCommand {
     /// Pull repo from remote
     Update {
-        #[clap(short, long)]
-        project: String,
-
         #[clap(short, long)]
         repo: String,
     },
@@ -157,10 +146,7 @@ pub enum RepoCommand {
 #[derive(Subcommand, Debug)]
 pub enum PipelineCommand {
     /// List pipeliens
-    List {
-        #[clap(short, long)]
-        project: String,
-    },
+    List {},
 }
 
 fn default_logs_follow() -> bool {
@@ -174,16 +160,10 @@ fn default_start_no_build() -> bool {
 #[derive(Subcommand, Debug)]
 pub enum ServiceCommand {
     /// List services
-    List {
-        #[clap(short, long)]
-        project: String,
-    },
+    List {},
 
     /// List services
     Logs {
-        #[clap(short, long)]
-        project: String,
-
         #[clap(short, long)]
         service: Option<Vec<String>>,
 
@@ -194,40 +174,51 @@ pub enum ServiceCommand {
         /// Watch last TAIL logs if specified, otherwise from container start
         #[clap(short, long)]
         tail: Option<usize>,
+
+        /// Perform command on all services if none sepicified. This
+        /// feature must be explicit
+        #[clap(long)]
+        all: bool,
     },
 
     /// Start services
     Start {
         #[clap(short, long)]
-        project: String,
-
-        #[clap(short, long)]
         service: Option<Vec<String>>,
 
         /// Do not build image before starting
         #[clap(long, default_value_t = default_start_no_build())]
         no_build: bool,
+
+        /// Perform command on all services if none sepicified. This
+        /// feature must be explicit
+        #[clap(long)]
+        all: bool,
     },
 
     /// Stop services
     Stop {
         #[clap(short, long)]
-        project: String,
-
-        #[clap(short, long)]
         service: Option<Vec<String>>,
+
+        /// Perform command on all services if none sepicified. This
+        /// feature must be explicit
+        #[clap(long)]
+        all: bool,
     },
 
     /// Stop services
     Restart {
-        #[clap(short, long)]
-        project: String,
-
         #[clap(short, long)]
         service: Option<Vec<String>>,
 
         /// Do not build image before starting
         #[clap(long, default_value_t = default_start_no_build())]
         no_build: bool,
+
+        /// Perform command on all services if none sepicified. This
+        /// feature must be explicit
+        #[clap(long)]
+        all: bool,
     },
 }
