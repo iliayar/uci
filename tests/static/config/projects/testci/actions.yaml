@@ -13,3 +13,8 @@ actions:
     - on: call
       run_pipelines:
         - test-needs
+
+  echo:
+    - on: call
+      run_pipelines:
+        - echo

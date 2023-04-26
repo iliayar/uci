@@ -13,15 +13,124 @@ use common::state::State;
 use futures::stream::FuturesUnordered;
 use futures::StreamExt;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
-use tokio::sync::Mutex;
+use tokio::sync::{Mutex, OwnedMutexGuard};
 
 use serde::{Deserialize, Serialize};
 
 use anyhow::anyhow;
 use log::*;
 
+// FIXME: now it's just like arc mutex them all. feels wrong
+
 pub struct Executor {
     pub runs: Mutex<Runs>,
+    locks: Mutex<Locks>,
+}
+
+#[derive(Default)]
+struct Locks {
+    pipelines: HashMap<String, PipelineLocks>,
+}
+
+#[derive(Default)]
+struct PipelineLocks {
+    stages: HashMap<String, StageLock>,
+}
+
+struct StageLock {
+    lock: Arc<Mutex<()>>,
+    interrupted: Arc<Mutex<bool>>,
+}
+
+struct StageGuard {
+    guard: Option<OwnedMutexGuard<()>>,
+    interrupted: Option<Arc<Mutex<bool>>>,
+}
+
+pub const DEFEAULT_STAGE: &str = "default";
+
+impl StageGuard {
+    async fn interrupted(&self) -> bool {
+        if let Some(interrupted) = self.interrupted.as_ref() {
+            *interrupted.lock().await
+        } else {
+            false
+        }
+    }
+}
+
+impl Locks {
+    async fn run_stage(
+        &mut self,
+        pipeline: impl AsRef<str>,
+        stage: impl AsRef<str>,
+        strategy: common::OverlapStrategy,
+    ) -> StageGuard {
+        match strategy {
+            common::OverlapStrategy::Ignore => {
+                return StageGuard {
+                    guard: None,
+                    interrupted: None,
+                }
+            }
+            common::OverlapStrategy::Displace => {
+                let stage_lock = self.get_stage_lock(pipeline, stage);
+                let interrupted = stage_lock.interrupted.clone();
+
+                *interrupted.lock().await = true;
+
+                // FIXME: Some races here?
+                let lock_guard = stage_lock.lock.clone().lock_owned().await;
+                *interrupted.lock().await = false;
+
+                StageGuard {
+                    guard: Some(lock_guard),
+                    interrupted: Some(interrupted),
+                }
+            }
+            common::OverlapStrategy::Wait => {
+                let stage_lock = self.get_stage_lock(pipeline, stage);
+                let lock_guard = stage_lock.lock.clone().lock_owned().await;
+                StageGuard {
+                    guard: Some(lock_guard),
+                    interrupted: None,
+                }
+            }
+        }
+    }
+
+    fn get_stage_lock(&mut self, pipeline: impl AsRef<str>, stage: impl AsRef<str>) -> &StageLock {
+        if !self.pipelines.contains_key(pipeline.as_ref()) {
+            self.pipelines
+                .insert(pipeline.as_ref().to_string(), PipelineLocks::default());
+        }
+
+        let pipeline_locks = self.pipelines.get_mut(pipeline.as_ref()).unwrap();
+
+        if !pipeline_locks.stages.contains_key(stage.as_ref()) {
+            pipeline_locks.stages.insert(
+                stage.as_ref().to_string(),
+                StageLock {
+                    lock: Arc::new(Mutex::new(())),
+                    interrupted: Arc::new(Mutex::new(false)),
+                },
+            );
+        }
+
+        pipeline_locks.stages.get(stage.as_ref()).as_ref().unwrap()
+    }
+}
+
+impl Executor {
+    async fn run_stage(
+        &self,
+        pipeline: impl AsRef<str>,
+        stage: impl AsRef<str>,
+        strategy: common::OverlapStrategy,
+    ) -> StageGuard {
+        let mut locks = self.locks.lock().await;
+        locks.run_stage(pipeline, stage, strategy).await
+    }
 }
 
 const RUNS_LOGS_DIR: &str = "/tmp/uci-runs";
@@ -46,6 +155,7 @@ pub struct PipelineRun {
     pub pipeline_id: String,
     pub id: String,
     pub started: chrono::DateTime<chrono::Utc>,
+    pub stage: Mutex<Option<String>>,
     pub status: Mutex<PipelineStatus>,
     pub jobs: Mutex<HashMap<String, PipelineJob>>,
     pub log_file: Arc<Mutex<Option<tokio::fs::File>>>,
@@ -398,6 +508,7 @@ impl PipelineRun {
             status: Mutex::new(PipelineStatus::Starting),
             jobs: Mutex::new(HashMap::default()),
             log_file: Arc::new(Mutex::new(Some(log_file))),
+            stage: Mutex::new(None),
         }
     }
 
@@ -430,6 +541,14 @@ impl PipelineRun {
         self.log_file.lock().await.take();
         Ok(())
     }
+
+    pub async fn set_stage(&self, stage: String) {
+        *self.stage.lock().await = Some(stage);
+    }
+
+    pub async fn stage(&self) -> Option<String> {
+        self.stage.lock().await.clone()
+    }
 }
 
 impl Default for PipelineJob {
@@ -444,6 +563,7 @@ impl Executor {
     pub async fn new() -> Result<Executor, anyhow::Error> {
         Ok(Executor {
             runs: Mutex::new(Runs::init().await?),
+            locks: Mutex::new(Locks::default()),
         })
     }
 
@@ -588,22 +708,70 @@ impl Executor {
                 .await;
         }
 
+        let mut stage_guard: Option<StageGuard> = None;
+        let mut was_stages: HashSet<String> = HashSet::new();
+
         let mut futs: FuturesUnordered<_> = FuturesUnordered::new();
 
+        // NOTE: Do not check iterrupted here, because it's very
+        // unlikely to be interrupted within this loop. The same for
+        // inner loop below
         for (id, job) in pop_ready(&mut deps) {
+            if let Some(stage_id) = job.stage.as_ref() {
+                pipeline_run.set_stage(stage_id.to_string()).await;
+                if let Some(stage) = pipeline.stages.get(stage_id) {
+                    if !was_stages.insert(stage_id.to_string()) {
+                        warn!("Trying enter stage {} twice, ignoring", stage_id);
+                    } else {
+                        stage_guard = Some(
+                            self.run_stage(&pipeline.id, stage_id, stage.overlap_strategy.clone())
+                                .await,
+                        );
+                    }
+                }
+            }
+
             futs.push(self.run_job(&state, id, job));
         }
 
         while let Some(id) = futs.next().await {
+            if let Some(stage_guard) = stage_guard.as_ref() {
+                if stage_guard.interrupted().await {
+                    warn!("Run was displaced");
+                    break;
+                }
+            }
+
             let id = id?;
             for (_, wait_for) in deps.iter_mut() {
                 wait_for.remove(&id);
             }
 
             for (id, job) in pop_ready(&mut deps) {
+                if let Some(stage_id) = job.stage.as_ref() {
+                    pipeline_run.set_stage(stage_id.to_string()).await;
+                    if let Some(stage) = pipeline.stages.get(stage_id) {
+                        if !was_stages.insert(stage_id.to_string()) {
+                            warn!("Trying enter stage {} twice, ignoring", stage_id);
+                        } else {
+                            stage_guard = Some(
+                                self.run_stage(
+                                    &pipeline.id,
+                                    stage_id,
+                                    stage.overlap_strategy.clone(),
+                                )
+                                .await,
+                            );
+                        }
+                    }
+                }
+
                 futs.push(self.run_job(&state, id, job));
             }
         }
+
+        // Wait the reset if was interrupted
+        while let Some(_) = futs.next().await {}
 
         info!("All jobs done");
 

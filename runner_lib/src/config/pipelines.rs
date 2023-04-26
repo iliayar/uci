@@ -67,6 +67,7 @@ mod raw {
     struct Pipeline {
         jobs: HashMap<String, Job>,
         links: Option<HashMap<String, String>>,
+        stages: Option<HashMap<String, Stage>>,
     }
 
     #[derive(Deserialize, Serialize)]
@@ -74,6 +75,7 @@ mod raw {
     struct Job {
         needs: Option<Vec<String>>,
         steps: Option<Vec<Step>>,
+        stage: Option<String>,
     }
 
     #[derive(Deserialize, Serialize)]
@@ -94,6 +96,25 @@ mod raw {
     enum Type {
         #[serde(rename = "script")]
         Script,
+    }
+
+    #[derive(Deserialize, Serialize, Clone, Copy)]
+    #[serde(deny_unknown_fields)]
+    struct Stage {
+        on_overlap: StageOverlapPolicy,
+    }
+
+    #[derive(Deserialize, Serialize, Clone, Copy)]
+    #[serde(deny_unknown_fields)]
+    enum StageOverlapPolicy {
+        #[serde(rename = "ignore")]
+        Ignore,
+
+        #[serde(rename = "displace")]
+        Displace,
+
+        #[serde(rename = "wait")]
+        Wait,
     }
 
     #[async_trait::async_trait]
@@ -122,6 +143,31 @@ mod raw {
         }
     }
 
+    impl config::LoadRawSync for StageOverlapPolicy {
+        type Output = common::OverlapStrategy;
+
+        fn load_raw(self, state: &State) -> Result<Self::Output, anyhow::Error> {
+            Ok(match self {
+                StageOverlapPolicy::Ignore => common::OverlapStrategy::Ignore,
+                StageOverlapPolicy::Displace => common::OverlapStrategy::Displace,
+                StageOverlapPolicy::Wait => common::OverlapStrategy::Wait,
+            })
+        }
+    }
+
+    impl config::LoadRawSync for Stage {
+        type Output = common::Stage;
+
+        fn load_raw(self, state: &State) -> Result<Self::Output, anyhow::Error> {
+            Ok(common::Stage {
+                overlap_strategy: self
+                    .on_overlap
+                    .load_raw(state)
+                    .unwrap_or(common::OverlapStrategy::Wait),
+            })
+        }
+    }
+
     impl config::LoadRawSync for Pipeline {
         type Output = common::Pipeline;
 
@@ -129,9 +175,30 @@ mod raw {
             let links = config::utils::substitute_vars_dict(state, self.links.unwrap_or_default())?;
             let id: String = state.get_named("_id").cloned()?;
 
+            let default_stage = || {
+                (
+                    worker_lib::executor::DEFEAULT_STAGE.to_string(),
+                    common::Stage {
+                        overlap_strategy: common::OverlapStrategy::Wait,
+                    },
+                )
+            };
+
+            let stages: HashMap<String, common::Stage> =
+                if let Some(stages) = self.stages.load_raw(state)? {
+                    if stages.is_empty() {
+                        HashMap::from_iter([default_stage()])
+                    } else {
+                        stages
+                    }
+                } else {
+                    HashMap::from_iter([default_stage()])
+                };
+
             Ok(common::Pipeline {
                 links,
                 id,
+                stages,
                 jobs: self.jobs.load_raw(state)?,
                 networks: Default::default(),
                 volumes: Default::default(),
@@ -146,6 +213,7 @@ mod raw {
             Ok(common::Job {
                 needs: self.needs.unwrap_or_default(),
                 steps: self.steps.unwrap_or_default().load_raw(state)?,
+                stage: self.stage,
             })
         }
     }

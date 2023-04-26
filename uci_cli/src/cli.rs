@@ -58,6 +58,30 @@ pub enum Commands {
         #[command(subcommand)]
         command: RunCommands,
     },
+
+    /// Manage actions
+    Actions {
+        #[command(subcommand)]
+        command: ActionCommand,
+    },
+
+    /// Manage repos
+    Repos {
+        #[command(subcommand)]
+        command: RepoCommand,
+    },
+
+    /// Manage pipelines
+    Pipelines {
+        #[command(subcommand)]
+        command: PipelineCommand,
+    },
+
+    /// Manage services
+    Services {
+        #[command(subcommand)]
+        command: ServiceCommand,
+    },
 }
 
 #[derive(Subcommand, Debug)]
@@ -90,30 +114,6 @@ pub enum RunCommands {
 pub enum ProjectCommands {
     /// List projects
     List {},
-
-    /// Manage actions
-    Actions {
-        #[command(subcommand)]
-        command: ActionCommand,
-    },
-
-    /// Manage repos
-    Repos {
-        #[command(subcommand)]
-        command: RepoCommand,
-    },
-
-    /// Manage pipelines
-    Pipelines {
-        #[command(subcommand)]
-        command: PipelineCommand,
-    },
-
-    /// Manage services
-    Services {
-        #[command(subcommand)]
-        command: ServiceCommand,
-    },
 }
 
 #[derive(Subcommand, Debug)]

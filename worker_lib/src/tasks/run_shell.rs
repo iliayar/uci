@@ -80,6 +80,7 @@ impl task::Task for common::RunShellConfig {
             command.current_dir(&tempdir.path);
             command.args(args);
             command.arg(&script_file.path);
+            command.envs(self.env);
 
             run_command_with_log(state, command).await?;
         };

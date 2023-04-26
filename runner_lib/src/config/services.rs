@@ -122,6 +122,7 @@ impl Service {
 
         let job = common::Job {
             needs: vec![],
+	    stage: None,
             steps,
         };
 
@@ -133,6 +134,7 @@ impl Service {
 
         let job = common::Job {
             needs: vec![],
+	    stage: None,
             steps,
         };
 
@@ -149,6 +151,7 @@ impl Service {
 
         let job = common::Job {
             needs: vec![],
+	    stage: None,
             steps,
         };
 
@@ -166,6 +169,7 @@ impl Service {
 
         let job = common::Job {
             needs: vec![],
+	    stage: None,
             steps,
         };
 

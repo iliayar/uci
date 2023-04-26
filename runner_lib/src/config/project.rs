@@ -140,8 +140,13 @@ impl Project {
             jobs.insert(format!("{}@{}", action.to_string(), service_id), job);
         }
 
+        let stage = common::Stage {
+            overlap_strategy: common::OverlapStrategy::Wait,
+        };
+
         let pipeline = common::Pipeline {
             jobs,
+            stages: HashMap::from_iter([(worker_lib::executor::DEFEAULT_STAGE.to_string(), stage)]),
             id: "service-action".to_string(),
             links: Default::default(),
             networks: Default::default(),

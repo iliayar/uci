@@ -21,12 +21,31 @@ pub struct Pipeline {
     pub links: HashMap<String, String>,
     pub networks: Vec<String>,
     pub volumes: Vec<String>,
+    pub stages: HashMap<String, Stage>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct Stage {
+    pub overlap_strategy: OverlapStrategy,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub enum OverlapStrategy {
+    /// Keep going runnig pipelines simultaneously
+    Ignore,
+
+    /// Interrupt running pipeline
+    Displace,
+
+    /// Wait for running pipeline to pass this stage
+    Wait,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Job {
     pub needs: Vec<String>,
     pub steps: Vec<Step>,
+    pub stage: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]

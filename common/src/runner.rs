@@ -31,6 +31,11 @@ pub struct Action {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
+pub enum ActionTrigger {
+
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ServicesListResponse {
     pub services: Vec<Service>,
 }
@@ -166,6 +171,7 @@ pub struct Run {
 
     pub status: RunStatus,
     pub jobs: HashMap<String, Job>,
+    pub stage: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]

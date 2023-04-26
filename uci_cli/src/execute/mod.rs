@@ -1,6 +1,10 @@
+mod actions;
 mod config;
+mod pipelines;
 mod project;
+mod repos;
 mod runs;
+mod services;
 mod utils;
 
 use super::cli::*;
@@ -38,6 +42,14 @@ pub async fn execute(
         }
         Commands::Runs { command } => runs::command::execute_run(config, command).await?,
         Commands::Config { command } => config::execute_config(config, command).await?,
+        Commands::Actions { command } => actions::command::execute_action(config, command).await?,
+        Commands::Repos { command } => repos::command::execute_repo(config, command).await?,
+        Commands::Pipelines { command } => {
+            pipelines::command::execute_pipeline(config, command).await?
+        }
+        Commands::Services { command } => {
+            services::command::execute_service(config, command).await?
+        }
     }
 
     Ok(())
