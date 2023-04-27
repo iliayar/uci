@@ -8,7 +8,6 @@ pub struct ServiceConfig {
     pub repos_path: PathBuf,
     pub data_path: PathBuf,
     pub internal_path: PathBuf,
-    pub worker_url: Option<String>,
     pub secrets: super::Secrets,
     pub tokens: super::Tokens,
 }
@@ -72,7 +71,6 @@ mod raw {
     #[serde(deny_unknown_fields)]
     struct ServiceConfig {
         data_dir: Option<String>,
-        worker_url: Option<String>,
         secrets: Option<String>,
         tokens: Option<config::permissions_raw::Tokens>,
     }
@@ -93,7 +91,6 @@ mod raw {
                 data_path: data_dir.join(DEFAULT_DATA_PATH),
                 repos_path: data_dir.join(DEFAULT_REPOS_PATH),
                 internal_path: data_dir.join(DEFAULT_INTERNAL_PATH),
-                worker_url: self.worker_url,
                 ..Default::default()
             };
 

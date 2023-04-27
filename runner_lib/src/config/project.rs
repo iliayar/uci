@@ -170,25 +170,8 @@ impl Project {
 
         info!("Running pipeline {}", pipeline_id);
 
-        if state.get_named::<(), _>("worker").is_ok() {
-            let executor: &worker_lib::executor::Executor = state.get()?;
-            executor.run_result(&state, pipeline).await?;
-        } else {
-            let worker_url: Option<String> = state.get_named("worker_url").cloned().ok();
-            let worker_url = worker_url.as_ref().ok_or_else(|| {
-                anyhow!(
-                    "Worker url is not specified in config.
-                 Specify it or add '--worker' flag to run pipeline in the same process"
-                )
-            })?;
-            let response = reqwest::Client::new()
-                .post(&format!("{}/run", worker_url))
-                .json(&pipeline)
-                .send()
-                .await?;
-
-            response.error_for_status()?;
-        }
+        let executor: &worker_lib::executor::Executor = state.get()?;
+        executor.run_result(&state, pipeline).await?;
 
         info!("Pipeline {} started", pipeline_id);
 

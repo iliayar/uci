@@ -3,25 +3,55 @@ use std::{path::PathBuf, sync::Arc};
 use common::state::State;
 use tokio::sync::Mutex;
 
+use crate::git;
+
 use super::config;
 
 use log::*;
 
 pub struct Context<PM: config::ProjectsManager> {
-    pub config_path: PathBuf,
+    pub config_source: ConfigsSource,
     config: Mutex<Arc<config::ServiceConfig>>,
     pub projects_store: config::ProjectsStore<PM>,
+}
+
+pub enum ConfigsSource {
+    Explicit {
+        config: PathBuf,
+    },
+    Repo {
+        url: Option<String>,
+        prefix: String,
+        path: PathBuf,
+    },
+}
+
+impl ConfigsSource {
+    pub async fn get_config_path(&self) -> Result<PathBuf, anyhow::Error> {
+        match self {
+            ConfigsSource::Explicit { config } => Ok(config.clone()),
+            ConfigsSource::Repo { url, prefix, path } => {
+                if let Some(url) = url.as_ref() {
+                    if !git::check_exists(path.clone()).await? {
+                        git::clone(url.clone(), path.clone()).await?;
+                    }
+                }
+
+                Ok(path.join(prefix))
+            }
+        }
+    }
 }
 
 impl<PM: config::ProjectsManager> Context<PM> {
     pub async fn new(
         projects_store: config::ProjectsStore<PM>,
-        config_path: PathBuf,
+        config_source: ConfigsSource,
     ) -> Result<Context<PM>, anyhow::Error> {
-        let config = load_config_impl(config_path.clone()).await?;
+        let config = load_config_impl(&config_source).await?;
         Ok(Context {
             config: Mutex::new(Arc::new(config)),
-            config_path,
+            config_source,
             projects_store,
         })
     }
@@ -36,7 +66,7 @@ impl<PM: config::ProjectsManager> Context<PM> {
     }
 
     pub async fn reload_config(&self) -> Result<(), anyhow::Error> {
-        *self.config.lock().await = Arc::new(load_config_impl(self.config_path.clone()).await?);
+        *self.config.lock().await = Arc::new(load_config_impl(&self.config_source).await?);
         Ok(())
     }
 
@@ -146,9 +176,14 @@ impl<PM: config::ProjectsManager> Context<PM> {
     }
 }
 
-async fn load_config_impl(config_path: PathBuf) -> Result<config::ServiceConfig, anyhow::Error> {
+async fn load_config_impl(
+    config_source: &ConfigsSource,
+) -> Result<config::ServiceConfig, anyhow::Error> {
+    let config_path = config_source.get_config_path().await?;
+
     let mut context = State::default();
     context.set_named("service_config", &config_path);
+
     let config = config::ServiceConfig::load(&context).await?;
 
     info!("Loaded config: {:#?}", config);

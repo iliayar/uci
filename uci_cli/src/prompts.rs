@@ -78,6 +78,10 @@ pub async fn promp_run(
         runs.runs
     };
 
+    if runs.is_empty() {
+        return Err(ExecuteError::Warning(format!("No any runs")));
+    }
+
     Ok(crate::select::prompt(runs.into_iter())?)
 }
 

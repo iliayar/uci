@@ -650,7 +650,7 @@ impl Executor {
     pub async fn run_impl<'a>(
         &self,
         state: &State<'a>,
-        pipeline: Pipeline,
+        mut pipeline: Pipeline,
     ) -> Result<(), anyhow::Error> {
         info!("Running execution");
         let pipeline_run: &PipelineRun = state.get()?;
@@ -676,20 +676,21 @@ impl Executor {
         self.ensure_resources_exists(&state, &pipeline.networks, &pipeline.volumes)
             .await?;
 
-        let pop_ready =
-            |deps: &mut HashMap<String, HashSet<String>>| -> Vec<(String, common::Job)> {
-                let res: Vec<String> = deps
-                    .iter()
-                    .filter(|(_, froms)| froms.is_empty())
-                    .map(|(k, _)| k.clone())
-                    .collect();
-                for j in res.iter() {
-                    deps.remove(j);
-                }
-                res.into_iter()
-                    .map(|id| (id.clone(), pipeline.jobs.get(&id).unwrap().clone()))
-                    .collect()
-            };
+        let pop_ready = |deps: &mut HashMap<String, HashSet<String>>,
+                         pipeline: &mut Pipeline|
+         -> Vec<(String, common::Job)> {
+            let res: Vec<String> = deps
+                .iter()
+                .filter(|(_, froms)| froms.is_empty())
+                .map(|(k, _)| k.clone())
+                .collect();
+            for j in res.iter() {
+                deps.remove(j);
+            }
+            res.into_iter()
+                .map(|id| (id.clone(), pipeline.jobs.remove(&id).unwrap()))
+                .collect()
+        };
 
         pipeline_run.set_status(PipelineStatus::Running).await;
         run_context
@@ -716,7 +717,7 @@ impl Executor {
         // NOTE: Do not check iterrupted here, because it's very
         // unlikely to be interrupted within this loop. The same for
         // inner loop below
-        for (id, job) in pop_ready(&mut deps) {
+        for (id, job) in pop_ready(&mut deps, &mut pipeline) {
             if let Some(stage_id) = job.stage.as_ref() {
                 pipeline_run.set_stage(stage_id.to_string()).await;
                 if let Some(stage) = pipeline.stages.get(stage_id) {
@@ -747,7 +748,7 @@ impl Executor {
                 wait_for.remove(&id);
             }
 
-            for (id, job) in pop_ready(&mut deps) {
+            for (id, job) in pop_ready(&mut deps, &mut pipeline) {
                 if let Some(stage_id) = job.stage.as_ref() {
                     pipeline_run.set_stage(stage_id.to_string()).await;
                     if let Some(stage) = pipeline.stages.get(stage_id) {
