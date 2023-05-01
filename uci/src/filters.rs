@@ -23,7 +23,8 @@ pub fn runner<PM: config::ProjectsManager + 'static>(
         .or(handlers::list_runs::filter(deps.clone()))
         .or(handlers::service_logs::filter(deps.clone()))
         .or(handlers::service_command::filter(deps.clone()))
-        .or(handlers::run_logs::filter(deps))
+        .or(handlers::run_logs::filter(deps.clone()))
+        .or(handlers::upload::filter(deps))
         .recover(report_rejection)
 }
 

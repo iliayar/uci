@@ -10,3 +10,4 @@ pub mod service_logs;
 pub mod update_repo;
 pub mod run_logs;
 pub mod ws;
+pub mod upload;

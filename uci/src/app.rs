@@ -1,3 +1,4 @@
+use std::collections::LinkedList;
 use std::{path::PathBuf, sync::Arc};
 
 use common::state::State;
@@ -12,7 +13,11 @@ use clap::{Args, Parser};
 use super::filters;
 use runner_lib::{config, context};
 
-use runner_lib::call_context::Deps;
+use runner_lib::call_context::{ArtifactsStorage, Deps};
+
+// FIXME: Move it to config maybe
+const ARTIFACTS_PATH: &str = "/tmp/uci-artifacts";
+const ARTIFACTS_LIMIT: usize = 5;
 
 #[derive(Parser, Debug)]
 #[command(about)]
@@ -155,6 +160,7 @@ impl App {
             context: Arc::new(context),
             runs: Arc::new(Mutex::new(Default::default())),
             state: Arc::new(state),
+            artifacts: ArtifactsStorage::new(PathBuf::from(ARTIFACTS_PATH), 5).await?,
         };
         let api = filters::runner(deps);
         let routes = api.with(warp::log("runner"));

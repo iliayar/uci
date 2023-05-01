@@ -82,6 +82,11 @@ pub enum Commands {
         #[command(subcommand)]
         command: ServiceCommand,
     },
+
+    /// Manage services
+    Upload {
+        path: PathBuf,
+    },
 }
 
 #[derive(Subcommand, Debug)]

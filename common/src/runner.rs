@@ -109,6 +109,11 @@ pub enum ServiceCommand {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct UploadResponse {
+    pub artifact: String,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ListActionsQuery {
     pub project_id: String,
 }

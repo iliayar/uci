@@ -5,6 +5,7 @@ mod project;
 mod repos;
 mod runs;
 mod services;
+mod upload;
 mod utils;
 
 use super::cli::*;
@@ -50,6 +51,7 @@ pub async fn execute(
         Commands::Services { command } => {
             services::command::execute_service(config, command).await?
         }
+        Commands::Upload { path } => upload::execute_upload(config, path).await?,
     }
 
     Ok(())

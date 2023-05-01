@@ -1,4 +1,8 @@
-use std::{collections::HashMap, sync::Arc};
+use std::{
+    collections::{HashMap, LinkedList},
+    path::PathBuf,
+    sync::Arc,
+};
 
 use crate::config;
 use crate::context::Context;
@@ -13,10 +17,56 @@ use tokio::sync::Mutex;
 pub type Runs = Arc<Mutex<HashMap<String, Arc<RunContext>>>>;
 pub type ContextPtr<PM> = Arc<Context<PM>>;
 
+#[derive(Clone)]
+pub struct ArtifactsStorage {
+    path: PathBuf,
+    queue: Arc<Mutex<LinkedList<String>>>,
+    queue_limit: usize,
+}
+
+impl ArtifactsStorage {
+    pub async fn new(path: PathBuf, queue_limit: usize) -> Result<Self, anyhow::Error> {
+        tokio::fs::remove_dir_all(&path).await.ok();
+        tokio::fs::create_dir_all(&path).await?;
+
+        assert!(
+            queue_limit > 0,
+            "Artifacts queue limit must be greater than zero"
+        );
+
+        Ok(Self {
+            path,
+            queue_limit,
+            queue: Arc::new(Mutex::new(LinkedList::default())),
+        })
+    }
+
+    pub async fn create(&self) -> (String, PathBuf) {
+        let mut queue = self.queue.lock().await;
+        if queue.len() > self.queue_limit {
+            let id = queue.pop_front().unwrap();
+        }
+
+        let id = uuid::Uuid::new_v4().to_string();
+        queue.push_back(id.clone());
+
+        let path = self.path.join(&id);
+
+        (id, path)
+    }
+
+    pub fn get(&self, id: impl AsRef<str>) -> PathBuf {
+	// NOTE: Maybe mark this id as used and delete used id's first
+	// when reaching the limit
+	self.path.join(id.as_ref())
+    }
+}
+
 pub struct Deps<PM: config::ProjectsManager> {
     pub context: Arc<Context<PM>>,
     pub runs: Runs,
     pub state: Arc<State<'static>>,
+    pub artifacts: ArtifactsStorage,
 }
 
 impl<PM: config::ProjectsManager> Clone for Deps<PM> {
@@ -25,6 +75,7 @@ impl<PM: config::ProjectsManager> Clone for Deps<PM> {
             context: self.context.clone(),
             runs: self.runs.clone(),
             state: self.state.clone(),
+            artifacts: self.artifacts.clone(),
         }
     }
 }
@@ -36,6 +87,7 @@ pub struct CallContext<PM: config::ProjectsManager> {
     pub runs: Arc<Mutex<HashMap<String, Arc<RunContext>>>>,
     pub run_context: Option<Arc<RunContext>>,
     pub state: Arc<State<'static>>,
+    pub artifacts: ArtifactsStorage,
 }
 
 impl<PM: config::ProjectsManager> CallContext<PM> {
@@ -59,6 +111,7 @@ impl<PM: config::ProjectsManager> CallContext<PM> {
             check_permisions: true,
             run_context: None,
             state: deps.state,
+            artifacts: deps.artifacts.clone(),
         }
     }
 

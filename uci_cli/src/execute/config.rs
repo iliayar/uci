@@ -1,6 +1,5 @@
 use crate::cli::*;
 
-// use futures_util::StreamExt;
 use log::*;
 use termion::{color, style};
 
