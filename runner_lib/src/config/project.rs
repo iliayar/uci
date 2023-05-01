@@ -142,6 +142,7 @@ impl Project {
 
         let stage = common::Stage {
             overlap_strategy: common::OverlapStrategy::Wait,
+            repos: None,
         };
 
         let pipeline = common::Pipeline {
@@ -169,6 +170,13 @@ impl Project {
         state.set_named("project", &self.id);
 
         info!("Running pipeline {}", pipeline_id);
+
+        let pinfo: &super::ProjectInfo = state.get()?;
+        let repos_list = worker_lib::executor::ReposList {
+            project: self.id.clone(),
+            repos: pinfo.repos.list_repos(),
+        };
+        state.set(&repos_list);
 
         let executor: &worker_lib::executor::Executor = state.get()?;
         executor.run_result(&state, pipeline).await?;

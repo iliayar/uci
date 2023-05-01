@@ -172,7 +172,11 @@ impl<PM: config::ProjectsManager> Context<PM> {
         let mut state = state.clone();
         let config = self.config.lock().await.clone();
         state.set(config.as_ref());
-        self.projects_store.load_project(&state, project_id).await
+        let project_info = self
+            .projects_store
+            .get_project_info(&state, project_id)
+            .await?;
+        project_info.load(&state).await
     }
 }
 

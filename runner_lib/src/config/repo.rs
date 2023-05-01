@@ -81,6 +81,9 @@ impl Repo {
                     self.clone_if_missing(state).await?;
                     Ok(git::ChangedFiles::default())
                 } else {
+                    let executor: &worker_lib::executor::Executor = state.get()?;
+                    let project_info: &super::ProjectInfo = state.get()?;
+                    let _guard = executor.write_repo(&project_info.id, &id).await;
                     Ok(git::pull(path.clone(), branch.clone()).await?)
                 }
             }
@@ -172,6 +175,10 @@ impl Repos {
             .await;
 
         Ok(())
+    }
+
+    pub fn list_repos(&self) -> Vec<String> {
+        self.repos.iter().map(|(k, _)| k.clone()).collect()
     }
 }
 

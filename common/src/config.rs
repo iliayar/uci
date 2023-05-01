@@ -27,6 +27,19 @@ pub struct Pipeline {
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Stage {
     pub overlap_strategy: OverlapStrategy,
+    pub repos: Option<StageRepos>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub enum StageRepos {
+    Exact(HashMap<String, RepoLockStrategy>),
+    All(RepoLockStrategy),
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub enum RepoLockStrategy {
+    Lock,
+    Unlock,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]

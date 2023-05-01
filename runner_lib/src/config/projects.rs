@@ -79,16 +79,6 @@ impl<PL: ProjectsManager> ProjectsStore<PL> {
             .await
     }
 
-    pub async fn load_project<'a>(
-        &self,
-        state: &State<'a>,
-        project_id: &str,
-    ) -> Result<super::Project, anyhow::Error> {
-        let project_info = self.get_project_info(state, project_id).await?;
-        project_info.clone_missing_repos(state).await?;
-        project_info.load(state).await
-    }
-
     pub async fn init<'a>(&self, state: &State<'a>) -> Result<(), anyhow::Error> {
         self.reload_internal_project(state).await?;
         Ok(())
@@ -101,9 +91,12 @@ impl<PL: ProjectsManager> ProjectsStore<PL> {
         services: Vec<String>,
         action: super::ServiceAction,
     ) -> Result<(), anyhow::Error> {
-        let project = self.load_project(state, project_id).await?;
+        let project_info = self.get_project_info(state, project_id).await?;
+        let mut state = state.clone();
+        state.set(&project_info);
+        let project = project_info.load(&state).await?;
         let services = services.into_iter().map(|s| (s, action.clone())).collect();
-        project.run_service_actions(state, services).await
+        project.run_service_actions(&state, services).await
     }
 
     pub async fn run_service_action<'a>(
@@ -123,8 +116,11 @@ impl<PL: ProjectsManager> ProjectsStore<PL> {
         project_id: &str,
         event: &super::Event,
     ) -> Result<(), anyhow::Error> {
-        let project = self.load_project(state, project_id).await?;
-        project.handle_event(state, event).await
+        let project_info = self.get_project_info(state, project_id).await?;
+        let mut state = state.clone();
+        state.set(&project_info);
+        let project = project_info.load(&state).await?;
+        project.handle_event(&state, event).await
     }
 
     async fn build_internal_project<'a>(
@@ -196,13 +192,15 @@ impl<PL: ProjectsManager> ProjectsStore<PL> {
 
     async fn reload_internal_project<'a>(&self, state: &State<'a>) -> Result<(), anyhow::Error> {
         if let Some(project_info) = self.build_internal_project(state).await? {
-            let project = project_info.load(state).await?;
+            let mut state = state.clone();
+            state.set(&project_info);
+            let project = project_info.load(&state).await?;
             debug!("Loaded internal project {:#?}", project);
             project
                 .handle_event(
-                    state,
+                    &state,
                     &super::Event::Call {
-                        project_id: project_info.id,
+                        project_id: project_info.id.clone(),
                         trigger_id: "__restart__".to_string(),
                     },
                 )
@@ -214,15 +212,17 @@ impl<PL: ProjectsManager> ProjectsStore<PL> {
 
     pub async fn update_repo<'a>(
         &self,
-        state: &State<'a>,
+        init_state: &State<'a>,
         project_id: &str,
         repo_id: &str,
     ) -> Result<(), anyhow::Error> {
-        let project_info = self.get_project_info(state, project_id).await?;
-        let diffs = project_info.pull_repo(state, repo_id).await?;
+        let project_info = self.get_project_info(init_state, project_id).await?;
+        let mut state = init_state.clone();
+        state.set(&project_info);
+        let diffs = project_info.pull_repo(&state, repo_id).await?;
         let need_reload_internal_project = !diffs.is_empty();
         self.handle_event(
-            state,
+            &state,
             project_id,
             &super::Event::RepoUpdate {
                 repo_id: repo_id.to_string(),
@@ -231,7 +231,7 @@ impl<PL: ProjectsManager> ProjectsStore<PL> {
         )
         .await?;
         if need_reload_internal_project {
-            self.reload_internal_project(state).await?;
+            self.reload_internal_project(init_state).await?;
         }
         Ok(())
     }
@@ -268,6 +268,7 @@ pub struct ProjectInfo {
 
 impl ProjectInfo {
     pub async fn load<'a>(&self, state: &State<'a>) -> Result<super::Project, anyhow::Error> {
+        self.clone_missing_repos(state).await?;
         let mut state = state.clone();
         state.set(self);
         match super::Project::load(&state).await {

@@ -91,20 +91,28 @@ mod raw {
         env: Option<HashMap<String, String>>,
     }
 
-    #[derive(Deserialize, Serialize, Clone, Copy)]
+    #[derive(Deserialize, Serialize, Clone)]
     #[serde(deny_unknown_fields)]
     enum Type {
         #[serde(rename = "script")]
         Script,
     }
 
-    #[derive(Deserialize, Serialize, Clone, Copy)]
+    #[derive(Deserialize, Serialize)]
     #[serde(deny_unknown_fields)]
     struct Stage {
         on_overlap: StageOverlapPolicy,
+        repos: Option<StageRepos>,
     }
 
-    #[derive(Deserialize, Serialize, Clone, Copy)]
+    #[derive(Deserialize, Serialize)]
+    #[serde(deny_unknown_fields, untagged)]
+    enum StageRepos {
+        Exact(HashMap<String, RepoLockStrategy>),
+        All(RepoLockStrategy),
+    }
+
+    #[derive(Deserialize, Serialize)]
     #[serde(deny_unknown_fields)]
     enum StageOverlapPolicy {
         #[serde(rename = "ignore")]
@@ -115,6 +123,16 @@ mod raw {
 
         #[serde(rename = "wait")]
         Wait,
+    }
+
+    #[derive(Deserialize, Serialize)]
+    #[serde(deny_unknown_fields)]
+    enum RepoLockStrategy {
+        #[serde(rename = "lock")]
+        Lock,
+
+        #[serde(rename = "unlock")]
+        Unlock,
     }
 
     #[async_trait::async_trait]
@@ -143,6 +161,28 @@ mod raw {
         }
     }
 
+    impl config::LoadRawSync for RepoLockStrategy {
+        type Output = common::RepoLockStrategy;
+
+        fn load_raw(self, state: &State) -> Result<Self::Output, anyhow::Error> {
+            Ok(match self {
+                RepoLockStrategy::Lock => common::RepoLockStrategy::Lock,
+                RepoLockStrategy::Unlock => common::RepoLockStrategy::Unlock,
+            })
+        }
+    }
+
+    impl config::LoadRawSync for StageRepos {
+        type Output = common::StageRepos;
+
+        fn load_raw(self, state: &State) -> Result<Self::Output, anyhow::Error> {
+            Ok(match self {
+                StageRepos::Exact(repos) => common::StageRepos::Exact(repos.load_raw(state)?),
+                StageRepos::All(strat) => common::StageRepos::All(strat.load_raw(state)?),
+            })
+        }
+    }
+
     impl config::LoadRawSync for StageOverlapPolicy {
         type Output = common::OverlapStrategy;
 
@@ -164,6 +204,7 @@ mod raw {
                     .on_overlap
                     .load_raw(state)
                     .unwrap_or(common::OverlapStrategy::Wait),
+                repos: self.repos.load_raw(state)?,
             })
         }
     }
@@ -180,6 +221,7 @@ mod raw {
                     worker_lib::executor::DEFEAULT_STAGE.to_string(),
                     common::Stage {
                         overlap_strategy: common::OverlapStrategy::Wait,
+                        repos: None,
                     },
                 )
             };
@@ -251,8 +293,8 @@ mod raw {
     }
 
     fn get_type(step: &Step) -> Result<Type, anyhow::Error> {
-        if let Some(t) = step.t {
-            Ok(t)
+        if let Some(t) = step.t.as_ref() {
+            Ok(t.clone())
         } else if let Some(t) = guess_type(step) {
             Ok(t)
         } else {
