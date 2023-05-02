@@ -55,10 +55,10 @@ impl ArtifactsStorage {
         (id, path)
     }
 
-    pub fn get(&self, id: impl AsRef<str>) -> PathBuf {
-	// NOTE: Maybe mark this id as used and delete used id's first
-	// when reaching the limit
-	self.path.join(id.as_ref())
+    pub fn get_path(&self, id: impl AsRef<str>) -> PathBuf {
+        // NOTE: Maybe mark this id as used and delete used id's first
+        // when reaching the limit
+        self.path.join(id.as_ref())
     }
 }
 
@@ -140,12 +140,19 @@ impl<PM: config::ProjectsManager> CallContext<PM> {
             .await
     }
 
-    pub async fn update_repo(&self, project_id: &str, repo_id: &str) -> Result<(), anyhow::Error> {
+    pub async fn update_repo(
+        &self,
+        project_id: &str,
+        repo_id: &str,
+        artifact: Option<PathBuf>,
+    ) -> Result<(), anyhow::Error> {
         let mut state = self.state.as_ref().clone();
         if let Some(run_context) = self.run_context.as_ref() {
             state.set(run_context.as_ref());
         }
-        self.context.update_repo(&state, project_id, repo_id).await
+        self.context
+            .update_repo(&state, project_id, repo_id, artifact)
+            .await
     }
 
     pub async fn reload_config(&self) -> Result<(), anyhow::Error> {
@@ -164,6 +171,18 @@ impl<PM: config::ProjectsManager> CallContext<PM> {
         state.set(&run_context);
 
         self.context.get_project(&state, project_id).await
+    }
+
+    pub async fn get_project_info(
+        &self,
+        project_id: &str,
+    ) -> Result<config::ProjectInfo, anyhow::Error> {
+        let mut state = self.state.as_ref().clone();
+
+        let run_context = RunContext::empty();
+        state.set(&run_context);
+
+        self.context.get_project_info(&state, project_id).await
     }
 
     pub async fn call_trigger(
@@ -239,6 +258,14 @@ impl<PM: config::ProjectsManager> CallContext<PM> {
     pub async fn finish_run(&mut self) {
         if let Some(run_context) = self.run_context.take() {
             self.runs.lock().await.remove(&run_context.id);
+        }
+    }
+
+    pub async fn wait_for_clients(&self, time_limit: std::time::Duration) -> bool {
+        if let Some(run_context) = self.run_context.as_ref() {
+            run_context.wait_for_client(time_limit).await
+        } else {
+            false
         }
     }
 }

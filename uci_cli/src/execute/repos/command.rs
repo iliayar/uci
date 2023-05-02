@@ -5,7 +5,10 @@ pub async fn execute_repo(
     command: RepoCommand,
 ) -> Result<(), execute::ExecuteError> {
     match command {
-        RepoCommand::Update { repo } => super::update::execute_repo_update(config, repo).await?,
+        RepoCommand::Update { repo, source } => {
+            super::update::execute_repo_update(config, repo, source).await?
+        }
+        RepoCommand::List {} => super::list::execute_repos_list(config).await?,
     }
 
     Ok(())

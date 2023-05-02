@@ -62,6 +62,27 @@ pub async fn promp_action(config: &Config, project_id: String) -> Result<String,
     Ok(crate::select::prompt(actions.actions.into_iter())?)
 }
 
+impl crate::select::SelectOption for common::runner::Repo {
+    type Data = String;
+
+    fn show(&self, out: &mut impl std::io::Write) {
+        write!(out, "{}", self.id).ok();
+    }
+
+    fn data(self) -> Self::Data {
+        self.id
+    }
+
+    fn data_name(&self) -> &str {
+        "repo"
+    }
+}
+
+pub async fn promp_repo(config: &Config, project_id: String) -> Result<String, ExecuteError> {
+    let repos = crate::runner::api::repos_list(config, project_id).await?;
+    Ok(crate::select::prompt(repos.repos.into_iter())?)
+}
+
 pub async fn promp_run(
     config: &Config,
     project_id: Option<String>,

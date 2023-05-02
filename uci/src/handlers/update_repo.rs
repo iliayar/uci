@@ -13,17 +13,18 @@ pub fn filter<PM: config::ProjectsManager + 'static>(
     warp::any()
         .and(with_call_context(context))
         .and(warp::path!("update"))
-        .and(warp::body::json::<common::runner::UpdateRepoQuery>())
+        .and(warp::body::json::<common::runner::UpdateRepoBody>())
         .and(warp::post())
         .and_then(update_repo)
 }
 
 async fn update_repo<PM: config::ProjectsManager + 'static>(
     mut call_context: call_context::CallContext<PM>,
-    common::runner::UpdateRepoQuery {
+    common::runner::UpdateRepoBody {
         project_id,
         repo_id,
-    }: common::runner::UpdateRepoQuery,
+        artifact_id,
+    }: common::runner::UpdateRepoBody,
 ) -> Result<impl warp::Reply, warp::Rejection> {
     if !call_context
         .check_permissions(Some(&project_id), config::ActionType::Write)
@@ -35,7 +36,12 @@ async fn update_repo<PM: config::ProjectsManager + 'static>(
 
     let run_id = call_context.init_run_buffered().await;
     tokio::spawn(async move {
-        if let Err(err) = call_context.update_repo(&project_id, &repo_id).await {
+	call_context.wait_for_clients(std::time::Duration::from_secs(2)).await;
+        let artifact = artifact_id.map(|id| call_context.artifacts.get_path(id));
+        if let Err(err) = call_context
+            .update_repo(&project_id, &repo_id, artifact)
+            .await
+        {
             error!("Updating repo failed: {}", err)
         }
         call_context.finish_run().await;

@@ -16,6 +16,21 @@ pub struct ProjectsListResponse {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct ListReposQuery {
+    pub project_id: String,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct ReposListResponse {
+    pub repos: Vec<Repo>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct Repo {
+    pub id: String,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Project {
     pub id: String,
 }
@@ -76,6 +91,7 @@ pub struct ContinueReponse {
 pub enum UpdateRepoMessage {
     PullingRepo,
     RepoPulled { changed_files: Vec<String> },
+    WholeRepoUpdated,
     FailedToPull { err: String },
     NoSuchRepo,
 }
@@ -141,9 +157,10 @@ pub struct ServiceLogsBody {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct UpdateRepoQuery {
+pub struct UpdateRepoBody {
     pub project_id: String,
     pub repo_id: String,
+    pub artifact_id: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]

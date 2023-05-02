@@ -1,6 +1,9 @@
-use std::{collections::hash_map::DefaultHasher, hash::Hasher};
+use std::{collections::hash_map::DefaultHasher, hash::Hasher, io::Write};
 
-use termion::color;
+use futures::StreamExt;
+use termion::{clear, color, raw::IntoRawMode, style};
+
+use futures_util::FutureExt;
 
 const SPINNER: [char; 3] = ['-', '/', '\\'];
 
@@ -51,4 +54,44 @@ fn get_color(n: u64) -> String {
 
 fn get_ansi_color(n: u64) -> String {
     color::AnsiValue((n % 256) as u8).fg_string()
+}
+
+#[async_trait::async_trait]
+pub trait WithSpinner
+where
+    Self: futures::Future + Sized,
+{
+    async fn with_spinner(self, text: impl AsRef<str> + Send) -> Self::Output;
+}
+
+#[async_trait::async_trait]
+impl<T: futures::Future + Send> WithSpinner for T {
+    async fn with_spinner(self, text: impl AsRef<str> + Send) -> Self::Output {
+        let mut stdout = std::io::stdout().into_raw_mode().unwrap();
+
+        let fut = Box::pin(self);
+        let mut spinner = Spinner::new();
+        let mut stream = fut.into_stream();
+        loop {
+            if let Some(Some(result)) = stream.next().now_or_never() {
+                return result;
+            }
+
+            write!(
+                stdout,
+                "[{}{}{}] {}\r",
+                color::Fg(color::Blue),
+                spinner.next(),
+                style::Reset,
+                text.as_ref(),
+            )
+            .ok();
+            stdout.flush().ok();
+
+            tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+
+            write!(stdout, "{}", clear::AfterCursor).ok();
+            stdout.flush().ok();
+        }
+    }
 }

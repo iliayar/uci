@@ -1,4 +1,3 @@
-use std::collections::LinkedList;
 use std::{path::PathBuf, sync::Arc};
 
 use common::state::State;
@@ -160,7 +159,8 @@ impl App {
             context: Arc::new(context),
             runs: Arc::new(Mutex::new(Default::default())),
             state: Arc::new(state),
-            artifacts: ArtifactsStorage::new(PathBuf::from(ARTIFACTS_PATH), 5).await?,
+            artifacts: ArtifactsStorage::new(PathBuf::from(ARTIFACTS_PATH), ARTIFACTS_LIMIT)
+                .await?,
         };
         let api = filters::runner(deps);
         let routes = api.with(warp::log("runner"));

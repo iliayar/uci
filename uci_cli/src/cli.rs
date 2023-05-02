@@ -84,9 +84,7 @@ pub enum Commands {
     },
 
     /// Manage services
-    Upload {
-        path: PathBuf,
-    },
+    Upload { path: PathBuf },
 }
 
 #[derive(Subcommand, Debug)]
@@ -144,8 +142,14 @@ pub enum RepoCommand {
     /// Pull repo from remote
     Update {
         #[clap(short, long)]
-        repo: String,
+        repo: Option<String>,
+
+        #[clap(short, long)]
+        source: Option<PathBuf>,
     },
+
+    /// List project repos
+    List {},
 }
 
 #[derive(Subcommand, Debug)]

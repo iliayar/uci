@@ -3,8 +3,6 @@ use std::{collections::HashMap, path::PathBuf, sync::Arc};
 use common::state::State;
 use tokio::sync::Mutex;
 
-use crate::git;
-
 use anyhow::anyhow;
 use log::*;
 
@@ -215,11 +213,12 @@ impl<PL: ProjectsManager> ProjectsStore<PL> {
         init_state: &State<'a>,
         project_id: &str,
         repo_id: &str,
+        artifact: Option<PathBuf>,
     ) -> Result<(), anyhow::Error> {
         let project_info = self.get_project_info(init_state, project_id).await?;
         let mut state = init_state.clone();
         state.set(&project_info);
-        let diffs = project_info.pull_repo(&state, repo_id).await?;
+        let diffs = project_info.update_repo(&state, repo_id, artifact).await?;
         let need_reload_internal_project = !diffs.is_empty();
         self.handle_event(
             &state,
@@ -289,12 +288,13 @@ impl ProjectInfo {
         self.repos.clone_missing_repos(state).await
     }
 
-    pub async fn pull_repo<'a>(
+    pub async fn update_repo<'a>(
         &self,
         state: &State<'a>,
         repo_id: &str,
-    ) -> Result<git::ChangedFiles, anyhow::Error> {
-        let changed_files = self.repos.pull_repo(state, repo_id).await?;
+        artifact: Option<PathBuf>,
+    ) -> Result<super::Diff, anyhow::Error> {
+        let changed_files = self.repos.update_repo(state, repo_id, artifact).await?;
         Ok(changed_files)
     }
 }

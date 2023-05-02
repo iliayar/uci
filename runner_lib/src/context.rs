@@ -89,12 +89,13 @@ impl<PM: config::ProjectsManager> Context<PM> {
         state: &State<'a>,
         project_id: &str,
         repo_id: &str,
+	artifact: Option<PathBuf>,
     ) -> Result<(), anyhow::Error> {
         let mut state = state.clone();
         let config = self.config.lock().await.clone();
         state.set(config.as_ref());
         self.projects_store
-            .update_repo(&state, project_id, repo_id)
+            .update_repo(&state, project_id, repo_id, artifact)
             .await?;
         Ok(())
     }

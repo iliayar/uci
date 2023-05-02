@@ -1,20 +1,37 @@
-use std::io::Write;
+use std::{io::Write, path::PathBuf};
 
-use crate::{execute, utils::Spinner};
+use crate::{
+    execute::{self, utils},
+    utils::Spinner,
+};
 
 use log::*;
 use termion::{clear, color, scroll, style};
 
 pub async fn execute_repo_update(
     config: &crate::config::Config,
-    repo_id: String,
+    repo_id: Option<String>,
+    source: Option<PathBuf>,
 ) -> Result<(), execute::ExecuteError> {
     let project_id = config.get_project();
     debug!("Executing action call command");
 
-    let body = common::runner::UpdateRepoQuery {
+    let repo_id = if let Some(repo_id) = repo_id {
+        repo_id
+    } else {
+        crate::prompts::promp_repo(config, project_id.clone()).await?
+    };
+
+    let artifact_id = if let Some(source) = source {
+        Some(utils::upload_archive(config, source).await?)
+    } else {
+        None
+    };
+
+    let body = common::runner::UpdateRepoBody {
         project_id,
         repo_id,
+        artifact_id,
     };
     let response = crate::runner::post_body(config, "/update", &body)?
         .send()
@@ -90,6 +107,18 @@ pub async fn execute_repo_update(
                             println!("  {}{}{}", style::Italic, file, style::Reset);
                         }
                     }
+                }
+                common::runner::UpdateRepoMessage::WholeRepoUpdated => {
+                    println!(
+                        "{}{}Repo {}{}{} pulled{}",
+                        clear::CurrentLine,
+                        color::Fg(color::Green),
+                        style::Bold,
+                        body.repo_id,
+                        style::NoBold,
+                        style::Reset
+                    );
+                    println!("Whole repos changes");
                 }
                 common::runner::UpdateRepoMessage::FailedToPull { err } => {
                     println!(

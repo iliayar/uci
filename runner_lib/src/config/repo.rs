@@ -26,7 +26,19 @@ pub enum Repo {
     },
 }
 
-pub type ReposDiffs = HashMap<String, git::ChangedFiles>;
+pub enum Diff {
+    Changes(git::ChangedFiles),
+    Whole,
+}
+
+impl Diff {
+    pub fn is_empty(&self) -> bool {
+        match self {
+            Diff::Changes(changes) => changes.is_empty(),
+            Diff::Whole => false,
+        }
+    }
+}
 
 impl Repo {
     async fn clone_if_missing<'a>(&self, state: &State<'a>) -> Result<(), anyhow::Error> {
@@ -68,7 +80,14 @@ impl Repo {
         Ok(())
     }
 
-    async fn pull<'a>(&self, state: &State<'a>) -> Result<git::ChangedFiles, anyhow::Error> {
+    async fn update<'a>(
+        &self,
+        state: &State<'a>,
+        artifact: Option<PathBuf>,
+    ) -> Result<Diff, anyhow::Error> {
+        let executor: &worker_lib::executor::Executor = state.get()?;
+        let project_info: &super::ProjectInfo = state.get()?;
+
         match self {
             Repo::Regular {
                 id,
@@ -76,21 +95,45 @@ impl Repo {
                 branch,
                 path,
             } => {
+                let _guard = executor.write_repo(&project_info.id, &id).await;
+
+                if artifact.is_some() {
+                    return Err(anyhow!(
+                        "Artifact is specified for repo {}, but it's not manually managed. Wont update",
+                        id
+                    ));
+                }
+
                 if !git::check_exists(path.clone()).await? {
                     info!("Repo {} doesn't exists, will clone it", id);
                     self.clone_if_missing(state).await?;
-                    Ok(git::ChangedFiles::default())
+                    Ok(Diff::Whole)
                 } else {
-                    let executor: &worker_lib::executor::Executor = state.get()?;
-                    let project_info: &super::ProjectInfo = state.get()?;
-                    let _guard = executor.write_repo(&project_info.id, &id).await;
-                    Ok(git::pull(path.clone(), branch.clone()).await?)
+                    Ok(Diff::Changes(
+                        git::pull(path.clone(), branch.clone()).await?,
+                    ))
                 }
             }
 
             Repo::Manual { id, path } => {
-                info!("Repo is manually managed, don't pull");
-                Ok(git::ChangedFiles::default())
+                let _guard = executor.write_repo(&project_info.id, &id).await;
+
+                let artifact = artifact.ok_or_else(|| {
+                    anyhow!(
+                        "Repo {} is manually managed, must provide source artifact",
+                        id
+                    )
+                })?;
+
+                let file = tokio::fs::File::open(artifact).await?;
+                let mut archive = tokio_tar::Archive::new(file);
+
+                // NOTE: haha, remove it all
+                tokio::fs::remove_dir_all(path).await.ok();
+                tokio::fs::create_dir_all(path).await?;
+
+                archive.unpack(path).await?;
+                Ok(Diff::Whole)
             }
         }
     }
@@ -117,17 +160,18 @@ impl From<&Repo> for common::vars::Vars {
 }
 
 impl Repos {
-    pub async fn pull_repo<'a>(
+    pub async fn update_repo<'a>(
         &self,
         state: &State<'a>,
         repo_id: &str,
-    ) -> Result<git::ChangedFiles, anyhow::Error> {
+        artifact: Option<PathBuf>,
+    ) -> Result<Diff, anyhow::Error> {
         let run_context: &RunContext = state.get()?;
         run_context
             .send(common::runner::UpdateRepoMessage::PullingRepo)
             .await;
         if let Some(repo) = self.repos.get(repo_id) {
-            let res = repo.pull(state).await;
+            let res = repo.update(state, artifact).await;
 
             match res.as_ref() {
                 Err(err) => {
@@ -137,13 +181,20 @@ impl Repos {
                         })
                         .await;
                 }
-                Ok(changed_files) => {
-                    run_context
-                        .send(common::runner::UpdateRepoMessage::RepoPulled {
-                            changed_files: changed_files.clone(),
-                        })
-                        .await;
-                }
+                Ok(changed_files) => match changed_files {
+                    Diff::Changes(changed_files) => {
+                        run_context
+                            .send(common::runner::UpdateRepoMessage::RepoPulled {
+                                changed_files: changed_files.clone(),
+                            })
+                            .await;
+                    }
+                    Diff::Whole => {
+                        run_context
+                            .send(common::runner::UpdateRepoMessage::WholeRepoUpdated)
+                            .await;
+                    }
+                },
             }
 
             res

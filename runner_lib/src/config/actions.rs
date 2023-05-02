@@ -1,5 +1,3 @@
-use crate::git;
-
 use std::collections::{HashMap, HashSet};
 
 use common::state::State;
@@ -57,7 +55,7 @@ pub enum Event {
     },
     RepoUpdate {
         repo_id: String,
-        diffs: git::ChangedFiles,
+        diffs: super::Diff,
     },
 }
 
@@ -151,13 +149,18 @@ impl TriggerType {
                     if repo_id != event_repo_id {
                         return false;
                     } else {
-                        for pattern in patterns.iter() {
-                            for diff in diffs.iter() {
-                                for pattern in patterns.iter() {
-                                    if pattern.is_match(diff) {
-                                        return true;
+                        match diffs {
+                            super::Diff::Changes(diffs) => {
+                                for diff in diffs.iter() {
+                                    for pattern in patterns.iter() {
+                                        if pattern.is_match(diff) {
+                                            return true;
+                                        }
                                     }
                                 }
+                            }
+                            super::Diff::Whole => {
+                                return true;
                             }
                         }
                     }

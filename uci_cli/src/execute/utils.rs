@@ -1,13 +1,53 @@
 use std::io::Write;
+use std::path::PathBuf;
 use std::{collections::HashMap, sync::Arc};
 
-use crate::utils::ucolor;
+use crate::config::Config;
+use crate::utils::{ucolor, WithSpinner};
 use crate::{runner::WsClient, utils::Spinner};
 
 use termion::{clear, color, cursor, raw::IntoRawMode, style};
 use tokio::sync::Mutex;
 
 use log::*;
+
+pub async fn upload_archive(
+    config: &Config,
+    dirpath: PathBuf,
+) -> Result<String, super::ExecuteError> {
+    debug!("Executing upload");
+
+    // NOTE: Maybe it's not good to store archive in memory
+    let mut tar_builder = tokio_tar::Builder::new(Vec::new());
+
+    tar_builder
+        .append_dir_all(".", dirpath)
+        .with_spinner("Building tar")
+        .await
+        .map_err(|err| {
+            super::ExecuteError::Fatal(format!("Failed to create archive with repo: {}", err))
+        })?;
+
+    let data = tar_builder
+        .into_inner()
+        .with_spinner("Building tar")
+        .await
+        .map_err(|err| {
+            super::ExecuteError::Fatal(format!("Failed to create archive with repo: {}", err))
+        })?;
+    let response = crate::runner::api::upload(config, data)
+        .with_spinner("Uploading tar")
+        .await?;
+
+    println!(
+        "{}Uploaded artifact: {}{}",
+        color::Fg(color::Green),
+        response.artifact,
+        style::Reset
+    );
+
+    Ok(response.artifact)
+}
 
 pub async fn print_clone_repos(ws_client: &mut WsClient) -> Result<(), super::ExecuteError> {
     match ws_client
@@ -52,10 +92,10 @@ pub async fn print_clone_repos(ws_client: &mut WsClient) -> Result<(), super::Ex
                 }
                 common::runner::CloneMissingRepos::Finish => {
                     if !repos_to_clone.is_empty() {
-			let mut stdout = std::io::stdout().into_raw_mode().unwrap();
+                        let mut stdout = std::io::stdout().into_raw_mode().unwrap();
                         print!("{}{}", cursor::Up(1), clear::AfterCursor);
-			stdout.flush().ok();
-			drop(stdout);
+                        stdout.flush().ok();
+                        drop(stdout);
 
                         println!(
                             "{}Missing repos cloned{}",
@@ -99,7 +139,8 @@ pub async fn print_clone_repos(ws_client: &mut WsClient) -> Result<(), super::Ex
                 "{}{}",
                 cursor::Up(repos_to_clone.len() as u16),
                 clear::AfterCursor
-            ).ok();
+            )
+            .ok();
             stdout.flush().ok();
         }
     }
@@ -249,7 +290,8 @@ impl RunState {
             "{}{}",
             cursor::Up(self.prev_lines as u16),
             clear::AfterCursor
-        ).ok();
+        )
+        .ok();
         stdout.flush().ok();
         self.prev_lines = 0;
         Ok(())

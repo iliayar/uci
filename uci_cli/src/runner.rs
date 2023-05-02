@@ -239,16 +239,24 @@ pub mod api {
         crate::runner::json(response).await
     }
 
-    pub async fn upload(
+    pub async fn repos_list(
         config: &Config,
-        data: Vec<u8>,
-    ) -> Result<common::runner::UploadResponse, ExecuteError> {
-        let file_part = reqwest::multipart::Part::bytes(data);
-        let form = reqwest::multipart::Form::new().part("file", file_part);
-        let response = crate::runner::post(config, "/upload")?
-            .multipart(form)
+        project_id: String,
+    ) -> Result<common::runner::ReposListResponse, ExecuteError> {
+        let query = common::runner::ListReposQuery { project_id };
+        let response = crate::runner::get_query(config, "/projects/repos/list", &query)?
             .send()
             .await;
+        crate::runner::json(response).await
+    }
+
+    pub async fn upload(
+        config: &Config,
+	data: Vec<u8>,
+    ) -> Result<common::runner::UploadResponse, ExecuteError> {
+	let file_part = reqwest::multipart::Part::bytes(data);
+	let form = reqwest::multipart::Form::new().part("file", file_part);
+        let response = crate::runner::post(config, "/upload")?.multipart(form).send().await;
         crate::runner::json(response).await
     }
 }
