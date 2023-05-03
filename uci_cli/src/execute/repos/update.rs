@@ -48,7 +48,7 @@ pub async fn execute_repo_update(
     {
         Some(common::runner::UpdateRepoMessage::PullingRepo) => {
             println!(
-                "{}Pulling repo {bold}{}{no_bold} in project {bold}{}{no_bold} {}",
+                "{}Updating repo {bold}{}{no_bold} in project {bold}{}{no_bold} {}",
                 color::Fg(color::Blue),
                 body.repo_id,
                 body.project_id,
@@ -90,7 +90,7 @@ pub async fn execute_repo_update(
                 }
                 common::runner::UpdateRepoMessage::RepoPulled { changed_files } => {
                     println!(
-                        "{}{}Repo {}{}{} pulled{}",
+                        "{}{}Repo {}{}{} updated{}",
                         clear::CurrentLine,
                         color::Fg(color::Green),
                         style::Bold,

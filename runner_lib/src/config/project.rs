@@ -103,6 +103,10 @@ impl Project {
         state: &State<'a>,
         actions: HashMap<String, super::ServiceAction>,
     ) -> Result<(), anyhow::Error> {
+	if actions.is_empty() {
+	    return Ok(());
+	}
+
         let mut jobs = HashMap::new();
         for (service_id, action) in actions.into_iter() {
             let service_id = service_id.as_ref();

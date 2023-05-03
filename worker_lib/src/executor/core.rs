@@ -3,8 +3,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use crate::docker::Docker;
-
-use super::tasks::{self, Task};
+use crate::tasks::{self, Task};
 
 use common::Pipeline;
 
@@ -13,155 +12,19 @@ use common::state::State;
 use futures::stream::FuturesUnordered;
 use futures::StreamExt;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
-use tokio::sync::{Mutex, OwnedMutexGuard, OwnedRwLockReadGuard, OwnedRwLockWriteGuard, RwLock};
+use tokio::sync::{Mutex, OwnedRwLockWriteGuard};
 
 use serde::{Deserialize, Serialize};
 
 use anyhow::anyhow;
 use log::*;
 
-// FIXME: now it's just like arc mutex them all. feels wrong
-
 pub struct Executor {
     pub runs: Mutex<Runs>,
-    locks: Mutex<Locks>,
-}
-
-#[derive(Default)]
-struct Locks {
-    pipelines: HashMap<String, PipelineLocks>,
-    project_repos: HashMap<String, ProjectRepos>,
-}
-
-#[derive(Default)]
-struct ProjectRepos {
-    repos: HashMap<String, Arc<RwLock<()>>>,
-}
-
-#[derive(Default)]
-struct PipelineLocks {
-    stages: HashMap<String, StageLock>,
-}
-
-struct StageLock {
-    lock: Arc<Mutex<()>>,
-    interrupted: Arc<Mutex<bool>>,
-}
-
-struct StageGuard {
-    guard: Option<OwnedMutexGuard<()>>,
-    interrupted: Option<Arc<Mutex<bool>>>,
-    repos_guard: Vec<OwnedRwLockReadGuard<()>>,
+    locks: Mutex<super::locks::Locks>,
 }
 
 pub const DEFEAULT_STAGE: &str = "default";
-
-impl StageGuard {
-    async fn interrupted(&self) -> bool {
-        if let Some(interrupted) = self.interrupted.as_ref() {
-            *interrupted.lock().await
-        } else {
-            false
-        }
-    }
-}
-
-impl Locks {
-    async fn run_stage(
-        &mut self,
-        pipeline: impl AsRef<str>,
-        stage: impl AsRef<str>,
-        strategy: common::OverlapStrategy,
-        repos: &ReposList,
-        lock_repos: &Option<common::StageRepos>,
-    ) -> StageGuard {
-        let repos_guard = self.get_repo_locks(repos, lock_repos).await;
-        match strategy {
-            common::OverlapStrategy::Ignore => {
-                return StageGuard {
-                    guard: None,
-                    interrupted: None,
-                    repos_guard,
-                }
-            }
-            common::OverlapStrategy::Displace => {
-                let stage_lock = self.get_stage_lock(pipeline, stage);
-                let interrupted = stage_lock.interrupted.clone();
-
-                *interrupted.lock().await = true;
-
-                // FIXME: Some races here?
-                let lock_guard = stage_lock.lock.clone().lock_owned().await;
-                *interrupted.lock().await = false;
-
-                StageGuard {
-                    guard: Some(lock_guard),
-                    interrupted: Some(interrupted),
-                    repos_guard,
-                }
-            }
-            common::OverlapStrategy::Wait => {
-                let stage_lock = self.get_stage_lock(pipeline, stage);
-                let lock_guard = stage_lock.lock.clone().lock_owned().await;
-                StageGuard {
-                    guard: Some(lock_guard),
-                    interrupted: None,
-                    repos_guard,
-                }
-            }
-        }
-    }
-
-    fn get_stage_lock(&mut self, pipeline: impl AsRef<str>, stage: impl AsRef<str>) -> &StageLock {
-        if !self.pipelines.contains_key(pipeline.as_ref()) {
-            self.pipelines
-                .insert(pipeline.as_ref().to_string(), PipelineLocks::default());
-        }
-
-        let pipeline_locks = self.pipelines.get_mut(pipeline.as_ref()).unwrap();
-
-        if !pipeline_locks.stages.contains_key(stage.as_ref()) {
-            pipeline_locks.stages.insert(
-                stage.as_ref().to_string(),
-                StageLock {
-                    lock: Arc::new(Mutex::new(())),
-                    interrupted: Arc::new(Mutex::new(false)),
-                },
-            );
-        }
-
-        pipeline_locks.stages.get(stage.as_ref()).as_ref().unwrap()
-    }
-
-    async fn get_repo_locks(
-        &mut self,
-        repos: &ReposList,
-        lock_repos: &Option<common::StageRepos>,
-    ) -> Vec<OwnedRwLockReadGuard<()>> {
-        if !self.project_repos.contains_key(&repos.project) {
-            self.project_repos
-                .insert(repos.project.clone(), ProjectRepos::default());
-        }
-
-        if let Some(lock_repos) = lock_repos {
-            let project = self.project_repos.get_mut(&repos.project).unwrap();
-
-            let mut locks = Vec::new();
-            for repo in repos.repos.iter() {
-                if !project.repos.contains_key(repo) {
-                    project
-                        .repos
-                        .insert(repo.clone(), Arc::new(RwLock::new(())));
-                }
-
-                locks.push(project.repos.get(repo).unwrap().clone().read_owned().await);
-            }
-            locks
-        } else {
-            Vec::new()
-        }
-    }
-}
 
 impl Executor {
     async fn run_stage(
@@ -171,7 +34,7 @@ impl Executor {
         strategy: common::OverlapStrategy,
         repos: &ReposList,
         lock_repos: &Option<common::StageRepos>,
-    ) -> StageGuard {
+    ) -> super::locks::StageGuard {
         let mut locks = self.locks.lock().await;
         locks
             .run_stage(pipeline, stage, strategy, repos, lock_repos)
@@ -614,7 +477,7 @@ impl Executor {
     pub async fn new() -> Result<Executor, anyhow::Error> {
         Ok(Executor {
             runs: Mutex::new(Runs::init().await?),
-            locks: Mutex::new(Locks::default()),
+            locks: Mutex::new(super::locks::Locks::default()),
         })
     }
 
@@ -623,19 +486,11 @@ impl Executor {
         project_id: impl AsRef<str>,
         repo_id: impl AsRef<str>,
     ) -> Option<OwnedRwLockWriteGuard<()>> {
-        if let Some(project) = self
-            .locks
+        self.locks
             .lock()
             .await
-            .project_repos
-            .get(project_id.as_ref())
-        {
-            if let Some(repo) = project.repos.get(repo_id.as_ref()) {
-                return Some(repo.clone().write_owned().await);
-            }
-        }
-
-        None
+            .write_repo(project_id, repo_id)
+            .await
     }
 
     pub async fn run<'a>(&self, state: &State<'a>, config: Pipeline) {
@@ -782,7 +637,7 @@ impl Executor {
                 .await;
         }
 
-        let mut stage_guard: Option<StageGuard> = None;
+        let mut stage_guard: Option<super::locks::StageGuard> = None;
         let mut was_stages: HashSet<String> = HashSet::new();
 
         let mut futs: FuturesUnordered<_> = FuturesUnordered::new();
