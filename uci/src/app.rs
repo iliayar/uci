@@ -92,11 +92,7 @@ impl App {
                 (ConfigsSource::Explicit { config }, args.config.projects)
             } else if let Some(path) = args.config.source.config_repo {
                 let projects_path = path.join(&args.config.prefix).join("projects.yaml");
-                let projects = if projects_path.exists() {
-                    Some(projects_path)
-                } else {
-                    None
-                };
+                let projects = args.config.projects.unwrap_or(projects_path);
 
                 (
                     ConfigsSource::Repo {
@@ -104,7 +100,7 @@ impl App {
                         prefix: args.config.prefix,
                         path,
                     },
-                    projects,
+                    Some(projects),
                 )
             } else {
                 unreachable!()
@@ -140,12 +136,6 @@ impl App {
         state.set_named_owned("env", self.env);
 
         let context = if let Some(projects) = self.projects {
-            let projects = match projects.canonicalize() {
-                Ok(path) => path,
-                Err(err) => {
-                    return Err(anyhow::anyhow!("Bad projects config path: {}", err));
-                }
-            };
             let manager = config::StaticProjects::new(projects).await?;
             let projects_store = config::ProjectsStore::with_manager(manager).await?;
             context::Context::new(projects_store, self.configs_source).await?
@@ -164,7 +154,7 @@ impl App {
         };
         let api = filters::runner(deps);
         let routes = api.with(warp::log("runner"));
-        warp::serve(routes).run(([127, 0, 0, 1], self.port)).await;
+        warp::serve(routes).run(([0, 0, 0, 0], self.port)).await;
 
         Ok(())
     }

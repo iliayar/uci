@@ -34,10 +34,12 @@ impl ConfigsSource {
                 if let Some(url) = url.as_ref() {
                     if !git::check_exists(path.clone()).await? {
                         git::clone(url.clone(), path.clone()).await?;
-                    }
+                    } else {
+			git::pull(path.clone(), "master".to_string()).await?;
+		    }
                 }
 
-                Ok(path.join(prefix))
+                Ok(path.join(prefix).join("uci.yaml"))
             }
         }
     }

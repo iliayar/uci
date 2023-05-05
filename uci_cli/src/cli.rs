@@ -34,7 +34,7 @@ fn default_env() -> String {
 fn default_config() -> String {
     let home = std::env::var("HOME").expect("HOME variable is not set. Specify config manually");
     PathBuf::from(home)
-        .join(".microci/config.yaml")
+        .join(".uci/config.yaml")
         .to_string_lossy()
         .to_string()
 }
