@@ -1,0 +1,60 @@
+* uCI
+Simple lightweight ci/cd for self-hosting
+
+** Build
+*** Cargo
+Clone repo first. Then:
+#+begin_src shell
+  cargo install --path uci
+#+end_src
+and for `cli`
+#+begin_src shell
+  cargo install --path uci_cli
+#+end_src
+*** Nix
+Flake with packages: `ucid`, `uci`.
+#+begin_src nix
+  inputs = {
+    # ...
+
+    uci.url = 'github:iliayar/uci';
+  }
+#+end_src
+and then `uci.packages.${system}.ucid`
+
+
+** Usage
+*** Example
+Assume repository structure
+#+begin_src 
+.
+├── projects.yaml
+└── uci.yaml 
+#+end_src
+#+begin_src yaml
+  # uci.yaml
+  data_dir: ~/.uci
+  secrets: ~/.uci-secrets.yaml
+  tokens:
+    - token: ${config.secrets.admin-token}
+      permissions: [ 'read', 'write' ]
+#+end_src
+#+begin_src yaml
+  # ~/.uci-secrets.yaml
+  admin-token: <TOKEN>
+#+end_src
+
+Repository is located at `uci-config`. Then daemon is running as follows
+#+begin_src shell
+  RUST_LOG=info ucid --config-repo ~/uci-config --prefix ''
+#+end_src
+
+
+With client config at `.uci/config.yaml`:
+#+begin_src yaml
+  __default__:
+    runner_url: http://<HOST>
+    token: <TOKEN>
+#+end_src
+
+- `uci config reload` - will pull repo with configs on the server and reload config
