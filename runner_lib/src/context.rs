@@ -31,12 +31,19 @@ impl ConfigsSource {
         match self {
             ConfigsSource::Explicit { config } => Ok(config.clone()),
             ConfigsSource::Repo { url, prefix, path } => {
-                if let Some(url) = url.as_ref() {
+                let need_pull = if let Some(url) = url.as_ref() {
                     if !git::check_exists(path.clone()).await? {
                         git::clone(url.clone(), path.clone()).await?;
+                        false
                     } else {
-			git::pull(path.clone(), "master".to_string()).await?;
-		    }
+                        true
+                    }
+                } else {
+                    true
+                };
+
+                if need_pull {
+                    git::pull(path.clone(), "master".to_string()).await?;
                 }
 
                 Ok(path.join(prefix).join("uci.yaml"))
@@ -91,7 +98,7 @@ impl<PM: config::ProjectsManager> Context<PM> {
         state: &State<'a>,
         project_id: &str,
         repo_id: &str,
-	artifact: Option<PathBuf>,
+        artifact: Option<PathBuf>,
     ) -> Result<(), anyhow::Error> {
         let mut state = state.clone();
         let config = self.config.lock().await.clone();

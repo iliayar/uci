@@ -109,7 +109,7 @@ impl<PM: config::ProjectsManager> CallContext<PM> {
             context: deps.context,
             runs: deps.runs,
             check_permisions: true,
-            run_context: None,
+            run_context: Some(Arc::new(RunContext::empty())),
             state: deps.state,
             artifacts: deps.artifacts.clone(),
         }
@@ -121,13 +121,12 @@ impl<PM: config::ProjectsManager> CallContext<PM> {
         services: Vec<String>,
         action: config::ServiceAction,
     ) -> Result<(), anyhow::Error> {
-        let mut state = self.state.as_ref().clone();
-        if let Some(run_context) = self.run_context.as_ref() {
-            state.set(run_context.as_ref());
-        }
-        self.context
-            .run_services_actions(&state, project, services, action)
-            .await
+        self.with_state(|state| async move {
+            self.context
+                .run_services_actions(&state, project, services, action)
+                .await
+        })
+        .await
     }
 
     pub async fn run_service_action(
@@ -146,13 +145,12 @@ impl<PM: config::ProjectsManager> CallContext<PM> {
         repo_id: &str,
         artifact: Option<PathBuf>,
     ) -> Result<(), anyhow::Error> {
-        let mut state = self.state.as_ref().clone();
-        if let Some(run_context) = self.run_context.as_ref() {
-            state.set(run_context.as_ref());
-        }
-        self.context
-            .update_repo(&state, project_id, repo_id, artifact)
-            .await
+        self.with_state(|state| async move {
+            self.context
+                .update_repo(&state, project_id, repo_id, artifact)
+                .await
+        })
+        .await
     }
 
     pub async fn reload_config(&self) -> Result<(), anyhow::Error> {
@@ -160,29 +158,23 @@ impl<PM: config::ProjectsManager> CallContext<PM> {
     }
 
     pub async fn list_projects(&self) -> Result<Vec<config::ProjectInfo>, anyhow::Error> {
-        let state = self.state.as_ref().clone();
-        self.context.list_projects(&state).await
+        self.with_state(|state| async move { self.context.list_projects(&state).await })
+            .await
     }
 
     pub async fn get_project(&self, project_id: &str) -> Result<config::Project, anyhow::Error> {
-        let mut state = self.state.as_ref().clone();
-
-        let run_context = RunContext::empty();
-        state.set(&run_context);
-
-        self.context.get_project(&state, project_id).await
+        self.with_state(|state| async move { self.context.get_project(&state, project_id).await })
+            .await
     }
 
     pub async fn get_project_info(
         &self,
         project_id: &str,
     ) -> Result<config::ProjectInfo, anyhow::Error> {
-        let mut state = self.state.as_ref().clone();
-
-        let run_context = RunContext::empty();
-        state.set(&run_context);
-
-        self.context.get_project_info(&state, project_id).await
+        self.with_state(
+            |state| async move { self.context.get_project_info(&state, project_id).await },
+        )
+        .await
     }
 
     pub async fn call_trigger(
@@ -190,13 +182,12 @@ impl<PM: config::ProjectsManager> CallContext<PM> {
         project_id: &str,
         trigger_id: &str,
     ) -> Result<(), anyhow::Error> {
-        let mut state = self.state.as_ref().clone();
-        if let Some(run_context) = self.run_context.as_ref() {
-            state.set(run_context.as_ref());
-        }
-        self.context
-            .call_trigger(&state, project_id, trigger_id)
-            .await
+        self.with_state(|state| async move {
+            self.context
+                .call_trigger(&state, project_id, trigger_id)
+                .await
+        })
+        .await
     }
 
     pub async fn check_permissions(
@@ -204,27 +195,29 @@ impl<PM: config::ProjectsManager> CallContext<PM> {
         project_id: Option<&str>,
         action: config::ActionType,
     ) -> bool {
-        let state = self.state.as_ref().clone();
-        if !self.check_permisions {
-            return true;
-        }
-        if let Some(project_id) = project_id {
-            match self.context.get_project_info(&state, project_id).await {
-                Ok(project_info) => project_info.check_allowed(self.token.as_ref(), action),
-                Err(err) => {
-                    error!(
-                        "Failed to check permissions, cannot get project info: {}",
-                        err
-                    );
-                    false
-                }
+        self.with_state(|state| async move {
+            if !self.check_permisions {
+                return true;
             }
-        } else {
-            self.context
-                .config()
-                .await
-                .check_allowed(self.token.as_ref(), action)
-        }
+            if let Some(project_id) = project_id {
+                match self.context.get_project_info(&state, project_id).await {
+                    Ok(project_info) => project_info.check_allowed(self.token.as_ref(), action),
+                    Err(err) => {
+                        error!(
+                            "Failed to check permissions, cannot get project info: {}",
+                            err
+                        );
+                        false
+                    }
+                }
+            } else {
+                self.context
+                    .config()
+                    .await
+                    .check_allowed(self.token.as_ref(), action)
+            }
+        })
+        .await
     }
 
     pub async fn init_run(&mut self) -> String {

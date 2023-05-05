@@ -33,7 +33,7 @@ impl GenProject {
     build:
       path: ${config.internal.path}/bind9
     ports:
-      - 3053:53/udp
+      - 53:53/udp
     restart: always
     global: true
 "#,

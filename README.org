@@ -25,7 +25,7 @@ and then `uci.packages.${system}.ucid`
 
 ** Usage
 *** Example
-Assume repository structure
+Assume configs repository structure
 #+begin_src 
 .
 ├── projects.yaml
@@ -44,17 +44,17 @@ Assume repository structure
   admin-token: <TOKEN>
 #+end_src
 
-Repository is located at `uci-config`. Then daemon is running as follows
+Repository is located at remote's =~/uci-config=. Then daemon is running as follows
 #+begin_src shell
   RUST_LOG=info ucid --config-repo ~/uci-config --prefix ''
 #+end_src
 
 
-With client config at `.uci/config.yaml`:
+With client config at host's =.uci/config.yaml=:
 #+begin_src yaml
   __default__:
     runner_url: http://<HOST>
     token: <TOKEN>
 #+end_src
 
-- `uci config reload` - will pull repo with configs on the server and reload config
+- =uci config reload= - will pull repo with configs on the server and reload config

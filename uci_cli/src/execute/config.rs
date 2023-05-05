@@ -1,5 +1,7 @@
 use crate::cli::*;
 
+use crate::utils::WithSpinner;
+
 use log::*;
 use termion::{color, style};
 
@@ -22,8 +24,12 @@ pub async fn execute_config_reload(
 ) -> Result<(), super::ExecuteError> {
     debug!("Executing project list command");
 
-    let response = crate::runner::post(config, "/reload")?.send().await;
-    let response: common::runner::EmptyResponse = crate::runner::json(response).await?;
+    let response: common::runner::EmptyResponse = async {
+        let response = crate::runner::post(config, "/reload")?.send().await;
+        crate::runner::json(response).await
+    }
+    .with_spinner("Updating config")
+    .await?;
 
     println!("{}Config reloaded{}", color::Fg(color::Green), style::Reset);
 

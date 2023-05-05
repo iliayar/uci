@@ -56,12 +56,7 @@ impl Repo {
                             repo_id: id.to_string(),
                         })
                         .await;
-                    git::clone(
-                        // TODO: Support http
-                        source.strip_prefix("ssh://").unwrap().to_string(),
-                        path.clone(),
-                    )
-                    .await?;
+                    git::clone(source.clone(), path.clone()).await?;
                     run_context
                         .send(common::runner::CloneMissingRepos::RepoCloned {
                             repo_id: id.to_string(),

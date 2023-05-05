@@ -83,7 +83,7 @@ pub enum Commands {
         command: ServiceCommand,
     },
 
-    /// Manage services
+    /// Upload artifact
     Upload { path: PathBuf },
 }
 
