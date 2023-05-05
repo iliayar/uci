@@ -53,7 +53,7 @@ struct Config {
     url: Option<String>,
 
     /// Path inside repo with configs. Must contains uci.yaml
-    #[arg(long, requires = "config_repo", default_value_t = String::from(".uci/"))]
+    #[arg(long, requires = "config_repo", default_value_t = String::from(".uci/config"))]
     prefix: String,
 }
 

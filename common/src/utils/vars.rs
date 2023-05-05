@@ -115,11 +115,11 @@ impl<E: Into<Vars>> From<HashMap<String, E>> for Vars {
     }
 }
 
-impl<E> From<&HashMap<String, E>> for Vars
+impl<'a, E> From<&'a HashMap<String, E>> for Vars
 where
-    for<'a> &'a E: Into<Vars>,
+    &'a E: Into<Vars>,
 {
-    fn from(m: &HashMap<String, E>) -> Self {
+    fn from(m: &'a HashMap<String, E>) -> Self {
         let values = m.iter().map(|(k, v)| (k.clone(), v.into())).collect();
         Vars::Object { values }
     }
@@ -558,11 +558,13 @@ fn parse_path(vars: &Vars, chars: &mut Peekable<Chars>) -> Result<Path, Substitu
 }
 
 mod tests {
+    #[allow(unused_imports)]
+    use std::collections::HashMap;
 
     #[test]
     fn test_vars_from_string() -> Result<(), anyhow::Error> {
         let values = String::from("123");
-        let vars: super::Vars = super::Vars::from(values);
+        let vars: super::Vars = values.into();
 
         let path = super::Path::default();
 
@@ -577,7 +579,7 @@ mod tests {
             String::from("aboba"),
             String::from("456"),
         ];
-        let vars: super::Vars = super::Vars::from(values);
+        let vars: super::Vars = values.into();
 
         let mut path = super::Path::default();
         path.index(1);
@@ -593,7 +595,7 @@ mod tests {
             (String::from("bb"), String::from("aboba")),
             (String::from("ccc"), String::from("456")),
         ]);
-        let vars: super::Vars = super::Vars::from(values);
+        let vars: super::Vars = values.into();
 
         let mut path = super::Path::default();
         path.key(String::from("bb"));
@@ -622,7 +624,7 @@ mod tests {
                 )])),
             ),
         ]);
-        let vars: super::Vars = super::Vars::from(values);
+        let vars: super::Vars = values.into();
 
         let mut path = super::Path::default();
         path.key(String::from("a"));
@@ -697,7 +699,7 @@ mod tests {
                 ]),
             ),
         ]);
-        let vars = super::Vars::from(values);
+        let vars = values.into();
 
         let content = "this ${a}";
         assert_eq!(super::substitute_vars(&vars, content)?, "this 123");

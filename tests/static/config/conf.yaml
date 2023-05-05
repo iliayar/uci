@@ -1,4 +1,4 @@
-data_dir: ~/.microci
+data_dir: ~/.uci
 secrets: ./secrets.yaml
 tokens:
   - token: ${config.secrets.admin-token}

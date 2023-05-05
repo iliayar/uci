@@ -65,7 +65,7 @@ mod raw {
     const DEFAULT_REPOS_PATH: &str = "repos";
     const DEFAULT_DATA_PATH: &str = "data";
     const DEFAULT_INTERNAL_PATH: &str = "internal";
-    const DEFAULT_DATA_DIR: &str = "~/.microci";
+    const DEFAULT_DATA_DIR: &str = "~/.uci";
 
     #[derive(Serialize, Deserialize)]
     #[serde(deny_unknown_fields)]

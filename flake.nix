@@ -17,6 +17,10 @@
           inherit system;
           overlays = [ rust-overlay.overlay ];
         };
+
+        buildRustPackage = pkgs.rustPlatform.buildRustPackage.override {
+          rustc = pkgs.rust-bin.stable.latest.default;
+        };
       in {
         devShell = pkgs.mkShell rec {
           buildInputs = with pkgs;
@@ -34,7 +38,33 @@
             ] ++ (if system == "x86_64-darwin" then
               [ pkgs.darwin.apple_sdk.frameworks.Security ]
             else
-              []);
+              [ ]);
+        };
+
+        packages = rec {
+          ucid = buildRustPackage {
+            pname = "ucid";
+            version = "1.0.0";
+            src = ./.;
+            cargoBuildFlags = "-p ucid";
+
+            nativeBuildInputs = with pkgs; [ pkg-config ];
+            buildInputs = with pkgs; [ openssl ];
+            cargoLock = { lockFile = ./Cargo.lock; };
+          };
+
+          uci = buildRustPackage {
+            pname = "uci";
+            version = "1.0.0";
+            src = ./.;
+            cargoBuildFlags = "-p uci";
+
+            nativeBuildInputs = with pkgs; [ pkg-config ];
+            buildInputs = with pkgs; [ openssl ];
+            cargoLock = { lockFile = ./Cargo.lock; };
+          };
+
+          default = uci;
         };
       });
 }
