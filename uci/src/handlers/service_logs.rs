@@ -54,6 +54,14 @@ async fn service_logs_impl<PM: config::ProjectsManager + 'static>(
 
     let run_id = call_context.init_run_buffered().await;
     tokio::spawn(async move {
+        if !call_context
+            .wait_for_clients(std::time::Duration::from_secs(2))
+            .await
+        {
+            warn!("Will not wait for client more, aborting");
+            return;
+        }
+
         if let Err(err) = call_context
             .run_services_actions(
                 &project_id,
