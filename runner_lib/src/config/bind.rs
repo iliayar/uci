@@ -19,11 +19,15 @@ pub struct ZoneBuilder {
 impl ZoneBuilder {
     fn add(&mut self, zone: &Zone) -> Result<(), anyhow::Error> {
         if let Some(ip) = self.ip.as_ref() {
-            if ip != &zone.ip {
-                return Err(anyhow!("Zone ip do not match {} != {}", ip, zone.ip));
+            if let Some(zone_ip) = zone.ip.as_ref() {
+                if ip != zone_ip {
+                    return Err(anyhow!("Zone ip do not match {} != {}", ip, zone_ip));
+                }
             }
         } else {
-            self.ip = Some(zone.ip.clone());
+            if let Some(zone_ip) = zone.ip.as_ref() {
+                self.ip = Some(zone_ip.clone());
+            }
         }
 
         for (ns, ip) in zone.nameservers.iter() {
@@ -90,7 +94,7 @@ pub struct Bind {
 
 #[derive(Debug)]
 pub struct Zone {
-    ip: String,
+    ip: Option<String>,
     nameservers: HashMap<String, String>,
     cnames: Vec<String>,
 }
@@ -124,7 +128,7 @@ mod raw {
     #[derive(Serialize, Deserialize)]
     #[serde(deny_unknown_fields)]
     pub struct Zone {
-        ip: String,
+        ip: Option<String>,
         nameservers: Option<HashMap<String, String>>,
         cnames: Option<Vec<String>>,
     }
