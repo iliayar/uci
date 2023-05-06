@@ -8,7 +8,7 @@ pub async fn execute_runs_list(
     config: &crate::config::Config,
     pipeline_id: Option<String>,
 ) -> Result<(), execute::ExecuteError> {
-    let project_id = config.try_get_project();
+    let project_id = config.try_get_project().await;
     debug!("Executing runs list command");
 
     let response = crate::runner::api::list_runs(config, project_id, pipeline_id).await?;

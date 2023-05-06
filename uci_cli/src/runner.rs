@@ -164,7 +164,7 @@ pub async fn ws(
     let runner_url = config
         .ws_runner_url
         .as_ref()
-        .expect("runner_url is not set");
+        .expect("ws_runner_url is not set");
     let url = Url::parse(&format!("{}/ws/{}", runner_url, client_id)).unwrap();
 
     let (ws_stream, _) = tokio_tungstenite::connect_async(url)

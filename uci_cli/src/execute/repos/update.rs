@@ -13,7 +13,7 @@ pub async fn execute_repo_update(
     repo_id: Option<String>,
     source: Option<PathBuf>,
 ) -> Result<(), execute::ExecuteError> {
-    let project_id = config.get_project();
+    let project_id = config.get_project().await;
     debug!("Executing action call command");
 
     let repo_id = if let Some(repo_id) = repo_id {

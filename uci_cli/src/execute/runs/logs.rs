@@ -10,7 +10,7 @@ pub async fn execute_runs_logs(
     follow: bool,
     status: bool,
 ) -> Result<(), execute::ExecuteError> {
-    let project_id = config.get_project();
+    let project_id = config.get_project().await;
     debug!("Executing service logs command");
 
     let (pipeline_id, run_id) = match (pipeline_id, run_id) {

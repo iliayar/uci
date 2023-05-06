@@ -10,26 +10,34 @@ pub struct Config {
     pub ws_runner_url: Option<String>,
     pub token: Option<String>,
     pub default_project: Option<String>,
-    pub project_arg: Option<String>,
+    pub project_arg: Option<Option<String>>,
 }
 
 impl Config {
     pub async fn load(
         path: PathBuf,
         env: String,
-        project: Option<String>,
+        project: Option<Option<String>>,
     ) -> Result<Config, anyhow::Error> {
         raw::load(path, env, project).await
     }
 
-    pub fn try_get_project(&self) -> Option<String> {
+    pub async fn try_get_project(&self) -> Option<String> {
         if let Some(project_id) = self.project_arg.as_ref() {
-            Some(project_id.to_string())
+            if let Some(project_id) = project_id.as_ref() {
+                Some(project_id.to_string())
+            } else {
+                Some(
+                    crate::prompts::promp_project(&self)
+                        .await
+                        .expect("Project wasn't selected"),
+                )
+            }
         } else if let Some(project_id) = self.default_project.as_ref() {
             eprintln!(
                 "{}Using default project {}{}{}",
                 color::Fg(color::Yellow),
-		style::Bold,
+                style::Bold,
                 project_id,
                 style::Reset
             );
@@ -39,8 +47,8 @@ impl Config {
         }
     }
 
-    pub fn get_project(&self) -> String {
-        if let Some(project_id) = self.try_get_project() {
+    pub async fn get_project(&self) -> String {
+        if let Some(project_id) = self.try_get_project().await {
             project_id
         } else {
             eprintln!(
@@ -75,7 +83,7 @@ mod raw {
     pub async fn load(
         path: PathBuf,
         env: String,
-        project: Option<String>,
+        project: Option<Option<String>>,
     ) -> Result<super::Config, anyhow::Error> {
         if !path.exists() {
             warn!("Config doesn't exists, loading default");

@@ -10,7 +10,7 @@ pub async fn execute_services_logs(
     tail: Option<usize>,
     all: bool,
 ) -> Result<(), execute::ExecuteError> {
-    let project_id = config.get_project();
+    let project_id = config.get_project().await;
     debug!("Executing service logs command");
 
     let services = if let Some(services) = service {

@@ -8,7 +8,7 @@ pub async fn execute_repos_list(
     config: &crate::config::Config,
 ) -> Result<(), execute::ExecuteError> {
     debug!("Executing repos list command");
-    let project = config.get_project();
+    let project = config.get_project().await;
 
     let response = crate::runner::api::repos_list(config, project).await?;
 

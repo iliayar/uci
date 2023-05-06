@@ -142,3 +142,24 @@ pub async fn promp_services(
     let services = crate::runner::api::list_services(config, project_id).await?;
     Ok(crate::select::prompt_many(services.services.into_iter())?)
 }
+
+impl crate::select::SelectOption for common::runner::Project {
+    type Data = String;
+
+    fn show(&self, out: &mut impl std::io::Write) {
+        write!(out, "{}", self.id).ok();
+    }
+
+    fn data(self) -> Self::Data {
+        self.id
+    }
+
+    fn data_name(&self) -> &str {
+        "project"
+    }
+}
+
+pub async fn promp_project(config: &Config) -> Result<String, ExecuteError> {
+    let projects = crate::runner::api::projects_list(config).await?;
+    Ok(crate::select::prompt(projects.projects.into_iter())?)
+}

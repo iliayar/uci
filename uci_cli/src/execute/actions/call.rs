@@ -7,7 +7,7 @@ pub async fn execute_action_call(
     config: &crate::config::Config,
     action_id: Option<String>,
 ) -> Result<(), execute::ExecuteError> {
-    let project_id = config.get_project();
+    let project_id = config.get_project().await;
     debug!("Executing action call command");
 
     let action_id = if let Some(action_id) = action_id {
