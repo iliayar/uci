@@ -1,0 +1,9 @@
+bind9:
+  zones:
+    'ilyay.space':
+      cnames:
+        - 'uci'
+caddy:
+  hostnames:
+    'uci.ilyay.space': |
+      reverse_proxy :3002
