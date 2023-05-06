@@ -21,7 +21,11 @@ pub struct Cli {
 
     /// Project. Can be ommited if `default_project` is specified in config
     #[clap(long)]
-    pub project: Option<Option<String>>,
+    pub project: Option<String>,
+
+    /// Will prompt for project
+    #[clap(long)]
+    pub select_project: bool,
 
     #[command(subcommand)]
     pub command: Commands,

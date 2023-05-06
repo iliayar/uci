@@ -4,10 +4,10 @@
 mod cli;
 mod config;
 mod execute;
+mod prompts;
 mod runner;
 mod select;
 mod utils;
-mod prompts;
 
 use clap::Parser;
 
@@ -30,7 +30,14 @@ async fn main() {
 
     debug!("Arguments parsed");
     debug!("Loading config");
-    let config = match config::Config::load(args.config_path.into(), args.env, args.project).await {
+    let project = if let Some(project) = args.project {
+        Some(Some(project))
+    } else if args.select_project {
+        Some(None)
+    } else {
+        None
+    };
+    let config = match config::Config::load(args.config_path.into(), args.env, project).await {
         Err(err) => {
             error!("Failed to load config, using default: {}", err);
             config::Config::default()
@@ -51,7 +58,7 @@ async fn main() {
                 eprintln!("{}{}{}", color::Fg(color::LightRed), err, style::Reset)
             }
             execute::ExecuteError::Interrupted => {
-		return;
+                return;
             }
         }
     }
