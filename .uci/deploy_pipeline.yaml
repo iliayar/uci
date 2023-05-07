@@ -3,6 +3,7 @@ jobs:
     steps:
       - script: |
           set -e
+          . $HOME/cargo/env
 
           cd uci
           cargo install --path uci
