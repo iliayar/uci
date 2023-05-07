@@ -5,6 +5,7 @@ actions:
         - deploy
   deploy:
     - on: changed
+      repo_id: uci
       changes:
         - '.*' # All files
       run_pipelines:
