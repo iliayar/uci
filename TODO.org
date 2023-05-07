@@ -1,0 +1,6 @@
+* TODO
+- [0/3] Paramteres from request and from action \\
+  - [ ] Load pipelines lazy
+  - [ ] Support parameters when call action, update repo, etc...
+  - [ ] Support parameters in action description \\
+    Allow reuse pipelines with different behaviour
