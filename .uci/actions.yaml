@@ -1,5 +1,11 @@
 actions:
-  deploy:
+  deploy_manual:
     - on: call
+      run_pipelines:
+        - deploy
+  deploy:
+    - on: changed
+      changes:
+        - '.*' # All files
       run_pipelines:
         - deploy

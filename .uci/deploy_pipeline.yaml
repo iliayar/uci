@@ -12,6 +12,8 @@ jobs:
     steps:
       - script: |
           set -e
+
+          echo "Restarting service. Losing runtime info..."
           systemctl --user restart ucid
 links:
   'uci': ${project.repos.uci.path}
