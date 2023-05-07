@@ -88,9 +88,13 @@ impl Project {
         state: &State<'a>,
         pipeline_id: &str,
     ) -> Result<(), anyhow::Error> {
-        let pipeline = self.pipelines.get(state, pipeline_id).await?;
+        let mut state = state.clone();
+        state.set_named("project_params", &self.params);
+        state.set(&self.services);
 
-        self.run_pipeline_impl(state, pipeline.clone()).await?;
+        let pipeline = self.pipelines.get(&state, pipeline_id).await?;
+
+        self.run_pipeline_impl(&state, pipeline.clone()).await?;
 
         Ok(())
     }
