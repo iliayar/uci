@@ -22,6 +22,7 @@ pub struct Pipeline {
     pub networks: Vec<String>,
     pub volumes: Vec<String>,
     pub stages: HashMap<String, Stage>,
+    pub integrations: HashMap<String, serde_json::Value>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]

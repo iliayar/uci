@@ -88,10 +88,7 @@ impl Project {
         state: &State<'a>,
         pipeline_id: &str,
     ) -> Result<(), anyhow::Error> {
-        let pipeline = self
-            .pipelines
-            .get(pipeline_id)
-            .ok_or_else(|| anyhow!("Now such pipeline to run {}", pipeline_id))?;
+        let pipeline = self.pipelines.get(state, pipeline_id).await?;
 
         self.run_pipeline_impl(state, pipeline.clone()).await?;
 
@@ -103,9 +100,9 @@ impl Project {
         state: &State<'a>,
         actions: HashMap<String, super::ServiceAction>,
     ) -> Result<(), anyhow::Error> {
-	if actions.is_empty() {
-	    return Ok(());
-	}
+        if actions.is_empty() {
+            return Ok(());
+        }
 
         let mut jobs = HashMap::new();
         for (service_id, action) in actions.into_iter() {
@@ -156,6 +153,7 @@ impl Project {
             links: Default::default(),
             networks: Default::default(),
             volumes: Default::default(),
+            integrations: Default::default(),
         };
 
         self.run_pipeline_impl(state, pipeline).await?;
@@ -204,9 +202,6 @@ impl Project {
 
         info!("Running pipelines {:?}", run_pipelines);
         for pipeline_id in run_pipelines.iter() {
-            if self.pipelines.get(pipeline_id).is_none() {
-                warn!("No such pipeline {}, skiping", pipeline_id);
-            }
             pipeline_tasks.push(self.run_pipeline(state, pipeline_id))
         }
 

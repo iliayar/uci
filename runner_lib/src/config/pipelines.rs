@@ -1,11 +1,16 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, path::PathBuf};
 
 use anyhow::anyhow;
 use common::state::State;
 
 #[derive(Debug, Default)]
 pub struct Pipelines {
-    pipelines: HashMap<String, common::Pipeline>,
+    pipelines: HashMap<String, PipelineLocation>,
+}
+
+#[derive(Debug)]
+struct PipelineLocation {
+    path: PathBuf,
 }
 
 pub struct PipelinesDescription {
@@ -23,8 +28,16 @@ impl Pipelines {
             .map_err(|err| anyhow!("Failed to pipelines: {}", err))
     }
 
-    pub fn get(&self, pipeline: &str) -> Option<&common::Pipeline> {
-        self.pipelines.get(pipeline)
+    pub async fn get<'a>(
+        &self,
+        state: &State<'a>,
+        pipeline: impl AsRef<str>,
+    ) -> Result<common::Pipeline, anyhow::Error> {
+        let location = self
+            .pipelines
+            .get(pipeline.as_ref())
+            .ok_or_else(|| anyhow!("No such pipeline: {}", pipeline.as_ref()))?;
+        raw::load_pipeline(state, pipeline, &location.path).await
     }
 
     pub async fn list_pipelines(&self) -> PipelinesDescription {
@@ -41,7 +54,7 @@ impl Pipelines {
 pub const PIPELINES_CONFIG: &str = "pipelines.yaml";
 
 mod raw {
-    use std::collections::HashMap;
+    use std::{collections::HashMap, path::PathBuf};
 
     use common::state::State;
     use serde::{Deserialize, Serialize};
@@ -68,6 +81,7 @@ mod raw {
         jobs: HashMap<String, Job>,
         links: Option<HashMap<String, String>>,
         stages: Option<HashMap<String, Stage>>,
+        integrations: Option<HashMap<String, serde_json::Value>>,
     }
 
     #[derive(Deserialize, Serialize)]
@@ -135,29 +149,23 @@ mod raw {
         Unlock,
     }
 
-    #[async_trait::async_trait]
-    impl config::LoadRaw for Pipelines {
+    impl config::LoadRawSync for PipelineLocation {
+        type Output = super::PipelineLocation;
+
+        fn load_raw(self, state: &State) -> Result<Self::Output, anyhow::Error> {
+            let project_info: &config::ProjectInfo = state.get()?;
+            let path = utils::eval_rel_path(state, self.path, project_info.path.clone())?;
+            Ok(super::PipelineLocation { path })
+        }
+    }
+
+    impl config::LoadRawSync for Pipelines {
         type Output = super::Pipelines;
 
-        async fn load_raw(self, state: &State) -> Result<Self::Output, anyhow::Error> {
-            let mut pipelines: HashMap<String, common::Pipeline> = HashMap::new();
-            for (id, PipelineLocation { path }) in self.pipelines.into_iter() {
-                let project_info: &config::ProjectInfo = state.get()?;
-
-                let mut state = state.clone();
-                state.set_named("_id", &id);
-
-                let pipeline_path = utils::eval_rel_path(&state, path, project_info.path.clone())?;
-                let pipeline: Result<common::Pipeline, anyhow::Error> =
-                    config::load_sync::<Pipeline>(pipeline_path.clone(), &state)
-                        .await
-                        .map_err(|err| {
-                            anyhow!("Failed to load pipeline from {:?}: {}", pipeline_path, err)
-                        });
-                pipelines.insert(id, pipeline?);
-            }
-
-            Ok(super::Pipelines { pipelines })
+        fn load_raw(self, state: &State) -> Result<Self::Output, anyhow::Error> {
+            Ok(super::Pipelines {
+                pipelines: self.pipelines.load_raw(state)?,
+            })
         }
     }
 
@@ -244,6 +252,7 @@ mod raw {
                 jobs: self.jobs.load_raw(state)?,
                 networks: Default::default(),
                 volumes: Default::default(),
+                integrations: self.integrations.unwrap_or_default(),
             })
         }
     }
@@ -310,13 +319,26 @@ mod raw {
         }
     }
 
+    pub async fn load_pipeline<'a>(
+        state: &State<'a>,
+        id: impl AsRef<str>,
+        path: &PathBuf,
+    ) -> Result<common::Pipeline, anyhow::Error> {
+        let mut state = state.clone();
+        let id = id.as_ref().to_string();
+        state.set_named("_id", &id);
+        config::load_sync::<Pipeline>(path.clone(), &state)
+            .await
+            .map_err(|err| anyhow!("Failed to load pipeline from {:?}: {}", path, err))
+    }
+
     pub async fn load<'a>(state: &State<'a>) -> Result<super::Pipelines, anyhow::Error> {
         let project_info: &config::ProjectInfo = state.get()?;
         let path = project_info.path.join(super::PIPELINES_CONFIG);
         if !path.exists() {
             return Ok(Default::default());
         }
-        config::load::<Pipelines>(path.clone(), state)
+        config::load_sync::<Pipelines>(path.clone(), state)
             .await
             .map_err(|err| anyhow!("Failed to load pipelines from {:?}: {}", path, err))
     }

@@ -3,5 +3,6 @@
 
 pub mod docker;
 pub mod executor;
+pub mod integrations;
 mod tasks;
 mod utils;

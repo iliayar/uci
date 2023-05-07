@@ -3,6 +3,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use crate::docker::Docker;
+use crate::integrations::*;
 use crate::tasks::{self, Task};
 
 use common::Pipeline;
@@ -534,6 +535,11 @@ impl Executor {
         let run_context: &RunContext = state.get()?;
         let project: String = state.get_named("project").cloned()?;
 
+        let mut integrations: Vec<Box<dyn Integration>> = Vec::new();
+        for (name, config) in pipeline.integrations.iter() {
+            integrations.push(get_integration(name, config.clone())?);
+        }
+
         let pipeline_run: Arc<PipelineRun> = self
             .runs
             .lock()
@@ -767,7 +773,7 @@ impl Executor {
         }
 
         for volume in volumes {
-            docker.create_network_if_missing(volume).await?;
+            docker.create_volume_if_missing(volume).await?;
         }
 
         Ok(())
