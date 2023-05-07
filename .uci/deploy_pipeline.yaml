@@ -7,5 +7,11 @@ jobs:
 
           cd uci
           cargo install --path uci
+  restart:
+    needs: ['build']
+    steps:
+      - script: |
+          set -e
+          systemctl --user restart ucid
 links:
   'uci': ${project.repos.uci.path}
