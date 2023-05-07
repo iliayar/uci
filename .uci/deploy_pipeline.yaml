@@ -7,4 +7,4 @@ jobs:
           cd uci
           cargo install --path uci
 links:
-  'uci': ${project.uci.test.path}
+  'uci': ${project.repos.uci.path}
