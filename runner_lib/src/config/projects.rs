@@ -25,15 +25,30 @@ where
     ) -> Result<Vec<ProjectInfo>, anyhow::Error>;
 }
 
-type Projects = HashMap<String, Arc<super::Project>>;
-
-#[derive(Default, Debug, Clone)]
-pub struct ProjectsStore<PM: ProjectsManager> {
-    manager: Arc<Mutex<PM>>,
+#[cfg(test)]
+mod test {
+    #[tokio::test]
+    #[should_panic]
+    #[allow(unreachable_code)]
+    async fn test_project_manager_dyn() {
+        let pm: Box<dyn super::ProjectsManager> = unimplemented!();
+        let state: super::State = super::State::default();
+        pm.get_project_info(&state, "test").await.ok();
+    }
 }
 
-impl<PL: ProjectsManager> ProjectsStore<PL> {
-    pub async fn with_manager(manager: PL) -> Result<Self, anyhow::Error> {
+type Projects = HashMap<String, Arc<super::Project>>;
+
+#[derive(Clone)]
+pub struct ProjectsStore {
+    manager: Arc<Mutex<Box<dyn ProjectsManager>>>,
+}
+
+impl ProjectsStore {
+    pub async fn with_manager<PM: ProjectsManager + 'static>(
+        manager: PM,
+    ) -> Result<Self, anyhow::Error> {
+        let manager = Box::new(manager);
         Ok(Self {
             manager: Arc::new(Mutex::new(manager)),
         })

@@ -9,10 +9,10 @@ use super::config;
 
 use log::*;
 
-pub struct Context<PM: config::ProjectsManager> {
+pub struct Context {
     pub config_source: ConfigsSource,
     config: Mutex<Arc<config::ServiceConfig>>,
-    pub projects_store: config::ProjectsStore<PM>,
+    pub projects_store: config::ProjectsStore,
 }
 
 pub enum ConfigsSource {
@@ -52,11 +52,11 @@ impl ConfigsSource {
     }
 }
 
-impl<PM: config::ProjectsManager> Context<PM> {
+impl Context {
     pub async fn new(
-        projects_store: config::ProjectsStore<PM>,
+        projects_store: config::ProjectsStore,
         config_source: ConfigsSource,
-    ) -> Result<Context<PM>, anyhow::Error> {
+    ) -> Result<Context, anyhow::Error> {
         let config = load_config_impl(&config_source).await?;
         Ok(Context {
             config: Mutex::new(Arc::new(config)),

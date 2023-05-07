@@ -8,8 +8,8 @@ use warp::Filter;
 
 use anyhow::anyhow;
 
-pub fn filter<PM: config::ProjectsManager + 'static>(
-    deps: call_context::Deps<PM>,
+pub fn filter(
+    deps: call_context::Deps,
 ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
     warp::any()
         .and(with_call_context(deps))
@@ -20,8 +20,8 @@ pub fn filter<PM: config::ProjectsManager + 'static>(
         .and_then(service_logs)
 }
 
-async fn service_logs<PM: config::ProjectsManager + 'static>(
-    call_context: call_context::CallContext<PM>,
+async fn service_logs(
+    call_context: call_context::CallContext,
     query: common::runner::ServiceLogsQuery,
     body: common::runner::ServiceLogsBody,
 ) -> Result<impl warp::Reply, warp::Rejection> {
@@ -36,8 +36,8 @@ async fn service_logs<PM: config::ProjectsManager + 'static>(
     }
 }
 
-async fn service_logs_impl<PM: config::ProjectsManager + 'static>(
-    mut call_context: call_context::CallContext<PM>,
+async fn service_logs_impl(
+    mut call_context: call_context::CallContext,
     common::runner::ServiceLogsQuery { project_id }: common::runner::ServiceLogsQuery,
     common::runner::ServiceLogsBody {
         services,

@@ -7,8 +7,8 @@ use warp::Filter;
 
 use anyhow::anyhow;
 
-pub fn filter<PM: config::ProjectsManager>(
-    deps: call_context::Deps<PM>,
+pub fn filter(
+    deps: call_context::Deps,
 ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
     warp::any()
         .and(with_call_context(deps))
@@ -18,8 +18,8 @@ pub fn filter<PM: config::ProjectsManager>(
         .and_then(list_repos)
 }
 
-async fn list_repos<PM: config::ProjectsManager>(
-    call_context: call_context::CallContext<PM>,
+async fn list_repos(
+    call_context: call_context::CallContext,
     common::runner::ListReposQuery { project_id }: common::runner::ListReposQuery,
 ) -> Result<impl warp::Reply, warp::Rejection> {
     match list_repos_impl(call_context, &project_id).await {
@@ -33,8 +33,8 @@ async fn list_repos<PM: config::ProjectsManager>(
     }
 }
 
-async fn list_repos_impl<PM: config::ProjectsManager>(
-    call_context: call_context::CallContext<PM>,
+async fn list_repos_impl(
+    call_context: call_context::CallContext,
     project_id: &str,
 ) -> Result<common::runner::ReposListResponse, anyhow::Error> {
     if !call_context
@@ -49,12 +49,8 @@ async fn list_repos_impl<PM: config::ProjectsManager>(
     let mut repos = Vec::new();
 
     for repo_id in project_info.repos.list_repos().into_iter() {
-	repos.push(common::runner::Repo {
-	    id: repo_id,
-	});
+        repos.push(common::runner::Repo { id: repo_id });
     }
 
-    Ok(common::runner::ReposListResponse {
-	repos
-    })
+    Ok(common::runner::ReposListResponse { repos })
 }

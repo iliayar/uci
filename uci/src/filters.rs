@@ -4,13 +4,10 @@ use warp::{Filter, Rejection};
 use super::handlers;
 
 use runner_lib::call_context::{CallContext, Deps};
-use runner_lib::config;
 
 use warp::hyper::StatusCode;
 
-pub fn runner<PM: config::ProjectsManager + 'static>(
-    deps: Deps<PM>,
-) -> impl Filter<Extract = impl warp::Reply, Error = Rejection> + Clone {
+pub fn runner(deps: Deps) -> impl Filter<Extract = impl warp::Reply, Error = Rejection> + Clone {
     ping()
         .or(handlers::call::filter(deps.clone()))
         .or(handlers::reload_config::filter(deps.clone()))
@@ -33,18 +30,16 @@ pub fn ping() -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection
     warp::path("ping").and(warp::get()).map(|| StatusCode::OK)
 }
 
-pub fn with_call_context<PM: config::ProjectsManager>(
-    deps: Deps<PM>,
-) -> impl Filter<Extract = (CallContext<PM>,), Error = warp::Rejection> + Clone {
+pub fn with_call_context(
+    deps: Deps,
+) -> impl Filter<Extract = (CallContext,), Error = warp::Rejection> + Clone {
     warp::any()
         .and(with_validation())
         .and(with_deps(deps))
         .map(CallContext::for_handler)
 }
 
-pub fn with_deps<PM: config::ProjectsManager>(
-    deps: Deps<PM>,
-) -> impl Filter<Extract = (Deps<PM>,), Error = Infallible> + Clone {
+pub fn with_deps(deps: Deps) -> impl Filter<Extract = (Deps,), Error = Infallible> + Clone {
     warp::any().map(move || deps.clone())
 }
 

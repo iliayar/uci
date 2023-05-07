@@ -10,8 +10,8 @@ use log::*;
 use reqwest::StatusCode;
 use warp::Filter;
 
-pub fn filter<PM: config::ProjectsManager + 'static>(
-    deps: call_context::Deps<PM>,
+pub fn filter(
+    deps: call_context::Deps,
 ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
     warp::any()
         .and(with_call_context(deps))
@@ -21,8 +21,8 @@ pub fn filter<PM: config::ProjectsManager + 'static>(
         .and_then(run_logs)
 }
 
-async fn run_logs<PM: config::ProjectsManager + 'static>(
-    call_context: call_context::CallContext<PM>,
+async fn run_logs(
+    call_context: call_context::CallContext,
     query_params: common::runner::RunsLogsRequestQuery,
 ) -> Result<impl warp::Reply, warp::Rejection> {
     match run_logs_impl(call_context, query_params).await {
@@ -36,8 +36,8 @@ async fn run_logs<PM: config::ProjectsManager + 'static>(
     }
 }
 
-async fn run_logs_impl<PM: config::ProjectsManager + 'static>(
-    mut call_context: call_context::CallContext<PM>,
+async fn run_logs_impl(
+    mut call_context: call_context::CallContext,
     query: common::runner::RunsLogsRequestQuery,
 ) -> Result<common::runner::ContinueReponse, anyhow::Error> {
     if !call_context

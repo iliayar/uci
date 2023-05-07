@@ -10,8 +10,8 @@ use warp::{multipart::FormData, Filter};
 use anyhow::anyhow;
 use log::*;
 
-pub fn filter<PM: config::ProjectsManager + 'static>(
-    context: call_context::Deps<PM>,
+pub fn filter(
+    context: call_context::Deps,
 ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
     warp::any()
         .and(with_call_context(context))
@@ -21,8 +21,8 @@ pub fn filter<PM: config::ProjectsManager + 'static>(
         .and_then(upload)
 }
 
-async fn upload<PM: config::ProjectsManager + 'static>(
-    call_context: call_context::CallContext<PM>,
+async fn upload(
+    call_context: call_context::CallContext,
     form: FormData,
 ) -> Result<impl warp::Reply, warp::Rejection> {
     if !call_context

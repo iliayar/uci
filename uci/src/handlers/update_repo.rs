@@ -7,8 +7,8 @@ use warp::Filter;
 
 use log::*;
 
-pub fn filter<PM: config::ProjectsManager + 'static>(
-    context: call_context::Deps<PM>,
+pub fn filter(
+    context: call_context::Deps,
 ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
     warp::any()
         .and(with_call_context(context))
@@ -18,8 +18,8 @@ pub fn filter<PM: config::ProjectsManager + 'static>(
         .and_then(update_repo)
 }
 
-async fn update_repo<PM: config::ProjectsManager + 'static>(
-    mut call_context: call_context::CallContext<PM>,
+async fn update_repo(
+    mut call_context: call_context::CallContext,
     common::runner::UpdateRepoBody {
         project_id,
         repo_id,
@@ -36,7 +36,9 @@ async fn update_repo<PM: config::ProjectsManager + 'static>(
 
     let run_id = call_context.init_run_buffered().await;
     tokio::spawn(async move {
-	call_context.wait_for_clients(std::time::Duration::from_secs(2)).await;
+        call_context
+            .wait_for_clients(std::time::Duration::from_secs(2))
+            .await;
         let artifact = artifact_id.map(|id| call_context.artifacts.get_path(id));
         if let Err(err) = call_context
             .update_repo(&project_id, &repo_id, artifact)

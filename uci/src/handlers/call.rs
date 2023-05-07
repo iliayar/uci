@@ -7,8 +7,8 @@ use warp::Filter;
 
 use log::*;
 
-pub fn filter<PM: config::ProjectsManager + 'static>(
-    deps: call_context::Deps<PM>,
+pub fn filter(
+    deps: call_context::Deps,
 ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
     warp::any()
         .and(with_call_context(deps))
@@ -18,8 +18,8 @@ pub fn filter<PM: config::ProjectsManager + 'static>(
         .and_then(call)
 }
 
-async fn call<PM: config::ProjectsManager + 'static>(
-    mut call_context: call_context::CallContext<PM>,
+async fn call(
+    mut call_context: call_context::CallContext,
     common::runner::CallRequest {
         project_id,
         trigger_id,

@@ -7,8 +7,8 @@ use crate::filters::{with_call_context, InternalServerError};
 use reqwest::StatusCode;
 use warp::Filter;
 
-pub fn filter<PM: config::ProjectsManager>(
-    deps: call_context::Deps<PM>,
+pub fn filter(
+    deps: call_context::Deps,
 ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
     warp::any()
         .and(with_call_context(deps))
@@ -18,8 +18,8 @@ pub fn filter<PM: config::ProjectsManager>(
         .and_then(list_runs)
 }
 
-async fn list_runs<PM: config::ProjectsManager>(
-    call_context: call_context::CallContext<PM>,
+async fn list_runs(
+    call_context: call_context::CallContext,
     query_params: common::runner::ListRunsRequestQuery,
 ) -> Result<impl warp::Reply, warp::Rejection> {
     match list_runs_impl(
@@ -39,8 +39,8 @@ async fn list_runs<PM: config::ProjectsManager>(
     }
 }
 
-async fn list_runs_impl<PM: config::ProjectsManager>(
-    call_context: call_context::CallContext<PM>,
+async fn list_runs_impl(
+    call_context: call_context::CallContext,
     project_id: Option<String>,
     pipeline_id: Option<String>,
 ) -> Result<common::runner::ListRunsResponse, anyhow::Error> {
@@ -112,8 +112,8 @@ async fn list_runs_impl<PM: config::ProjectsManager>(
                             pipeline: pipeline.clone(),
                             run_id: run.id.clone(),
                             started: run.started,
-			    stage: run.stage().await,
-			    status,
+                            stage: run.stage().await,
+                            status,
                             jobs,
                         })
                     }

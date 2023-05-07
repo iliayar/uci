@@ -5,8 +5,8 @@ use crate::filters::{with_call_context, InternalServerError};
 use reqwest::StatusCode;
 use warp::Filter;
 
-pub fn filter<PM: config::ProjectsManager>(
-    deps: call_context::Deps<PM>,
+pub fn filter(
+    deps: call_context::Deps,
 ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
     warp::any()
         .and(with_call_context(deps))
@@ -15,8 +15,8 @@ pub fn filter<PM: config::ProjectsManager>(
         .and_then(list_projects)
 }
 
-async fn list_projects<PM: config::ProjectsManager>(
-    call_context: call_context::CallContext<PM>,
+async fn list_projects(
+    call_context: call_context::CallContext,
 ) -> Result<impl warp::Reply, warp::Rejection> {
     match list_projects_impl(call_context).await {
         Ok(resp) => Ok(warp::reply::with_status(
@@ -29,8 +29,8 @@ async fn list_projects<PM: config::ProjectsManager>(
     }
 }
 
-async fn list_projects_impl<PM: config::ProjectsManager>(
-    call_context: call_context::CallContext<PM>,
+async fn list_projects_impl(
+    call_context: call_context::CallContext,
 ) -> Result<common::runner::ProjectsListResponse, anyhow::Error> {
     let mut projects = Vec::new();
     for project in call_context.list_projects().await? {

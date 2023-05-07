@@ -15,7 +15,7 @@ use log::*;
 use tokio::sync::Mutex;
 
 pub type Runs = Arc<Mutex<HashMap<String, Arc<RunContext>>>>;
-pub type ContextPtr<PM> = Arc<Context<PM>>;
+pub type ContextPtr = Arc<Context>;
 
 #[derive(Clone)]
 pub struct ArtifactsStorage {
@@ -62,35 +62,25 @@ impl ArtifactsStorage {
     }
 }
 
-pub struct Deps<PM: config::ProjectsManager> {
-    pub context: Arc<Context<PM>>,
+#[derive(Clone)]
+pub struct Deps {
+    pub context: Arc<Context>,
     pub runs: Runs,
     pub state: Arc<State<'static>>,
     pub artifacts: ArtifactsStorage,
 }
 
-impl<PM: config::ProjectsManager> Clone for Deps<PM> {
-    fn clone(&self) -> Self {
-        Self {
-            context: self.context.clone(),
-            runs: self.runs.clone(),
-            state: self.state.clone(),
-            artifacts: self.artifacts.clone(),
-        }
-    }
-}
-
-pub struct CallContext<PM: config::ProjectsManager> {
+pub struct CallContext {
     pub token: Option<String>,
     check_permisions: bool,
-    pub context: ContextPtr<PM>,
+    pub context: ContextPtr,
     pub runs: Arc<Mutex<HashMap<String, Arc<RunContext>>>>,
     pub run_context: Option<Arc<RunContext>>,
     pub state: Arc<State<'static>>,
     pub artifacts: ArtifactsStorage,
 }
 
-impl<PM: config::ProjectsManager> CallContext<PM> {
+impl CallContext {
     pub async fn with_state<'a, R, F, Fut>(&'a self, f: F) -> R
     where
         Fut: futures::Future<Output = R>,
@@ -103,7 +93,7 @@ impl<PM: config::ProjectsManager> CallContext<PM> {
         f(state).await
     }
 
-    pub fn for_handler(token: Option<String>, deps: Deps<PM>) -> CallContext<PM> {
+    pub fn for_handler(token: Option<String>, deps: Deps) -> CallContext {
         CallContext {
             token,
             context: deps.context,

@@ -3,14 +3,14 @@ use futures::{SinkExt, StreamExt};
 use tokio_stream::wrappers::UnboundedReceiverStream;
 use warp::Filter;
 
-use runner_lib::{call_context, config};
+use runner_lib::call_context;
 
 use crate::filters::with_call_context;
 
 use log::*;
 
-pub fn filter<PM: config::ProjectsManager>(
-    deps: call_context::Deps<PM>,
+pub fn filter(
+    deps: call_context::Deps,
 ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
     warp::path!("ws" / String)
         .and(warp::ws())
@@ -18,10 +18,10 @@ pub fn filter<PM: config::ProjectsManager>(
         .and_then(ws_client)
 }
 
-async fn ws_client<PM: config::ProjectsManager>(
+async fn ws_client(
     run_id: String,
     ws: warp::ws::Ws,
-    context: call_context::CallContext<PM>,
+    context: call_context::CallContext,
 ) -> Result<impl warp::Reply, warp::Rejection> {
     debug!("Handling ws client {}", run_id);
     let client = context.make_out_channel(run_id).await;

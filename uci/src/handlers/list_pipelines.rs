@@ -7,8 +7,8 @@ use warp::Filter;
 
 use anyhow::anyhow;
 
-pub fn filter<PM: config::ProjectsManager>(
-    deps: call_context::Deps<PM>,
+pub fn filter(
+    deps: call_context::Deps,
 ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
     warp::any()
         .and(with_call_context(deps))
@@ -18,8 +18,8 @@ pub fn filter<PM: config::ProjectsManager>(
         .and_then(list_pipelines)
 }
 
-async fn list_pipelines<PM: config::ProjectsManager>(
-    call_context: call_context::CallContext<PM>,
+async fn list_pipelines(
+    call_context: call_context::CallContext,
     common::runner::ListPipelinesQuery { project_id }: common::runner::ListPipelinesQuery,
 ) -> Result<impl warp::Reply, warp::Rejection> {
     match list_pipelines_impl(call_context, &project_id).await {
@@ -33,8 +33,8 @@ async fn list_pipelines<PM: config::ProjectsManager>(
     }
 }
 
-async fn list_pipelines_impl<PM: config::ProjectsManager>(
-    call_context: call_context::CallContext<PM>,
+async fn list_pipelines_impl(
+    call_context: call_context::CallContext,
     project_id: &str,
 ) -> Result<common::runner::PipelinesListResponse, anyhow::Error> {
     if !call_context

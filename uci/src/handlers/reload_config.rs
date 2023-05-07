@@ -5,8 +5,8 @@ use crate::filters::{with_call_context, AuthRejection, InternalServerError};
 use reqwest::StatusCode;
 use warp::Filter;
 
-pub fn filter<PM: config::ProjectsManager>(
-    deps: call_context::Deps<PM>,
+pub fn filter(
+    deps: call_context::Deps,
 ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
     warp::any()
         .and(with_call_context(deps))
@@ -15,8 +15,8 @@ pub fn filter<PM: config::ProjectsManager>(
         .and_then(reload_config)
 }
 
-async fn reload_config<PM: config::ProjectsManager>(
-    call_context: call_context::CallContext<PM>,
+async fn reload_config(
+    call_context: call_context::CallContext,
 ) -> Result<impl warp::Reply, warp::Rejection> {
     if !call_context
         .check_permissions(None, config::ActionType::Write)
