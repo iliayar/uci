@@ -1,0 +1,10 @@
+jobs:
+  build:
+    steps:
+      - script: |
+          set -e
+
+          cd uci
+          cargo install --path uci
+links:
+  'uci': ${project.uci.test.path}

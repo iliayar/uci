@@ -1,0 +1,3 @@
+pipelines:
+  deploy:
+    path: deploy_pipeline.yaml
