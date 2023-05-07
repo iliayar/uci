@@ -17,9 +17,10 @@ impl Config {
     pub async fn load(
         path: PathBuf,
         env: String,
-        project: Option<Option<String>>,
+        project: Option<String>,
+        prompt_project: bool,
     ) -> Result<Config, anyhow::Error> {
-        raw::load(path, env, project).await
+        raw::load(path, env, project, prompt_project).await
     }
 
     pub async fn try_get_project(&self) -> Option<String> {
@@ -78,12 +79,14 @@ mod raw {
         pub runner_url: Option<String>,
         pub token: Option<String>,
         pub default_project: Option<String>,
+        pub prompt_project: Option<bool>,
     }
 
     pub async fn load(
         path: PathBuf,
         env: String,
-        project: Option<Option<String>>,
+        project: Option<String>,
+        prompt_project: bool,
     ) -> Result<super::Config, anyhow::Error> {
         if !path.exists() {
             warn!("Config doesn't exists, loading default");
@@ -104,6 +107,19 @@ mod raw {
         config.default_project = config_env
             .default_project
             .or(config_default.default_project);
+
+        let config_prompt_project = config_env
+            .prompt_project
+            .or(config_default.prompt_project)
+            .unwrap_or(false);
+
+        let project = if let Some(project) = project {
+            Some(Some(project))
+        } else if prompt_project || (config_prompt_project && config.default_project.is_none()) {
+            Some(None)
+        } else {
+            None
+        };
         config.project_arg = project;
 
         Ok(config)

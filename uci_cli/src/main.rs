@@ -30,14 +30,14 @@ async fn main() {
 
     debug!("Arguments parsed");
     debug!("Loading config");
-    let project = if let Some(project) = args.project {
-        Some(Some(project))
-    } else if args.select_project {
-        Some(None)
-    } else {
-        None
-    };
-    let config = match config::Config::load(args.config_path.into(), args.env, project).await {
+    let config = match config::Config::load(
+        args.config_path.into(),
+        args.env,
+        args.project,
+        args.select_project,
+    )
+    .await
+    {
         Err(err) => {
             error!("Failed to load config, using default: {}", err);
             config::Config::default()
