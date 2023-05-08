@@ -124,6 +124,8 @@ enum ParseMode {
 struct SendMessageBody {
     chat_id: String,
     text: String,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
     parse_mode: Option<ParseMode>,
 }
 
