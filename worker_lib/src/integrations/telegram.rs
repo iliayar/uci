@@ -65,6 +65,10 @@ impl super::integration::Integration for TelegramIntegration {
     }
 
     async fn handle_job_pending(&self, job: &str) -> Result<(), anyhow::Error> {
+	if !self.notify_jobs {
+	    return Ok(());
+	}
+
         let mut buf: Vec<u8> = Vec::new();
         write!(buf, "Job {}", job).ok();
 
@@ -79,6 +83,10 @@ impl super::integration::Integration for TelegramIntegration {
     }
 
     async fn handle_job_progress(&self, job: &str, step: usize) -> Result<(), anyhow::Error> {
+	if !self.notify_jobs {
+	    return Ok(());
+	}
+
         let mut buf: Vec<u8> = Vec::new();
         write!(buf, "Job {}", job).ok();
 
@@ -93,6 +101,10 @@ impl super::integration::Integration for TelegramIntegration {
     }
 
     async fn handle_job_done(&self, job: &str, error: Option<String>) -> Result<(), anyhow::Error> {
+	if !self.notify_jobs {
+	    return Ok(());
+	}
+
         let mut buf: Vec<u8> = Vec::new();
         write!(buf, "Job {}", job).ok();
 
