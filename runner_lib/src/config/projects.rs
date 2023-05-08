@@ -319,6 +319,7 @@ impl From<&ProjectInfo> for common::vars::Value {
         let mut vars = common::vars::Value::default();
         vars.assign("repos", (&val.repos).into()).ok();
         vars.assign("data.path", (&val.data_path).into()).ok();
+        vars.assign("secrets", (&val.secrets).into()).ok();
         vars
     }
 }
