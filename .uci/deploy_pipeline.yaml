@@ -13,8 +13,15 @@ jobs:
       - script: |
           set -e
 
-          echo "Restarting service. Losing runtime info..."
-          systemctl --user restart ucid
+          function restart() {
+            sleep 5
+            systemctl --user restart ucid
+          }
+
+          export -f restart
+
+          echo "Restarting service in 5 seconds..."
+          restart 1>&- 2>&- &disown
 links:
   'uci': ${project.repos.uci.path}
 
