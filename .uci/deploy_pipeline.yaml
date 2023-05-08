@@ -21,5 +21,5 @@ links:
 integrations:
   gitlab:
     token: ${project.secrets.gitlab_token}
-    project_id: 42995967
+    project_id: '42995967'
     rev: ${project.repos.uci.rev}
