@@ -7,6 +7,8 @@ pub struct TelegramIntegration {
     token: String,
     chat_id: String,
 
+    topic_id: Option<String>,
+
     #[serde(default = "default_notify_jobs")]
     notify_jobs: bool,
 
@@ -163,6 +165,9 @@ struct SendMessageBody {
 
     #[serde(skip_serializing_if = "Option::is_none")]
     parse_mode: Option<ParseMode>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    message_thread_id: Option<i64>,
 }
 
 impl TelegramIntegration {
@@ -185,9 +190,15 @@ impl TelegramIntegration {
     }
 
     async fn send_message(&self, text: String) -> Result<(), anyhow::Error> {
+        let message_thread_id = self
+            .topic_id
+            .as_ref()
+            .map(|id| id.parse::<i64>().ok())
+            .flatten();
         let body = SendMessageBody {
             chat_id: self.chat_id.clone(),
             parse_mode: None,
+            message_thread_id,
             text,
         };
 
