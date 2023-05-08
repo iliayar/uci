@@ -19,6 +19,7 @@ pub enum Repo {
         path: PathBuf,
         source: String,
         branch: String,
+        commit: Option<String>,
     },
     Manual {
         id: String,
@@ -48,6 +49,7 @@ impl Repo {
                 source,
                 branch,
                 path,
+                ..
             } => {
                 if !git::check_exists(path.clone()).await? {
                     let run_context: &RunContext = state.get()?;
@@ -66,7 +68,7 @@ impl Repo {
                     info!("Repo {} already cloned", id);
                 }
             }
-            Repo::Manual { id, path } => {
+            Repo::Manual { id, path, .. } => {
                 info!("Repo {} is manually managed, don't clone", id);
                 tokio::fs::create_dir_all(path.clone()).await?;
             }
@@ -89,6 +91,7 @@ impl Repo {
                 source,
                 branch,
                 path,
+                ..
             } => {
                 let _guard = executor.write_repo(&project_info.id, &id).await;
 
@@ -110,7 +113,7 @@ impl Repo {
                 }
             }
 
-            Repo::Manual { id, path } => {
+            Repo::Manual { id, path, .. } => {
                 let _guard = executor.write_repo(&project_info.id, &id).await;
 
                 let artifact = artifact.ok_or_else(|| {
@@ -136,21 +139,30 @@ impl Repo {
 
 impl From<&Repo> for common::vars::Vars {
     fn from(val: &Repo) -> Self {
-        use common::vars::*;
-        let path = match val {
+        let mut vars = common::vars::Vars::default();
+        match val {
             Repo::Regular {
                 id,
                 source,
                 branch,
                 path,
-            } => path.clone(),
-            Repo::Manual { id, path } => path.clone(),
+                commit,
+                ..
+            } => {
+                vars.assign("path", path.to_string_lossy().to_string().into())
+                    .ok();
+                vars.assign("branch", branch.into()).ok();
+                vars.assign("source", source.into()).ok();
+                if let Some(commit) = commit {
+                    vars.assign("rev", commit.into()).ok();
+                }
+            }
+            Repo::Manual { id, path, .. } => {
+                vars.assign("path", path.to_string_lossy().to_string().into())
+                    .ok();
+            }
         };
-        let value = HashMap::from_iter([(
-            String::from("path"),
-            Value::<()>::String(path.to_string_lossy().to_string()),
-        )]);
-        value.into()
+        vars
     }
 }
 
@@ -268,20 +280,22 @@ mod raw {
         repos: HashMap<String, Repo>,
     }
 
-    impl config::LoadRawSync for Repos {
+    #[async_trait::async_trait]
+    impl config::LoadRaw for Repos {
         type Output = super::Repos;
 
-        fn load_raw(self, state: &State) -> Result<Self::Output, anyhow::Error> {
+        async fn load_raw(self, state: &State) -> Result<Self::Output, anyhow::Error> {
             Ok(super::Repos {
-                repos: self.repos.load_raw(state)?,
+                repos: self.repos.load_raw(state).await?,
             })
         }
     }
 
-    impl config::LoadRawSync for Repo {
+    #[async_trait::async_trait]
+    impl config::LoadRaw for Repo {
         type Output = super::Repo;
 
-        fn load_raw(self, state: &State) -> Result<Self::Output, anyhow::Error> {
+        async fn load_raw(self, state: &State) -> Result<Self::Output, anyhow::Error> {
             let repo_id: String = state.get_named("_id").cloned()?;
             let project_info: &config::ProjectInfo = state.get()?;
             let service_config: &config::ServiceConfig = state.get()?;
@@ -293,6 +307,9 @@ mod raw {
             } else {
                 default_path
             };
+
+            let commit = crate::git::current_commit(path.clone()).await.ok();
+
             if !self.manual.unwrap_or(false) {
                 Ok(super::Repo::Regular {
                     id: repo_id,
@@ -300,6 +317,7 @@ mod raw {
                         .source
                         .ok_or_else(|| anyhow!("'source' must be specified for not manual repo"))?,
                     branch: self.branch.unwrap_or_else(|| String::from("master")),
+                    commit,
                     path,
                 })
             } else {

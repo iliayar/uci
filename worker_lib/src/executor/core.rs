@@ -535,10 +535,7 @@ impl Executor {
         let run_context: &RunContext = state.get()?;
         let project: String = state.get_named("project").cloned()?;
 
-        let mut integrations: Vec<Box<dyn Integration>> = Vec::new();
-        for (name, config) in pipeline.integrations.iter() {
-            integrations.push(get_integration(name, config.clone())?);
-        }
+        let integrations = Integrations::from_map(pipeline.integrations.clone())?;
 
         let pipeline_run: Arc<PipelineRun> = self
             .runs
@@ -549,6 +546,7 @@ impl Executor {
 
         let mut state = state.clone();
         state.set(pipeline_run.as_ref());
+        state.set(&integrations);
 
         let res = self.run_impl(&state, pipeline).await;
 
@@ -574,6 +572,17 @@ impl Executor {
                 error,
             })
             .await;
+
+        match res.as_ref() {
+            Ok(_) => {
+                integrations.handle_pipeline_done().await;
+            }
+            Err(err) => {
+                integrations
+                    .handle_pipeline_fail(Some(err.to_string()))
+                    .await;
+            }
+        }
         pipeline_run.finish().await?;
 
         res
@@ -587,6 +596,7 @@ impl Executor {
         info!("Running execution");
         let pipeline_run: &PipelineRun = state.get()?;
         let run_context: &RunContext = state.get()?;
+        let integrations: &Integrations = state.get()?;
 
         let repos: &ReposList = state.get()?;
 
@@ -626,6 +636,7 @@ impl Executor {
                 .collect()
         };
 
+        integrations.handle_pipeline_start().await;
         pipeline_run.set_status(PipelineStatus::Running).await;
         run_context
             .send(common::runner::PipelineMessage::Start {
@@ -634,6 +645,7 @@ impl Executor {
             .await;
 
         for (job_id, _) in pipeline.jobs.iter() {
+            integrations.handle_job_pending(&job_id).await;
             pipeline_run.init_job(job_id).await;
             run_context
                 .send(common::runner::PipelineMessage::JobPending {
@@ -728,6 +740,7 @@ impl Executor {
         job: common::Job,
     ) -> Result<String, anyhow::Error> {
         let run_context: &RunContext = state.get()?;
+        let integrations: &Integrations = state.get()?;
 
         let mut state = state.clone();
         state.set_named("job", &id);
@@ -736,6 +749,7 @@ impl Executor {
         let pipeline_run: &PipelineRun = state.get()?;
 
         for (i, step) in job.steps.into_iter().enumerate() {
+            integrations.handle_job_progress(&id, i).await;
             pipeline_run
                 .set_job_status(&id, JobStatus::Running { step: i })
                 .await;
@@ -749,6 +763,7 @@ impl Executor {
             step.run(&state).await?
         }
 
+        integrations.handle_job_done(&id).await;
         pipeline_run.set_job_status(&id, JobStatus::Finished).await;
         run_context
             .send(common::runner::PipelineMessage::JobFinished {

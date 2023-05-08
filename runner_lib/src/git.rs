@@ -88,7 +88,7 @@ pub async fn pull(path: PathBuf, branch: String) -> Result<ChangedFiles, GitErro
     .await
 }
 
-async fn current_commit(path: PathBuf) -> Result<String, GitError> {
+pub async fn current_commit(path: PathBuf) -> Result<String, GitError> {
     git_out(
         path,
         &[

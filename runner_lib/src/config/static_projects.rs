@@ -108,8 +108,36 @@ mod raw {
         path: String,
         #[serde(default)]
         repos: HashMap<String, config::repos_raw::Repo>,
-        secrets: Option<String>,
+        secrets: Option<OneOrManySecrets>,
         tokens: Option<config::permissions_raw::Tokens>,
+    }
+
+    #[derive(Deserialize, Serialize)]
+    #[serde(untagged)]
+    enum OneOrManySecrets {
+        One(String),
+        Many(Vec<String>),
+    }
+
+    #[async_trait::async_trait]
+    impl config::LoadRaw for OneOrManySecrets {
+        type Output = config::Secrets;
+
+        async fn load_raw(self, state: &State) -> Result<Self::Output, anyhow::Error> {
+            match self {
+                OneOrManySecrets::One(path) => {
+                    let path = utils::eval_abs_path(state, path)?;
+                    config::Secrets::load(path).await
+                }
+                OneOrManySecrets::Many(paths) => {
+                    let paths: Result<_, anyhow::Error> = paths
+                        .into_iter()
+                        .map(|path| utils::eval_abs_path(state, path))
+                        .collect();
+                    config::Secrets::load_many(paths?).await
+                }
+            }
+        }
     }
 
     #[async_trait::async_trait]
@@ -143,6 +171,7 @@ mod raw {
                     repos: self
                         .repos
                         .load_raw(&state)
+                        .await
                         .map_err(|err| anyhow!("Failed to load repos config: {}", err))?,
                 }
             };
@@ -156,24 +185,17 @@ mod raw {
             res.secrets = {
                 let mut state = state.clone();
                 state.set(&res);
-                if let Some(secrets) = self.secrets {
-                    let secrets_path = utils::eval_abs_path(&state, secrets)?;
-                    config::Secrets::load(secrets_path)
-                        .await
-                        .map_err(|err| anyhow!("Failed to load secrets: {}", err))?
-                } else {
-                    config::Secrets::default()
-                }
+                self.secrets
+                    .load_raw(&state)
+                    .await
+                    .map_err(|err| anyhow!("Failed to load secrets: {}", err))?
+                    .unwrap_or_default()
             };
 
             res.tokens = {
                 let mut state = state.clone();
                 state.set(&res);
-                if let Some(tokens) = self.tokens {
-                    tokens.load_raw(&state)?
-                } else {
-                    config::Tokens::default()
-                }
+                self.tokens.load_raw(&state)?.unwrap_or_default()
             };
 
             Ok(res)

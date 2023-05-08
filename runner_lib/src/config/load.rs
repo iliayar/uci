@@ -99,6 +99,19 @@ impl<T: LoadRawSync> LoadRawSync for Option<T> {
     }
 }
 
+#[async_trait::async_trait]
+impl<T: LoadRaw + Send> LoadRaw for Option<T> {
+    type Output = Option<<T as LoadRaw>::Output>;
+
+    async fn load_raw(self, state: &State) -> Result<Self::Output, anyhow::Error> {
+        if let Some(value) = self {
+            Ok(Some(value.load_raw(state).await?))
+        } else {
+            Ok(None)
+        }
+    }
+}
+
 pub trait AutoLoadRaw {}
 
 impl<T: AutoLoadRaw> LoadRawSync for T {
