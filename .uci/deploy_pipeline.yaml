@@ -17,3 +17,9 @@ jobs:
           systemctl --user restart ucid
 links:
   'uci': ${project.repos.uci.path}
+
+integrations:
+  gitlab:
+    token: ${project.secrets.gitlab_token}
+    project_id: 42995967
+    rev: ${project.repos.uci.rev}
