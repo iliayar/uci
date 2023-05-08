@@ -72,6 +72,11 @@ impl super::integration::Integration for GitLabIntegration {
 }
 
 impl GitLabIntegration {
+    pub fn from_value(value: serde_json::Value) -> Result<Self, anyhow::Error> {
+        let int = serde_json::from_value(value)?;
+        Ok(int)
+    }
+
     async fn set_job_status<DS: AsRef<str>>(
         &self,
         name: impl AsRef<str>,
