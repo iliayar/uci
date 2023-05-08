@@ -26,7 +26,7 @@ impl Secrets {
     }
 }
 
-impl From<&Secrets> for common::vars::Vars {
+impl From<&Secrets> for common::vars::Value {
     fn from(val: &Secrets) -> Self {
         (&val.secrets).into()
     }

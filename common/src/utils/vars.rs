@@ -51,114 +51,101 @@ pub enum VarsError {
 }
 
 #[derive(serde::Deserialize, serde::Serialize, Clone, Debug)]
-pub enum Vars {
-    Object { values: HashMap<String, Vars> },
-    List { values: Vec<Vars> },
+#[serde(untagged)]
+pub enum Value {
+    Object(HashMap<String, Value>),
+    List(Vec<Value>),
     String(String),
     Bool(bool),
+    Integer(i64),
     None,
 }
 
-impl Vars {
+impl Value {
     fn value_name(&self) -> String {
         match self {
-            Vars::Object { values: _ } => "object",
-            Vars::List { values: _ } => "list",
-            Vars::String(_) => "string",
-            Vars::Bool(_) => "bool",
-            Vars::None => "none",
+            Value::Object(_) => "object",
+            Value::List(_) => "list",
+            Value::String(_) => "string",
+            Value::Bool(_) => "bool",
+            Value::Integer(_) => "integer",
+            Value::None => "none",
         }
         .to_string()
     }
 }
 
-pub enum Value<T = ()> {
-    Object(HashMap<String, T>),
-    List(Vec<T>),
-    String(String),
-    None,
-}
-
-impl Default for Vars {
+impl Default for Value {
     fn default() -> Self {
-        Vars::None
+        Value::None
     }
 }
 
-impl From<()> for Vars {
+impl From<()> for Value {
     fn from(_val: ()) -> Self {
-        Vars::None
-    }
-}
-
-impl<E: Into<Vars>> From<Value<E>> for Vars {
-    fn from(val: Value<E>) -> Self {
-        match val {
-            Value::Object(m) => Vars::Object {
-                values: m.into_iter().map(|(k, v)| (k, v.into())).collect(),
-            },
-            Value::List(l) => Vars::List {
-                values: l.into_iter().map(Into::into).collect(),
-            },
-            Value::String(s) => Vars::String(s),
-            Value::None => Vars::None,
-        }
+        Value::None
     }
 }
 
 pub trait IntoVar {}
 
-impl<E: Into<Vars>> From<HashMap<String, E>> for Vars {
+impl<E: Into<Value>> From<HashMap<String, E>> for Value {
     fn from(m: HashMap<String, E>) -> Self {
         let values = m.into_iter().map(|(k, v)| (k, v.into())).collect();
-        Vars::Object { values }
+        Value::Object(values)
     }
 }
 
-impl<'a, E> From<&'a HashMap<String, E>> for Vars
+impl<'a, E> From<&'a HashMap<String, E>> for Value
 where
-    &'a E: Into<Vars>,
+    &'a E: Into<Value>,
 {
     fn from(m: &'a HashMap<String, E>) -> Self {
         let values = m.iter().map(|(k, v)| (k.clone(), v.into())).collect();
-        Vars::Object { values }
+        Value::Object(values)
     }
 }
 
-impl<E: Into<Vars>> From<Vec<E>> for Vars {
+impl<E: Into<Value>> From<Vec<E>> for Value {
     fn from(v: Vec<E>) -> Self {
         let values = v.into_iter().map(|v| v.into()).collect();
-        Vars::List { values }
+        Value::List(values)
     }
 }
 
-impl From<String> for Vars {
+impl From<String> for Value {
     fn from(s: String) -> Self {
-        Vars::String(s)
+        Value::String(s)
     }
 }
 
-impl From<&String> for Vars {
+impl From<&String> for Value {
     fn from(s: &String) -> Self {
-        Vars::String(s.to_string())
+        Value::String(s.to_string())
     }
 }
 
-impl From<bool> for Vars {
+impl From<bool> for Value {
     fn from(v: bool) -> Self {
-        Vars::Bool(v)
+        Value::Bool(v)
     }
 }
 
-impl From<PathBuf> for Vars {
+impl From<PathBuf> for Value {
     fn from(path: PathBuf) -> Self {
         path.to_string_lossy().to_string().into()
     }
 }
 
-impl From<&PathBuf> for Vars {
+impl From<&PathBuf> for Value {
     fn from(path: &PathBuf) -> Self {
         path.to_string_lossy().to_string().into()
+    }
+}
+
+impl From<i64> for Value {
+    fn from(v: i64) -> Self {
+        Value::Integer(v)
     }
 }
 
@@ -182,13 +169,13 @@ pub enum PathItem {
     Index(usize),
 }
 
-impl Vars {
-    pub fn get(&self, path: Path) -> Result<&Vars, VarsError> {
-        let mut result: &Vars = self;
+impl Value {
+    pub fn get(&self, path: Path) -> Result<&Value, VarsError> {
+        let mut result: &Value = self;
         for item in path.items.into_iter() {
             result = match item {
                 PathItem::Key(key) => {
-                    if let Vars::Object { values } = result {
+                    if let Value::Object(values) = result {
                         if let Some(value) = values.get(&key) {
                             value
                         } else {
@@ -199,7 +186,7 @@ impl Vars {
                     }
                 }
                 PathItem::Index(index) => {
-                    if let Vars::List { values } = result {
+                    if let Value::List(values) = result {
                         if values.len() <= index {
                             return Err(VarsError::OutOfBounds { index });
                         } else {
@@ -214,12 +201,12 @@ impl Vars {
         Ok(result)
     }
 
-    pub fn get_mut(&mut self, path: Path) -> Result<&mut Vars, VarsError> {
-        let mut result: &mut Vars = self;
+    pub fn get_mut(&mut self, path: Path) -> Result<&mut Value, VarsError> {
+        let mut result: &mut Value = self;
         for item in path.items.into_iter() {
             result = match item {
                 PathItem::Key(key) => {
-                    if let Vars::Object { values } = result {
+                    if let Value::Object(values) = result {
                         if let Some(value) = values.get_mut(&key) {
                             value
                         } else {
@@ -230,7 +217,7 @@ impl Vars {
                     }
                 }
                 PathItem::Index(index) => {
-                    if let Vars::List { values } = result {
+                    if let Value::List(values) = result {
                         if values.len() <= index {
                             return Err(VarsError::OutOfBounds { index });
                         } else {
@@ -247,8 +234,9 @@ impl Vars {
 
     pub fn get_string(&self, path: Path) -> Result<String, VarsError> {
         match self.get(path)? {
-            Vars::String(s) => Ok(s.to_string()),
-            Vars::Bool(v) => Ok(v.to_string()),
+            Value::String(s) => Ok(s.to_string()),
+            Value::Bool(v) => Ok(v.to_string()),
+            Value::Integer(i) => Ok(i.to_string()),
             _ => Err(VarsError::NotAString),
         }
     }
@@ -257,29 +245,31 @@ impl Vars {
         substitute_vars(self, text.as_ref())
     }
 
-    pub fn assign<S: AsRef<str>>(&mut self, path: S, value: Vars) -> Result<(), SubstitutionError> {
+    pub fn assign<S: AsRef<str>>(
+        &mut self,
+        path: S,
+        value: Value,
+    ) -> Result<(), SubstitutionError> {
         let path = parse_path_simple(path.as_ref())?;
         self.assign_path(path, value)?;
         Ok(())
     }
 
-    pub fn assign_path(&mut self, path: Path, value: Vars) -> Result<(), VarsError> {
-        let mut result: &mut Vars = self;
+    pub fn assign_path(&mut self, path: Path, value: Value) -> Result<(), VarsError> {
+        let mut result: &mut Value = self;
         for item in path.items.into_iter() {
             result = match item {
                 PathItem::Key(key) => match result {
-                    Vars::Object { values } => {
+                    Value::Object(values) => {
                         if !values.contains_key(&key) {
-                            values.insert(key.clone(), Vars::None);
+                            values.insert(key.clone(), Value::None);
                         }
 
                         values.get_mut(&key).unwrap()
                     }
-                    Vars::None => {
-                        *result = Vars::Object {
-                            values: HashMap::from_iter([(key.clone(), Vars::None)]),
-                        };
-                        if let Vars::Object { values } = result {
+                    Value::None => {
+                        *result = Value::Object(HashMap::from_iter([(key.clone(), Value::None)]));
+                        if let Value::Object(values) = result {
                             values.get_mut(&key).unwrap()
                         } else {
                             unreachable!()
@@ -290,17 +280,15 @@ impl Vars {
                     }
                 },
                 PathItem::Index(index) => match result {
-                    Vars::List { values } => {
+                    Value::List(values) => {
                         while values.len() <= index {
-                            values.push(Vars::None);
+                            values.push(Value::None);
                         }
                         &mut values[index]
                     }
-                    Vars::None => {
-                        *result = Vars::List {
-                            values: vec![Vars::None; index + 1],
-                        };
-                        if let Vars::List { values } = result {
+                    Value::None => {
+                        *result = Value::List(vec![Value::None; index + 1]);
+                        if let Value::List(values) = result {
                             &mut values[index]
                         } else {
                             unreachable!()
@@ -316,8 +304,8 @@ impl Vars {
         Ok(())
     }
 
-    pub fn from_list<S: AsRef<str>>(assignes: &[(S, Vars)]) -> Result<Vars, SubstitutionError> {
-        let mut vars = Vars::default();
+    pub fn from_list<S: AsRef<str>>(assignes: &[(S, Value)]) -> Result<Value, SubstitutionError> {
+        let mut vars = Value::default();
         for (path, value) in assignes {
             vars.assign(path, value.clone())?;
         }
@@ -326,48 +314,43 @@ impl Vars {
 
     pub fn from_list_strings<S: AsRef<str>, V: ToString>(
         assignes: &[(S, V)],
-    ) -> Result<Vars, SubstitutionError> {
+    ) -> Result<Value, SubstitutionError> {
         let mut nassigned = Vec::new();
         for (path, value) in assignes {
-            nassigned.push((path, Vars::String(value.to_string())));
+            nassigned.push((path, Value::String(value.to_string())));
         }
-        Vars::from_list(&nassigned)
+        Value::from_list(&nassigned)
     }
 
-    pub fn merge(self, other: Vars) -> Result<Vars, SubstitutionError> {
+    pub fn merge(self, other: Value) -> Result<Value, SubstitutionError> {
         match (self, other) {
-            (Vars::None, value) => Ok(value),
-            (value, Vars::None) => Ok(value),
-            (Vars::Object { values: lhs_values }, Vars::Object { values: rhs_values }) => {
+            (Value::None, value) => Ok(value),
+            (value, Value::None) => Ok(value),
+            (Value::Object(lhs_values), Value::Object(rhs_values)) => {
                 let mut values = lhs_values;
                 for (k, v) in rhs_values.into_iter() {
-                    let cur = values.remove(&k).unwrap_or(Vars::None);
+                    let cur = values.remove(&k).unwrap_or(Value::None);
                     values.insert(k, cur.merge(v)?);
                 }
-                Ok(Vars::Object { values })
+                Ok(Value::Object(values))
             }
-            (
-                Vars::List { values: lhs_values },
-                Vars::List {
-                    values: mut rhs_values,
-                },
-            ) => {
+            (Value::List(lhs_values), Value::List(mut rhs_values)) => {
                 let mut values = lhs_values;
                 values.append(&mut rhs_values);
-                Ok(Vars::List { values })
+                Ok(Value::List(values))
             }
             (lhs, rhs) => Err(VarsError::InvalidMerge(lhs.value_name(), rhs.value_name()).into()),
         }
     }
 }
 
-pub fn substitute_vars(vars: &Vars, text: &str) -> Result<String, SubstitutionError> {
+pub fn substitute_vars(vars: &Value, text: &str) -> Result<String, SubstitutionError> {
     trace!("Substituting vars: {:?} into {}", vars, text);
     let mut chars = text.chars().peekable();
     parse_raw(vars, &mut chars)
 }
 
-fn parse_raw(vars: &Vars, chars: &mut Peekable<Chars>) -> Result<String, SubstitutionError> {
+fn parse_raw(vars: &Value, chars: &mut Peekable<Chars>) -> Result<String, SubstitutionError> {
     enum State {
         Start,
         End,
@@ -398,7 +381,7 @@ fn parse_raw(vars: &Vars, chars: &mut Peekable<Chars>) -> Result<String, Substit
     }
 }
 
-fn try_parse_expr(vars: &Vars, chars: &mut Peekable<Chars>) -> Result<String, SubstitutionError> {
+fn try_parse_expr(vars: &Value, chars: &mut Peekable<Chars>) -> Result<String, SubstitutionError> {
     enum State {
         Start,
         End,
@@ -466,11 +449,11 @@ fn try_parse_expr(vars: &Vars, chars: &mut Peekable<Chars>) -> Result<String, Su
 
 fn parse_path_simple(path: &str) -> Result<Path, SubstitutionError> {
     let mut chars = path.chars().peekable();
-    let vars = Vars::default();
+    let vars = Value::default();
     parse_path(&vars, &mut chars)
 }
 
-fn parse_path(vars: &Vars, chars: &mut Peekable<Chars>) -> Result<Path, SubstitutionError> {
+fn parse_path(vars: &Value, chars: &mut Peekable<Chars>) -> Result<Path, SubstitutionError> {
     enum State {
         Start,
         Key,
@@ -564,7 +547,7 @@ mod tests {
     #[test]
     fn test_vars_from_string() -> Result<(), anyhow::Error> {
         let values = String::from("123");
-        let vars: super::Vars = values.into();
+        let vars: super::Value = values.into();
 
         let path = super::Path::default();
 
@@ -579,7 +562,7 @@ mod tests {
             String::from("aboba"),
             String::from("456"),
         ];
-        let vars: super::Vars = values.into();
+        let vars: super::Value = values.into();
 
         let mut path = super::Path::default();
         path.index(1);
@@ -595,7 +578,7 @@ mod tests {
             (String::from("bb"), String::from("aboba")),
             (String::from("ccc"), String::from("456")),
         ]);
-        let vars: super::Vars = values.into();
+        let vars: super::Value = values.into();
 
         let mut path = super::Path::default();
         path.key(String::from("bb"));
@@ -610,21 +593,14 @@ mod tests {
             (String::from("a"), super::Value::String(String::from("123"))),
             (
                 String::from("b"),
-                super::Value::List(vec![
-                    String::from("ab"),
-                    String::from("o"),
-                    String::from("ba"),
-                ]),
+                vec![String::from("ab"), String::from("o"), String::from("ba")].into(),
             ),
             (
                 String::from("c"),
-                super::Value::Object(HashMap::from_iter([(
-                    String::from("a"),
-                    String::from("lul"),
-                )])),
+                HashMap::from_iter([(String::from("a"), String::from("lul"))]).into(),
             ),
         ]);
-        let vars: super::Vars = values.into();
+        let vars: super::Value = values.into();
 
         let mut path = super::Path::default();
         path.key(String::from("a"));
@@ -647,7 +623,7 @@ mod tests {
 
     #[test]
     fn test_parse_no_vars() -> Result<(), anyhow::Error> {
-        let vars = super::Vars::None;
+        let vars = super::Value::None;
 
         let content = "aboba_amogis";
         assert_eq!(super::substitute_vars(&vars, content)?, "aboba_amogis");
@@ -676,27 +652,21 @@ mod tests {
             (String::from("a"), super::Value::String(String::from("123"))),
             (
                 String::from("b"),
-                super::Value::List(vec![
-                    String::from("ab"),
-                    String::from("o"),
-                    String::from("ba"),
-                ]),
+                vec![String::from("ab"), String::from("o"), String::from("ba")].into(),
             ),
             (
                 String::from("c"),
-                super::Value::Object(HashMap::from_iter([(
-                    String::from("a"),
-                    String::from("lul"),
-                )])),
+                HashMap::from_iter([(String::from("a"), String::from("lul"))]).into(),
             ),
             (
                 String::from("keys"),
-                super::Value::List(vec![
+                vec![
                     String::from("a"),
                     String::from("b"),
                     String::from("c"),
                     String::from("0"),
-                ]),
+                ]
+                .into(),
             ),
         ]);
         let vars = values.into();
@@ -733,23 +703,11 @@ mod tests {
 
     #[test]
     fn test_assign() -> Result<(), anyhow::Error> {
-        let mut vars = super::Vars::default();
-        vars.assign_path(
-            super::parse_path_simple("a.b")?,
-            super::Value::<()>::String("123".to_string()).into(),
-        )?;
-        vars.assign_path(
-            super::parse_path_simple("a.g")?,
-            super::Value::<()>::String("aboba".to_string()).into(),
-        )?;
-        vars.assign_path(
-            super::parse_path_simple("b[5]")?,
-            super::Value::<()>::String("lol".to_string()).into(),
-        )?;
-        vars.assign_path(
-            super::parse_path_simple("c")?,
-            super::Value::<()>::String("booba".to_string()).into(),
-        )?;
+        let mut vars = super::Value::default();
+        vars.assign_path(super::parse_path_simple("a.b")?, "123".to_string().into())?;
+        vars.assign_path(super::parse_path_simple("a.g")?, "aboba".to_string().into())?;
+        vars.assign_path(super::parse_path_simple("b[5]")?, "lol".to_string().into())?;
+        vars.assign_path(super::parse_path_simple("c")?, "booba".to_string().into())?;
 
         let content = "this ${a.b} ${a.g} ${b[5]} ${c}";
         assert_eq!(
@@ -762,7 +720,7 @@ mod tests {
 
     #[test]
     fn test_assign_strings() -> Result<(), anyhow::Error> {
-        let vars = super::Vars::from_list_strings(&[
+        let vars = super::Value::from_list_strings(&[
             ("a.b", "123"),
             ("a.g", "aboba"),
             ("b[5]", "lol"),

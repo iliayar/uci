@@ -9,7 +9,7 @@ pub fn substitute_vars_dict(
     state: &State,
     dict: HashMap<String, String>,
 ) -> Result<HashMap<String, String>, anyhow::Error> {
-    let vars: common::vars::Vars = state_to_vars(state);
+    let vars: common::vars::Value = state_to_vars(state);
     let result: Result<_, anyhow::Error> = dict
         .into_iter()
         .map(|(k, v)| Ok((k, vars.eval(v)?)))
@@ -22,14 +22,14 @@ pub fn substitute_vars_list(
     state: &State,
     list: Vec<String>,
 ) -> Result<Vec<String>, anyhow::Error> {
-    let vars: common::vars::Vars = state_to_vars(state);
+    let vars: common::vars::Value = state_to_vars(state);
     let result: Result<_, anyhow::Error> = list.into_iter().map(|v| Ok(vars.eval(v)?)).collect();
 
     result
 }
 
 pub fn substitute_vars<S: AsRef<str>>(state: &State, s: S) -> Result<String, anyhow::Error> {
-    let vars: common::vars::Vars = state_to_vars(state);
+    let vars: common::vars::Value = state_to_vars(state);
     Ok(vars.eval(s)?)
 }
 
@@ -99,9 +99,9 @@ impl super::LoadRawSync for AsString {
     }
 }
 
-fn state_to_vars(state: &State) -> common::vars::Vars {
+fn state_to_vars(state: &State) -> common::vars::Value {
     use common::vars::*;
-    let mut vars = Vars::default();
+    let mut vars = Value::default();
 
     if let Ok(project_info) = state.get::<super::ProjectInfo>() {
         vars.assign("project", project_info.into()).ok();

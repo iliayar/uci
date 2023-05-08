@@ -137,9 +137,9 @@ impl Repo {
     }
 }
 
-impl From<&Repo> for common::vars::Vars {
+impl From<&Repo> for common::vars::Value {
     fn from(val: &Repo) -> Self {
-        let mut vars = common::vars::Vars::default();
+        let mut vars = common::vars::Value::default();
         match val {
             Repo::Regular {
                 id,
@@ -240,9 +240,9 @@ impl Repos {
     }
 }
 
-impl From<&Repos> for common::vars::Vars {
+impl From<&Repos> for common::vars::Value {
     fn from(value: &Repos) -> Self {
-        let mut vars: HashMap<String, common::vars::Vars> = HashMap::new();
+        let mut vars: HashMap<String, common::vars::Value> = HashMap::new();
         for (id, repo) in value.repos.iter() {
             vars.insert(id.to_string(), repo.into());
         }

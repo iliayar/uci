@@ -41,9 +41,9 @@ impl ServiceConfig {
     }
 }
 
-impl From<&ServiceConfig> for common::vars::Vars {
+impl From<&ServiceConfig> for common::vars::Value {
     fn from(val: &ServiceConfig) -> Self {
-        let mut vars = common::vars::Vars::default();
+        let mut vars = common::vars::Value::default();
         vars.assign("internal.path", (&val.internal_path).into())
             .ok();
         vars.assign("secrets", (&val.secrets).into()).ok();

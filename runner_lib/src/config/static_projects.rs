@@ -42,9 +42,9 @@ impl super::ProjectsManager for StaticProjects {
     }
 }
 
-impl From<&StaticProjects> for common::vars::Vars {
+impl From<&StaticProjects> for common::vars::Value {
     fn from(val: &StaticProjects) -> Self {
-        let mut vars = common::vars::Vars::default();
+        let mut vars = common::vars::Value::default();
 
         vars.assign(
             "config",

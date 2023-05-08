@@ -314,9 +314,9 @@ impl ProjectInfo {
     }
 }
 
-impl From<&ProjectInfo> for common::vars::Vars {
+impl From<&ProjectInfo> for common::vars::Value {
     fn from(val: &ProjectInfo) -> Self {
-        let mut vars = common::vars::Vars::default();
+        let mut vars = common::vars::Value::default();
         vars.assign("repos", (&val.repos).into()).ok();
         vars.assign("data.path", (&val.data_path).into()).ok();
         vars
