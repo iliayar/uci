@@ -141,6 +141,8 @@ impl TelegramIntegration {
         let client = reqwest::Client::new();
         let res = client.post(url).json(&body).send().await?;
 
+	res.error_for_status()?;
+
         Ok(())
     }
 
