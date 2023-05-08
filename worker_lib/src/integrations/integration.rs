@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 
+use common::state::State;
 use log::*;
 
 #[async_trait::async_trait]
@@ -7,13 +8,27 @@ pub trait Integration
 where
     Self: Send + Sync,
 {
-    async fn handle_pipeline_start(&self) -> Result<(), anyhow::Error>;
-    async fn handle_pipeline_fail(&self, error: Option<String>) -> Result<(), anyhow::Error>;
-    async fn handle_pipeline_done(&self) -> Result<(), anyhow::Error>;
+    async fn handle_pipeline_start(&self, state: &State) -> Result<(), anyhow::Error>;
+    async fn handle_pipeline_fail(
+        &self,
+        state: &State,
+        error: Option<String>,
+    ) -> Result<(), anyhow::Error>;
+    async fn handle_pipeline_done(&self, state: &State) -> Result<(), anyhow::Error>;
 
-    async fn handle_job_pending(&self, job: &str) -> Result<(), anyhow::Error>;
-    async fn handle_job_progress(&self, job: &str, step: usize) -> Result<(), anyhow::Error>;
-    async fn handle_job_done(&self, job: &str, error: Option<String>) -> Result<(), anyhow::Error>;
+    async fn handle_job_pending(&self, state: &State, job: &str) -> Result<(), anyhow::Error>;
+    async fn handle_job_progress(
+        &self,
+        state: &State,
+        job: &str,
+        step: usize,
+    ) -> Result<(), anyhow::Error>;
+    async fn handle_job_done(
+        &self,
+        state: &State,
+        job: &str,
+        error: Option<String>,
+    ) -> Result<(), anyhow::Error>;
 }
 
 #[cfg(test)]
@@ -46,34 +61,36 @@ impl Integrations {
         Ok(Self { items })
     }
 
-    pub async fn handle_pipeline_start(&self) {
-        self.foreach(|integration| async move { integration.handle_pipeline_start().await })
+    pub async fn handle_pipeline_start<'a>(&self, state: &State<'a>) {
+        self.foreach(|integration| async move { integration.handle_pipeline_start(state).await })
             .await;
     }
-    pub async fn handle_pipeline_fail(&self, error: Option<String>) {
+    pub async fn handle_pipeline_fail<'a>(&self, state: &State<'a>, error: Option<String>) {
         self.foreach(|integration| {
             let error = error.clone();
-            async move { integration.handle_pipeline_fail(error).await }
+            async move { integration.handle_pipeline_fail(state, error).await }
         })
         .await;
     }
-    pub async fn handle_pipeline_done(&self) {
-        self.foreach(|integration| async move { integration.handle_pipeline_done().await })
+    pub async fn handle_pipeline_done<'a>(&self, state: &State<'a>) {
+        self.foreach(|integration| async move { integration.handle_pipeline_done(state).await })
             .await
     }
 
-    pub async fn handle_job_pending(&self, job: &str) {
-        self.foreach(|integration| async move { integration.handle_job_pending(job).await })
+    pub async fn handle_job_pending<'a>(&self, state: &State<'a>, job: &str) {
+        self.foreach(|integration| async move { integration.handle_job_pending(state, job).await })
             .await
     }
-    pub async fn handle_job_progress(&self, job: &str, step: usize) {
-        self.foreach(|integration| async move { integration.handle_job_progress(job, step).await })
-            .await
+    pub async fn handle_job_progress<'a>(&self, state: &State<'a>, job: &str, step: usize) {
+        self.foreach(|integration| async move {
+            integration.handle_job_progress(state, job, step).await
+        })
+        .await
     }
-    pub async fn handle_job_done(&self, job: &str, error: Option<String>) {
+    pub async fn handle_job_done<'a>(&self, state: &State<'a>, job: &str, error: Option<String>) {
         self.foreach(|integration| {
             let error = error.clone();
-            async move { integration.handle_job_done(job, error).await }
+            async move { integration.handle_job_done(state, job, error).await }
         })
         .await
     }

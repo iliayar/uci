@@ -36,11 +36,18 @@ struct Query {
 
 #[async_trait::async_trait]
 impl super::integration::Integration for GitLabIntegration {
-    async fn handle_pipeline_start(&self) -> Result<(), anyhow::Error> {
+    async fn handle_pipeline_start(
+        &self,
+        state: &common::state::State,
+    ) -> Result<(), anyhow::Error> {
         Ok(())
     }
 
-    async fn handle_pipeline_fail(&self, error: Option<String>) -> Result<(), anyhow::Error> {
+    async fn handle_pipeline_fail(
+        &self,
+        state: &common::state::State,
+        error: Option<String>,
+    ) -> Result<(), anyhow::Error> {
         if let Some(error) = error {
             self.set_job_status("pipeline", State::Failed, Some(error))
                 .await?;
@@ -48,23 +55,40 @@ impl super::integration::Integration for GitLabIntegration {
         Ok(())
     }
 
-    async fn handle_pipeline_done(&self) -> Result<(), anyhow::Error> {
+    async fn handle_pipeline_done(
+        &self,
+        state: &common::state::State,
+    ) -> Result<(), anyhow::Error> {
         Ok(())
     }
 
-    async fn handle_job_pending(&self, job: &str) -> Result<(), anyhow::Error> {
+    async fn handle_job_pending(
+        &self,
+        state: &common::state::State,
+        job: &str,
+    ) -> Result<(), anyhow::Error> {
         self.set_job_status::<&str>(job, State::Pending, None)
             .await?;
         Ok(())
     }
 
-    async fn handle_job_progress(&self, job: &str, step: usize) -> Result<(), anyhow::Error> {
+    async fn handle_job_progress(
+        &self,
+        state: &common::state::State,
+        job: &str,
+        step: usize,
+    ) -> Result<(), anyhow::Error> {
         self.set_job_status(job, State::Running, Some(format!("Step {}", step)))
             .await?;
         Ok(())
     }
 
-    async fn handle_job_done(&self, job: &str, error: Option<String>) -> Result<(), anyhow::Error> {
+    async fn handle_job_done(
+        &self,
+        state: &common::state::State,
+        job: &str,
+        error: Option<String>,
+    ) -> Result<(), anyhow::Error> {
         if let Some(error) = error {
             self.set_job_status(job, State::Failed, Some(format!("Failed: {}", error)))
                 .await?;

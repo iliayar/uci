@@ -575,11 +575,11 @@ impl Executor {
 
         match res.as_ref() {
             Ok(_) => {
-                integrations.handle_pipeline_done().await;
+                integrations.handle_pipeline_done(&state).await;
             }
             Err(err) => {
                 integrations
-                    .handle_pipeline_fail(Some(err.to_string()))
+                    .handle_pipeline_fail(&state, Some(err.to_string()))
                     .await;
             }
         }
@@ -636,7 +636,7 @@ impl Executor {
                 .collect()
         };
 
-        integrations.handle_pipeline_start().await;
+        integrations.handle_pipeline_start(&state).await;
         pipeline_run.set_status(PipelineStatus::Running).await;
         run_context
             .send(common::runner::PipelineMessage::Start {
@@ -645,7 +645,7 @@ impl Executor {
             .await;
 
         for (job_id, _) in pipeline.jobs.iter() {
-            integrations.handle_job_pending(&job_id).await;
+            integrations.handle_job_pending(&state, &job_id).await;
             pipeline_run.init_job(job_id).await;
             run_context
                 .send(common::runner::PipelineMessage::JobPending {
@@ -749,7 +749,7 @@ impl Executor {
         let pipeline_run: &PipelineRun = state.get()?;
 
         for (i, step) in job.steps.into_iter().enumerate() {
-            integrations.handle_job_progress(&id, i).await;
+            integrations.handle_job_progress(&state, &id, i).await;
             pipeline_run
                 .set_job_status(&id, JobStatus::Running { step: i })
                 .await;
@@ -763,7 +763,7 @@ impl Executor {
 
             if let Err(err) = step.run(&state).await {
                 integrations
-                    .handle_job_done(&id, Some(err.to_string()))
+                    .handle_job_done(&state, &id, Some(err.to_string()))
                     .await;
                 pipeline_run
                     .set_job_status(
@@ -783,7 +783,7 @@ impl Executor {
             }
         }
 
-        integrations.handle_job_done(&id, None).await;
+        integrations.handle_job_done(&state, &id, None).await;
         pipeline_run
             .set_job_status(&id, JobStatus::Finished { error: None })
             .await;

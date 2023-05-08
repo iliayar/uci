@@ -25,7 +25,10 @@ impl TelegramIntegration {
 
 #[async_trait::async_trait]
 impl super::integration::Integration for TelegramIntegration {
-    async fn handle_pipeline_start(&self) -> Result<(), anyhow::Error> {
+    async fn handle_pipeline_start(
+        &self,
+        state: &common::state::State,
+    ) -> Result<(), anyhow::Error> {
         let text = if let Some(pipeline_id) = self.pipeline_id.as_ref() {
             format!("Starting pipeline {}", pipeline_id)
         } else {
@@ -35,7 +38,11 @@ impl super::integration::Integration for TelegramIntegration {
         self.send_message(text).await
     }
 
-    async fn handle_pipeline_fail(&self, error: Option<String>) -> Result<(), anyhow::Error> {
+    async fn handle_pipeline_fail(
+        &self,
+        state: &common::state::State,
+        error: Option<String>,
+    ) -> Result<(), anyhow::Error> {
         let mut buf: Vec<u8> = Vec::new();
 
         if let Some(pipeline_id) = self.pipeline_id.as_ref() {
@@ -54,7 +61,10 @@ impl super::integration::Integration for TelegramIntegration {
             .await
     }
 
-    async fn handle_pipeline_done(&self) -> Result<(), anyhow::Error> {
+    async fn handle_pipeline_done(
+        &self,
+        state: &common::state::State,
+    ) -> Result<(), anyhow::Error> {
         let text = if let Some(pipeline_id) = self.pipeline_id.as_ref() {
             format!("Pipeline {} finished", pipeline_id)
         } else {
@@ -64,10 +74,14 @@ impl super::integration::Integration for TelegramIntegration {
         self.send_message(text).await
     }
 
-    async fn handle_job_pending(&self, job: &str) -> Result<(), anyhow::Error> {
-	if !self.notify_jobs {
-	    return Ok(());
-	}
+    async fn handle_job_pending(
+        &self,
+        state: &common::state::State,
+        job: &str,
+    ) -> Result<(), anyhow::Error> {
+        if !self.notify_jobs {
+            return Ok(());
+        }
 
         let mut buf: Vec<u8> = Vec::new();
         write!(buf, "Job {}", job).ok();
@@ -82,10 +96,15 @@ impl super::integration::Integration for TelegramIntegration {
             .await
     }
 
-    async fn handle_job_progress(&self, job: &str, step: usize) -> Result<(), anyhow::Error> {
-	if !self.notify_jobs {
-	    return Ok(());
-	}
+    async fn handle_job_progress(
+        &self,
+        state: &common::state::State,
+        job: &str,
+        step: usize,
+    ) -> Result<(), anyhow::Error> {
+        if !self.notify_jobs {
+            return Ok(());
+        }
 
         let mut buf: Vec<u8> = Vec::new();
         write!(buf, "Job {}", job).ok();
@@ -100,10 +119,15 @@ impl super::integration::Integration for TelegramIntegration {
             .await
     }
 
-    async fn handle_job_done(&self, job: &str, error: Option<String>) -> Result<(), anyhow::Error> {
-	if !self.notify_jobs {
-	    return Ok(());
-	}
+    async fn handle_job_done(
+        &self,
+        state: &common::state::State,
+        job: &str,
+        error: Option<String>,
+    ) -> Result<(), anyhow::Error> {
+        if !self.notify_jobs {
+            return Ok(());
+        }
 
         let mut buf: Vec<u8> = Vec::new();
         write!(buf, "Job {}", job).ok();
@@ -155,7 +179,7 @@ impl TelegramIntegration {
         let client = reqwest::Client::new();
         let res = client.post(url).json(&body).send().await?;
 
-	res.error_for_status()?;
+        res.error_for_status()?;
 
         Ok(())
     }
