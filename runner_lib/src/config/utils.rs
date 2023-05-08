@@ -146,5 +146,9 @@ fn state_to_vars(state: &State) -> common::vars::Value {
         vars.assign("params", project_params.into()).ok();
     }
 
+    if let Ok(pipeline_id) = state.get_named::<String, _>("pipeline_id") {
+        vars.assign("pipeline.id", pipeline_id.into()).ok();
+    }
+
     vars
 }

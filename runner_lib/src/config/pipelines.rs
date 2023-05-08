@@ -37,7 +37,12 @@ impl Pipelines {
             .pipelines
             .get(pipeline.as_ref())
             .ok_or_else(|| anyhow!("No such pipeline: {}", pipeline.as_ref()))?;
-        raw::load_pipeline(state, pipeline, &location.path).await
+
+        let pipeline_id = pipeline.as_ref().to_string();
+        let mut state = state.clone();
+        state.set_named("pipeline_id", &pipeline_id);
+
+        raw::load_pipeline(&state, pipeline, &location.path).await
     }
 
     pub async fn list_pipelines(&self) -> PipelinesDescription {
