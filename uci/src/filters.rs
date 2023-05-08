@@ -1,3 +1,5 @@
+use bytes::Bytes;
+use hmac::Mac;
 use std::{convert::Infallible, fmt::Debug};
 use warp::{Filter, Rejection};
 
@@ -83,6 +85,33 @@ pub fn with_validation() -> impl Filter<Extract = (Option<String>,), Error = Rej
         }
     })
 }
+
+pub fn with_validate_hmac_sha256(
+    header: &'static str,
+    token: String,
+) -> impl Filter<Extract = (Option<String>,), Error = Rejection> + Clone {
+    let token = token.clone();
+    warp::header(header)
+        .and(warp::body::bytes())
+        .and_then(move |header: String, body: Bytes| {
+            let token = token.clone();
+
+            async move {
+                type HmacSha256 = hmac::Hmac<sha2::Sha256>;
+                let mut mac = HmacSha256::new_from_slice(token.as_bytes()).unwrap();
+                mac.update(&body);
+                let result = mac.finalize();
+
+                if header != format!("sha256={:x?}", result.into_bytes()) {
+                    Err(warp::reject::custom(AuthRejection::TokenIsUnauthorized))
+                } else {
+                    Ok(Some(token))
+                }
+            }
+        })
+}
+
+// fn valida
 
 pub async fn report_rejection(r: Rejection) -> Result<impl warp::Reply, Rejection> {
     if let Some(auth_error) = r.find::<AuthRejection>() {

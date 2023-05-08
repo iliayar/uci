@@ -22,3 +22,6 @@ tokio-stream = "0.1.12"
 futures = "0.3.27"
 syslog = "6.0.1"
 bytes = "1.4.0"
+hmac = "0.12.1"
+sha2 = "0.10.6"
+serde = { version = "1.0.162", features = ["derive"] }

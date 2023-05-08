@@ -1,4 +1,9 @@
-use runner_lib::{call_context, config};
+use runner_lib::{
+    call_context::{self, CallContext},
+    config,
+};
+
+use serde::{Deserialize, Serialize};
 
 use crate::filters::{with_call_context, AuthRejection};
 
@@ -8,12 +13,42 @@ use warp::Filter;
 use log::*;
 
 pub fn filter(
-    context: call_context::Deps,
+    deps: call_context::Deps,
+) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
+    api_call(deps.clone()).or(gitlab_webhook(deps))
+}
+
+pub fn api_call(
+    deps: call_context::Deps,
 ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
     warp::any()
-        .and(with_call_context(context))
+        .and(with_call_context(deps))
         .and(warp::path!("update"))
         .and(warp::body::json::<common::runner::UpdateRepoBody>())
+        .and(warp::post())
+        .and_then(update_repo)
+}
+
+#[derive(Serialize, Deserialize)]
+struct Query {
+    project_id: String,
+    repo_id: String,
+}
+
+pub fn gitlab_webhook(
+    deps: call_context::Deps,
+) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
+    warp::any()
+        .and(warp::header("X-Gitlab-Token"))
+        .map(move |token: String| CallContext::for_handler(Some(token), deps.clone()))
+        .and(warp::path!("gitlab" / "update"))
+        .and(
+            warp::query::<Query>().map(|query: Query| common::runner::UpdateRepoBody {
+                project_id: query.project_id,
+                repo_id: query.repo_id,
+                artifact_id: None,
+            }),
+        )
         .and(warp::post())
         .and_then(update_repo)
 }
