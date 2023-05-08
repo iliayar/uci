@@ -4,6 +4,7 @@ use common::state::State;
 use serde::{Deserialize, Serialize};
 
 use anyhow::anyhow;
+use serde_json::Map;
 
 pub fn substitute_vars_dict(
     state: &State,
@@ -31,6 +32,32 @@ pub fn substitute_vars_list(
 pub fn substitute_vars<S: AsRef<str>>(state: &State, s: S) -> Result<String, anyhow::Error> {
     let vars: common::vars::Value = state_to_vars(state);
     Ok(vars.eval(s)?)
+}
+
+pub fn substitute_vars_json(
+    state: &State,
+    value: serde_json::Value,
+) -> Result<serde_json::Value, anyhow::Error> {
+    match value {
+        serde_json::Value::Null => Ok(serde_json::Value::Null),
+        serde_json::Value::Bool(v) => Ok(serde_json::Value::Bool(v)),
+        serde_json::Value::Number(v) => Ok(serde_json::Value::Number(v)),
+        serde_json::Value::String(s) => Ok(serde_json::Value::String(substitute_vars(state, s)?)),
+        serde_json::Value::Array(arr) => {
+            let arr: Result<_, anyhow::Error> = arr
+                .into_iter()
+                .map(|v| substitute_vars_json(state, v))
+                .collect();
+            Ok(serde_json::Value::Array(arr?))
+        }
+        serde_json::Value::Object(obj) => {
+            let obj: Result<Map<String, serde_json::Value>, anyhow::Error> = obj
+                .into_iter()
+                .map(|(k, v)| Ok((k, substitute_vars_json(state, v)?)))
+                .collect();
+            Ok(serde_json::Value::Object(obj?))
+        }
+    }
 }
 
 pub fn get_networks_names(

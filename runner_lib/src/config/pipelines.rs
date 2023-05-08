@@ -245,6 +245,13 @@ mod raw {
                     HashMap::from_iter([default_stage()])
                 };
 
+            let integrations = self.integrations.unwrap_or_default();
+            let integrations: Result<HashMap<String, serde_json::Value>, anyhow::Error> =
+                integrations
+                    .into_iter()
+                    .map(|(k, v)| Ok((k, config::utils::substitute_vars_json(state, v)?)))
+                    .collect();
+
             Ok(common::Pipeline {
                 links,
                 id,
@@ -252,7 +259,7 @@ mod raw {
                 jobs: self.jobs.load_raw(state)?,
                 networks: Default::default(),
                 volumes: Default::default(),
-                integrations: self.integrations.unwrap_or_default(),
+                integrations: integrations?,
             })
         }
     }
