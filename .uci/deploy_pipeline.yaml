@@ -30,3 +30,8 @@ integrations:
     token: ${project.secrets.gitlab_token}
     project_id: '42995967'
     rev: ${project.repos.uci.rev}
+
+  telegram:
+    token: ${project.secrets.tg_token}
+    chat_id: ${project.secrets.tg_chat_id}
+    pipeline_id: ${pipeline.id}
