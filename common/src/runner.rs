@@ -46,9 +46,7 @@ pub struct Action {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
-pub enum ActionTrigger {
-
-}
+pub enum ActionTrigger {}
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ServicesListResponse {
@@ -217,7 +215,7 @@ pub struct Job {
 pub enum JobStatus {
     Pending,
     Running { step: usize },
-    Finished,
+    Finished { error: Option<String> },
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -241,6 +239,7 @@ pub enum PipelineMessage {
     JobFinished {
         pipeline: String,
         job_id: String,
+	error: Option<String>,
     },
     Log {
         pipeline: String,

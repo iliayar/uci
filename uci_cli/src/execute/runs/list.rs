@@ -68,12 +68,21 @@ pub async fn execute_runs_list(
                         style::Reset
                     )
                 }
-                common::runner::JobStatus::Finished => {
-                    println!(
-                        "    Status: {}Finished{}",
-                        color::Fg(color::Green),
-                        style::Reset
-                    )
+                common::runner::JobStatus::Finished { error } => {
+                    if let Some(error) = error {
+                        println!(
+                            "    Status: {}Failed: {}{}",
+                            color::Fg(color::Red),
+                            error,
+                            style::Reset
+                        )
+                    } else {
+                        println!(
+                            "    Status: {}Finished{}",
+                            color::Fg(color::Green),
+                            style::Reset
+                        )
+                    }
                 }
             }
         }

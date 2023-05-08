@@ -13,7 +13,7 @@ where
 
     async fn handle_job_pending(&self, job: &str) -> Result<(), anyhow::Error>;
     async fn handle_job_progress(&self, job: &str, step: usize) -> Result<(), anyhow::Error>;
-    async fn handle_job_done(&self, job: &str) -> Result<(), anyhow::Error>;
+    async fn handle_job_done(&self, job: &str, error: Option<String>) -> Result<(), anyhow::Error>;
 }
 
 #[cfg(test)]
@@ -70,9 +70,12 @@ impl Integrations {
         self.foreach(|integration| async move { integration.handle_job_progress(job, step).await })
             .await
     }
-    pub async fn handle_job_done(&self, job: &str) {
-        self.foreach(|integration| async move { integration.handle_job_done(job).await })
-            .await
+    pub async fn handle_job_done(&self, job: &str, error: Option<String>) {
+        self.foreach(|integration| {
+            let error = error.clone();
+            async move { integration.handle_job_done(job, error).await }
+        })
+        .await
     }
 
     async fn foreach<'a, F, Fut>(&'a self, f: F)

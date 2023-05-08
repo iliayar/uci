@@ -87,7 +87,7 @@ pub struct PipelineJob {
 pub enum JobStatus {
     Pending,
     Running { step: usize },
-    Finished,
+    Finished { error: Option<String> },
 }
 
 #[derive(Clone)]
@@ -760,15 +760,38 @@ impl Executor {
                     step: i,
                 })
                 .await;
-            step.run(&state).await?
+
+            if let Err(err) = step.run(&state).await {
+                integrations
+                    .handle_job_done(&id, Some(err.to_string()))
+                    .await;
+                pipeline_run
+                    .set_job_status(
+                        &id,
+                        JobStatus::Finished {
+                            error: Some(err.to_string()),
+                        },
+                    )
+                    .await;
+                run_context
+                    .send(common::runner::PipelineMessage::JobFinished {
+                        pipeline: pipeline_run.pipeline_id.clone(),
+                        job_id: id.clone(),
+                        error: Some(err.to_string()),
+                    })
+                    .await;
+            }
         }
 
-        integrations.handle_job_done(&id).await;
-        pipeline_run.set_job_status(&id, JobStatus::Finished).await;
+        integrations.handle_job_done(&id, None).await;
+        pipeline_run
+            .set_job_status(&id, JobStatus::Finished { error: None })
+            .await;
         run_context
             .send(common::runner::PipelineMessage::JobFinished {
                 pipeline: pipeline_run.pipeline_id.clone(),
                 job_id: id.clone(),
+                error: None,
             })
             .await;
         info!("Job {} done", id);

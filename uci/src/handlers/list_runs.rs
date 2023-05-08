@@ -100,8 +100,8 @@ async fn list_runs_impl(
                                 worker_lib::executor::JobStatus::Running { step } => {
                                     common::runner::JobStatus::Running { step }
                                 }
-                                worker_lib::executor::JobStatus::Finished => {
-                                    common::runner::JobStatus::Finished
+                                worker_lib::executor::JobStatus::Finished { error } => {
+                                    common::runner::JobStatus::Finished { error }
                                 }
                             };
                             jobs.insert(id, common::runner::Job { status });

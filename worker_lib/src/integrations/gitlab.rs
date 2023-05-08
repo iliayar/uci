@@ -64,9 +64,14 @@ impl super::integration::Integration for GitLabIntegration {
         Ok(())
     }
 
-    async fn handle_job_done(&self, job: &str) -> Result<(), anyhow::Error> {
-        self.set_job_status::<&str>(job, State::Success, None)
-            .await?;
+    async fn handle_job_done(&self, job: &str, error: Option<String>) -> Result<(), anyhow::Error> {
+        if let Some(error) = error {
+            self.set_job_status(job, State::Failed, Some(format!("Failed: {}", error)))
+                .await?;
+        } else {
+            self.set_job_status::<&str>(job, State::Success, None)
+                .await?;
+        }
         Ok(())
     }
 }

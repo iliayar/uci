@@ -169,7 +169,7 @@ enum PipelineStatus {
 enum JobStatus {
     Pending,
     Running { step: usize },
-    Finished,
+    Finished { error: Option<String> },
 }
 
 impl Default for RunState {
@@ -192,7 +192,9 @@ impl RunState {
                     let job_status = match job.status {
                         common::runner::JobStatus::Pending => JobStatus::Pending,
                         common::runner::JobStatus::Running { step } => JobStatus::Running { step },
-                        common::runner::JobStatus::Finished => JobStatus::Finished,
+                        common::runner::JobStatus::Finished { error } => {
+                            JobStatus::Finished { error }
+                        }
                     };
 
                     state.set_job_status(run.pipeline.clone(), job_id, job_status);
@@ -266,8 +268,12 @@ impl RunState {
                         style::Reset,
                         step
                     ),
-                    JobStatus::Finished => {
-                        print!("{}Finished{}", color::Fg(color::Green), style::Reset)
+                    JobStatus::Finished { error } => {
+                        if let Some(error) = error {
+                            print!("{}Failed: {}{}", color::Fg(color::Red), error, style::Reset)
+                        } else {
+                            print!("{}Finished{}", color::Fg(color::Green), style::Reset)
+                        }
                     }
                 }
 
@@ -486,11 +492,15 @@ async fn print_pipeline_run_impl(
                     .await
                     .set_job_status(pipeline, job_id, JobStatus::Running { step });
             }
-            common::runner::PipelineMessage::JobFinished { pipeline, job_id } => {
+            common::runner::PipelineMessage::JobFinished {
+                pipeline,
+                job_id,
+                error,
+            } => {
                 state
                     .lock()
                     .await
-                    .set_job_status(pipeline, job_id, JobStatus::Finished);
+                    .set_job_status(pipeline, job_id, JobStatus::Finished { error });
             }
             common::runner::PipelineMessage::Log {
                 pipeline,
