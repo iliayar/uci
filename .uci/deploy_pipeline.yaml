@@ -35,3 +35,4 @@ integrations:
     token: ${project.secrets.tg_token}
     chat_id: ${project.secrets.tg_chat_id}
     pipeline_id: ${pipeline.id}
+    topic_id: ${project.secrets.tg_topic_id}
