@@ -15,11 +15,11 @@ actions:
     - on: changed
       repo_id: uci
       changes:
-        - 'common.*'
-        - 'runner_lib.*'
-        - 'uci.*'
-        - 'worker_lib.*'
-        - 'Cargo.lock.*'
+        - '^common.*'
+        - '^runner_lib.*'
+        - '^uci.*'
+        - '^worker_lib.*'
+        - '^Cargo.lock.*'
       run_pipelines:
         - deploy
       params:
