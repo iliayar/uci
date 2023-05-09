@@ -7,7 +7,7 @@ jobs:
       cd uci
       cargo install --path uci
   restart:
-    enabled: ${params.do_restart}
+    # enabled: ${params.do_restart}
     needs: ['build']
     script: |
       set -e
