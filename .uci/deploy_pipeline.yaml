@@ -14,13 +14,13 @@ jobs:
           set -e
 
           function restart() {
-            sleep 5
+            sleep 10
             systemctl --user restart ucid
           }
 
           export -f restart
 
-          echo "Restarting service in 5 seconds..."
+          echo "Restarting service in 10 seconds..."
           restart 1>&- 2>&- &disown
 links:
   'uci': ${project.repos.uci.path}

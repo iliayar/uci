@@ -29,7 +29,11 @@ pub fn filter_ghlike(
 ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
     warp::any()
         .and(with_call_context(deps))
-        .and(warp::path!("badge" / "ghlike"))
+        .and(
+            warp::path!("badge" / "ghlike")
+                .or(warp::path!("badge" / "ghlike.svg"))
+                .unify(),
+        )
         .and(warp::query::<QueryParams>())
         .and(warp::get())
         .and_then(ghlike_badge)
