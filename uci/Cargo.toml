@@ -25,3 +25,4 @@ bytes = "1.4.0"
 hmac = "0.12.1"
 sha2 = "0.10.6"
 serde = { version = "1.0.162", features = ["derive"] }
+svg = "0.13.1"

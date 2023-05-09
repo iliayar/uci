@@ -406,6 +406,11 @@ impl PipelineRuns {
     pub fn get_runs(&self) -> Vec<Arc<PipelineRun>> {
         self.runs.iter().map(|(k, v)| v.clone()).collect()
     }
+
+    pub fn last_run(&self) -> Option<Arc<PipelineRun>> {
+        let last_id = self.runs_queue.iter().last()?;
+        self.runs.get(last_id).cloned()
+    }
 }
 
 impl PipelineRun {
@@ -445,6 +450,10 @@ impl PipelineRun {
 
     pub async fn jobs(&self) -> HashMap<String, PipelineJob> {
         self.jobs.lock().await.clone()
+    }
+
+    pub async fn job(&self, job: impl AsRef<str>) -> Option<PipelineJob> {
+	self.jobs.lock().await.get(job.as_ref()).cloned()
     }
 
     pub async fn finish(&self) -> Result<(), anyhow::Error> {

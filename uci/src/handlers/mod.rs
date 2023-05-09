@@ -12,3 +12,4 @@ pub mod run_logs;
 pub mod ws;
 pub mod upload;
 pub mod list_repos;
+pub mod badge;

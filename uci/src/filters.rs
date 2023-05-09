@@ -24,7 +24,8 @@ pub fn runner(deps: Deps) -> impl Filter<Extract = impl warp::Reply, Error = Rej
         .or(handlers::service_logs::filter(deps.clone()))
         .or(handlers::service_command::filter(deps.clone()))
         .or(handlers::run_logs::filter(deps.clone()))
-        .or(handlers::upload::filter(deps))
+        .or(handlers::upload::filter(deps.clone()))
+        .or(handlers::badge::filter(deps))
         .recover(report_rejection)
 }
 
