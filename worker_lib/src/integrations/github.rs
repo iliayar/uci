@@ -125,10 +125,12 @@ impl GitHubIntegration {
             description: description.map(|d| d.as_ref().to_string()),
         };
 
-        let client = reqwest::Client::new();
+        let client = reqwest::Client::builder();
         let res = client
+            .user_agent("uCI")
+            .build()?
             .post(url)
-            .header("Authorization", format!("Bearer {}", self.token))
+            .bearer_auth(&self.token)
             .json(&body)
             .send()
             .await?;
