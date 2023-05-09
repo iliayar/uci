@@ -109,7 +109,7 @@ impl GitHubIntegration {
         description: Option<DS>,
     ) -> Result<(), anyhow::Error> {
         let url = format!(
-            "https://api.github.com/repo/{}/statuses/{}",
+            "https://api.github.com/repos/{}/statuses/{}",
             self.repo, self.rev
         );
         let body = Body {
