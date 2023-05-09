@@ -1,6 +1,11 @@
-use std::{collections::HashMap, path::PathBuf};
+use std::{collections::HashMap, marker::PhantomData, path::PathBuf};
 
 use common::state::State;
+
+use anyhow::anyhow;
+use serde::{Deserialize, Serialize};
+
+use super::utils::{eval_expr, substitute_vars};
 
 pub mod binding {
     use std::collections::HashMap;
@@ -128,5 +133,75 @@ impl<T: AutoLoadRaw + Send> LoadRaw for T {
 
     async fn load_raw(self, state: &State) -> Result<Self::Output, anyhow::Error> {
         Ok(self)
+    }
+}
+
+#[derive(Deserialize, Serialize, Clone)]
+#[serde(transparent)]
+pub struct Expr<T> {
+    value: common::vars::Value,
+
+    #[serde(skip)]
+    _phantom: PhantomData<T>,
+}
+
+impl LoadRawSync for Expr<String> {
+    type Output = String;
+
+    fn load_raw(self, state: &State) -> Result<Self::Output, anyhow::Error> {
+        match self.value {
+            common::vars::Value::Object(_) => Err(anyhow!("Cannot convert object to string")),
+            common::vars::Value::List(_) => Err(anyhow!("Cannot convert list to string")),
+            common::vars::Value::String(s) => Ok(substitute_vars(state, s)?),
+            common::vars::Value::Bool(b) => Ok(b.to_string()),
+            common::vars::Value::Integer(i) => Ok(i.to_string()),
+            common::vars::Value::None => Ok("none".to_string()),
+        }
+    }
+}
+
+impl LoadRawSync for Expr<bool> {
+    type Output = bool;
+
+    fn load_raw(self, state: &State) -> Result<Self::Output, anyhow::Error> {
+        let mut value = self.value;
+
+        if let common::vars::Value::String(s) = value {
+            value = eval_expr(state, s)?;
+        }
+
+        match value {
+            common::vars::Value::Object(_) => Err(anyhow!("Cannot convert object to bool")),
+            common::vars::Value::List(_) => Err(anyhow!("Cannot convert list to bool")),
+            common::vars::Value::Bool(b) => Ok(b),
+            common::vars::Value::String(s) => Ok(s
+                .parse()
+                .map_err(|err| anyhow!("Failed to parse bool: {}", err))?),
+            common::vars::Value::Integer(i) => Ok(i != 0),
+            common::vars::Value::None => Ok(false),
+        }
+    }
+}
+
+impl LoadRawSync for Expr<i64> {
+    type Output = i64;
+
+    fn load_raw(self, state: &State) -> Result<Self::Output, anyhow::Error> {
+        let mut value = self.value;
+
+        if let common::vars::Value::String(s) = value {
+            value = eval_expr(state, s)?;
+        }
+
+        match value {
+            common::vars::Value::Object(_) => Err(anyhow!("Cannot convert object to integer")),
+            common::vars::Value::List(_) => Err(anyhow!("Cannot convert list to integer")),
+            common::vars::Value::Bool(b) => Ok(if b { 1 } else { 0 }),
+            common::vars::Value::String(s) => Ok(s
+                .parse()
+                .map_err(|err| anyhow!("Failed to parse integer: {}", err))?),
+            common::vars::Value::Integer(i) => Ok(i),
+            common::vars::Value::None => Err(anyhow!("Cannot convert none to integer")),
+        }
     }
 }

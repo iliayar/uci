@@ -7,6 +7,12 @@ pub enum SubstitutionError {
     #[error("Missing closed bracket")]
     MissingClosingBracket,
 
+    #[error("Expression should begin with \"$\" sign")]
+    ExpressionStartNoDollar,
+
+    #[error("Expression should begin with \"${{\" sign")]
+    ExpressionStartNoBrace,
+
     #[error("Failed to evaluate expression: {0}")]
     VarsError(#[from] VarsError),
 
@@ -245,6 +251,10 @@ impl Value {
         substitute_vars(self, text.as_ref())
     }
 
+    pub fn eval_expr<S: AsRef<str>>(&self, text: S) -> Result<Value, SubstitutionError> {
+        eval_expr(self, text.as_ref())
+    }
+
     pub fn assign<S: AsRef<str>>(
         &mut self,
         path: S,
@@ -350,6 +360,12 @@ pub fn substitute_vars(vars: &Value, text: &str) -> Result<String, SubstitutionE
     parse_raw(vars, &mut chars)
 }
 
+pub fn eval_expr(vars: &Value, text: &str) -> Result<Value, SubstitutionError> {
+    trace!("Evaluating expression {} with vars: {:?}", text, vars);
+    let mut chars = text.chars().peekable();
+    parse_expr_impl(vars, &mut chars)
+}
+
 fn parse_raw(vars: &Value, chars: &mut Peekable<Chars>) -> Result<String, SubstitutionError> {
     enum State {
         Start,
@@ -381,6 +397,59 @@ fn parse_raw(vars: &Value, chars: &mut Peekable<Chars>) -> Result<String, Substi
     }
 }
 
+fn parse_expr_impl(vars: &Value, chars: &mut Peekable<Chars>) -> Result<Value, SubstitutionError> {
+    enum State {
+        Start,
+        End,
+        ExprEnd,
+        WasDollar,
+    }
+
+    let mut res: Option<Value> = None;
+    let mut st = State::Start;
+
+    loop {
+        st = match st {
+            State::Start => match chars.peek() {
+                Some('$') => {
+                    chars.next().unwrap();
+                    State::WasDollar
+                }
+                _ => {
+                    return Err(SubstitutionError::ExpressionStartNoDollar);
+                }
+            },
+            State::WasDollar => match chars.peek() {
+                Some(ch) => match ch {
+                    '{' => {
+                        chars.next().unwrap();
+                        res = Some(vars.get(parse_path(vars, chars)?).cloned()?);
+                        State::ExprEnd
+                    }
+                    _ => {
+                        return Err(SubstitutionError::ExpressionStartNoBrace);
+                    }
+                },
+                None => {
+                    return Err(SubstitutionError::ExpressionStartNoBrace);
+                }
+            },
+            State::ExprEnd => match chars.peek() {
+                Some('}') => {
+                    chars.next().unwrap();
+                    State::End
+                }
+                _ => {
+                    return Err(SubstitutionError::MissingClosingBracket);
+                }
+            },
+            State::End => {
+                return Ok(res.expect("End is only reachable with result"));
+            }
+        };
+    }
+}
+
 fn try_parse_expr(vars: &Value, chars: &mut Peekable<Chars>) -> Result<String, SubstitutionError> {
     enum State {
         Start,
@@ -400,7 +469,7 @@ fn try_parse_expr(vars: &Value, chars: &mut Peekable<Chars>) -> Result<String, S
                     State::WasDollar(1)
                 }
                 _ => {
-                    unreachable!("parse_expr should be only called with first dolalr");
+                    unreachable!("try_parse_expr should be only called with first dollar");
                 }
             },
             State::WasDollar(n) => match chars.peek() {

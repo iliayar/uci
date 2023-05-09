@@ -1,9 +1,6 @@
 use std::collections::HashMap;
 
 use common::state::State;
-use serde::{Deserialize, Serialize};
-
-use anyhow::anyhow;
 use serde_json::Map;
 
 pub fn substitute_vars_dict(
@@ -32,6 +29,11 @@ pub fn substitute_vars_list(
 pub fn substitute_vars<S: AsRef<str>>(state: &State, s: S) -> Result<String, anyhow::Error> {
     let vars: common::vars::Value = state_to_vars(state);
     Ok(vars.eval(s)?)
+}
+
+pub fn eval_expr<S: AsRef<str>>(state: &State, s: S) -> Result<common::vars::Value, anyhow::Error> {
+    let vars: common::vars::Value = state_to_vars(state);
+    Ok(vars.eval_expr(s)?)
 }
 
 pub fn substitute_vars_json(
@@ -86,46 +88,6 @@ pub fn get_volumes_names(
     volumes
 }
 
-#[derive(Serialize, Deserialize, Clone)]
-#[serde(untagged)]
-pub enum Enabled {
-    Bool(bool),
-    String(String),
-}
-
-impl super::LoadRawSync for Enabled {
-    type Output = bool;
-
-    fn load_raw(self, state: &State) -> Result<Self::Output, anyhow::Error> {
-        match self {
-            Enabled::Bool(v) => Ok(v),
-            Enabled::String(s) => Ok(substitute_vars(state, s)?
-                .parse()
-                .map_err(|err| anyhow!("Failed to parse enable field: {}", err))?),
-        }
-    }
-}
-
-#[derive(Serialize, Deserialize, Clone)]
-#[serde(untagged)]
-pub enum AsString {
-    Bool(bool),
-    String(String),
-    Int(i64),
-}
-
-impl super::LoadRawSync for AsString {
-    type Output = String;
-
-    fn load_raw(self, state: &State) -> Result<Self::Output, anyhow::Error> {
-        match self {
-            AsString::Bool(v) => Ok(v.to_string()),
-            AsString::String(s) => Ok(substitute_vars(state, s)?),
-            AsString::Int(n) => Ok(n.to_string()),
-        }
-    }
-}
-
 fn state_to_vars(state: &State) -> common::vars::Value {
     use common::vars::*;
     let mut vars = Value::default();
@@ -148,9 +110,11 @@ fn state_to_vars(state: &State) -> common::vars::Value {
         }
     }
 
-    if let Ok(action_params) = state.get_named::<HashMap<String, String>, _>("action_params") {
+    if let Ok(action_params) =
+        state.get_named::<HashMap<String, common::vars::Value>, _>("action_params")
+    {
         for (key, value) in action_params.iter() {
-            vars.assign(format!("params.{}", key), value.into()).ok();
+            vars.assign(format!("params.{}", key), value.clone()).ok();
         }
     }
 

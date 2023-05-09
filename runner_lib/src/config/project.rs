@@ -16,6 +16,8 @@ pub struct Project {
     pub services: super::Services,
     pub bind: Option<super::Bind>,
     pub caddy: Option<super::Caddy>,
+
+    // TODO: Allow common::vars::Value here
     pub params: HashMap<String, String>,
 }
 
@@ -25,7 +27,7 @@ const PARAMS_CONFIG: &str = "params.yaml";
 pub struct EventActions {
     pub run_pipelines: HashSet<String>,
     pub services: HashMap<String, super::ServiceAction>,
-    pub params: HashMap<String, String>,
+    pub params: HashMap<String, common::vars::Value>,
 }
 
 impl EventActions {

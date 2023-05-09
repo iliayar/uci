@@ -47,7 +47,7 @@ mod raw {
 
     use anyhow::anyhow;
 
-    use crate::config::{self, LoadRawSync};
+    use crate::config::{self, Expr, LoadRawSync};
 
     #[derive(Serialize, Deserialize)]
     pub struct Config {
@@ -57,7 +57,7 @@ mod raw {
     #[derive(Serialize, Deserialize)]
     #[serde(deny_unknown_fields)]
     pub struct Caddy {
-        enabled: Option<config::utils::Enabled>,
+        enabled: Option<Expr<bool>>,
         hostnames: HashMap<String, String>,
     }
 

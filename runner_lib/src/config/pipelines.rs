@@ -64,7 +64,7 @@ mod raw {
     use common::state::State;
     use serde::{Deserialize, Serialize};
 
-    use crate::{config, utils};
+    use crate::{config::{self, Expr}, utils};
 
     use anyhow::anyhow;
 
@@ -94,7 +94,7 @@ mod raw {
     struct JobCommon {
         needs: Option<Vec<String>>,
         stage: Option<String>,
-        enabled: Option<config::utils::Enabled>,
+        enabled: Option<Expr<bool>>,
     }
 
     #[derive(Deserialize, Serialize)]
