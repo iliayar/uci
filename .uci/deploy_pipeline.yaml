@@ -25,9 +25,14 @@ links:
   'uci': ${project.repos.uci.path}
 
 integrations:
-  gitlab:
-    token: ${project.secrets.gitlab_token}
-    project_id: '42995967'
+  # gitlab:
+  #   token: ${project.secrets.gitlab_token}
+  #   project_id: '42995967'
+  #   rev: ${project.repos.uci.rev}
+
+  github:
+    token: ${project.secrets.github_token}
+    repo: 'iliayar/uci'
     rev: ${project.repos.uci.rev}
 
   telegram:
