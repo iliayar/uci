@@ -143,7 +143,15 @@ fn state_to_vars(state: &State) -> common::vars::Value {
     }
 
     if let Ok(project_params) = state.get_named::<HashMap<String, String>, _>("project_params") {
-        vars.assign("params", project_params.into()).ok();
+        for (key, value) in project_params.iter() {
+            vars.assign(format!("params.{}", key), value.into()).ok();
+        }
+    }
+
+    if let Ok(action_params) = state.get_named::<HashMap<String, String>, _>("action_params") {
+        for (key, value) in action_params.iter() {
+            vars.assign(format!("params.{}", key), value.into()).ok();
+        }
     }
 
     if let Ok(pipeline_id) = state.get_named::<String, _>("pipeline_id") {

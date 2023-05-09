@@ -758,6 +758,10 @@ impl Executor {
         let pipeline_run: &PipelineRun = state.get()?;
 
         for (i, step) in job.steps.into_iter().enumerate() {
+	    if !job.enabled {
+		break;
+	    }
+
             integrations.handle_job_progress(&state, &id, i).await;
             pipeline_run
                 .set_job_status(&id, JobStatus::Running { step: i })
@@ -789,6 +793,8 @@ impl Executor {
                         error: Some(err.to_string()),
                     })
                     .await;
+
+		return Err(err);
             }
         }
 

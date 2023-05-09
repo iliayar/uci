@@ -121,6 +121,7 @@ impl Service {
         steps.push(common::Step::RunContainer(self.get_run_config()?));
 
         let job = common::Job {
+	    enabled: true,
             needs: vec![],
 	    stage: None,
             steps,
@@ -133,6 +134,7 @@ impl Service {
         let steps = vec![common::Step::StopContainer(self.get_stop_config()?)];
 
         let job = common::Job {
+	    enabled: true,
             needs: vec![],
 	    stage: None,
             steps,
@@ -150,6 +152,7 @@ impl Service {
         steps.push(common::Step::RunContainer(self.get_run_config()?));
 
         let job = common::Job {
+	    enabled: true,
             needs: vec![],
 	    stage: None,
             steps,
@@ -168,6 +171,7 @@ impl Service {
         let steps = vec![common::Step::ServiceLogs(config)];
 
         let job = common::Job {
+	    enabled: true,
             needs: vec![],
 	    stage: None,
             steps,

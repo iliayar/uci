@@ -57,6 +57,7 @@ pub enum OverlapStrategy {
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Job {
+    pub enabled: bool,
     pub needs: Vec<String>,
     pub steps: Vec<Step>,
     pub stage: Option<String>,

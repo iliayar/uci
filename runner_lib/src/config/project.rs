@@ -25,6 +25,7 @@ const PARAMS_CONFIG: &str = "params.yaml";
 pub struct EventActions {
     pub run_pipelines: HashSet<String>,
     pub services: HashMap<String, super::ServiceAction>,
+    pub params: HashMap<String, String>,
 }
 
 impl EventActions {
@@ -200,16 +201,20 @@ impl Project {
         let EventActions {
             run_pipelines,
             services,
+	    params,
         } = self.actions.get_matched_actions(event).await?;
+
+	let mut state = state.clone();
+	state.set_named("actions_params", &params);
 
         let mut pipeline_tasks = Vec::new();
 
         info!("Running pipelines {:?}", run_pipelines);
         for pipeline_id in run_pipelines.iter() {
-            pipeline_tasks.push(self.run_pipeline(state, pipeline_id))
+            pipeline_tasks.push(self.run_pipeline(&state, pipeline_id))
         }
 
-        let services_fut = self.run_service_actions(state, services);
+        let services_fut = self.run_service_actions(&state, services);
         let pipelines_fut = futures::future::try_join_all(pipeline_tasks);
 
         tokio::try_join!(pipelines_fut, services_fut)?;

@@ -91,10 +91,28 @@ mod raw {
 
     #[derive(Deserialize, Serialize)]
     #[serde(deny_unknown_fields)]
-    struct Job {
+    struct JobCommon {
         needs: Option<Vec<String>>,
-        steps: Option<Vec<Step>>,
         stage: Option<String>,
+        enabled: Option<config::utils::Enabled>,
+    }
+
+    #[derive(Deserialize, Serialize)]
+    #[serde(untagged)]
+    enum Job {
+        JobWithSteps {
+            #[serde(flatten)]
+            common: JobCommon,
+
+            steps: Vec<Step>,
+        },
+        JobWithSingleStep {
+            #[serde(flatten)]
+            common: JobCommon,
+
+            #[serde(flatten)]
+            step: Step,
+        },
     }
 
     #[derive(Deserialize, Serialize)]
@@ -273,10 +291,15 @@ mod raw {
         type Output = common::Job;
 
         fn load_raw(self, state: &State) -> Result<Self::Output, anyhow::Error> {
+            let (common, steps) = match self {
+                Job::JobWithSteps { common, steps } => (common, steps),
+                Job::JobWithSingleStep { common, step } => (common, vec![step]),
+            };
             Ok(common::Job {
-                needs: self.needs.unwrap_or_default(),
-                steps: self.steps.unwrap_or_default().load_raw(state)?,
-                stage: self.stage,
+                needs: common.needs.unwrap_or_default(),
+                steps: steps.load_raw(state)?,
+                stage: common.stage,
+                enabled: common.enabled.load_raw(state)?.unwrap_or(true),
             })
         }
     }

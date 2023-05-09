@@ -34,6 +34,7 @@ pub struct Trigger {
     on: TriggerType,
     run_pipelines: Option<Vec<String>>,
     services: Option<HashMap<String, ServiceAction>>,
+    params: HashMap<String, String>,
 }
 
 #[derive(Debug)]
@@ -104,9 +105,16 @@ impl Actions {
             .into_iter()
             .flat_map(|m| m.into_iter())
             .collect();
+        let params: HashMap<String, String> = self
+            .get_actions(event, &|case| Some(case.params.clone()))
+            .await?
+            .into_iter()
+            .flat_map(|m| m.into_iter())
+            .collect();
         Ok(super::EventActions {
             run_pipelines,
             services,
+	    params
         })
     }
 
@@ -241,6 +249,7 @@ mod raw {
         changes: Option<Vec<String>>,
         exclude_changes: Option<Vec<String>>,
         exclude_commits: Option<Vec<String>>,
+	params: Option<HashMap<String, String>>,
     }
 
     impl config::LoadRawSync for Actions {
@@ -300,6 +309,7 @@ mod raw {
             Ok(super::Trigger {
                 run_pipelines: self.run_pipelines,
                 services: self.services.load_raw(state)?,
+		params: self.params.unwrap_or_default(),
                 on,
             })
         }
