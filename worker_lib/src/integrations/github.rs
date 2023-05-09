@@ -133,6 +133,8 @@ impl GitHubIntegration {
             .send()
             .await?;
 
+        res.error_for_status()?;
+
         Ok(())
     }
 }
