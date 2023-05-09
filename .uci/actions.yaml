@@ -1,8 +1,16 @@
 actions:
+  build:
+    - on: call
+      run_pipelines:
+        - deploy
+      params:
+        do_restart: false
   deploy_manual:
     - on: call
       run_pipelines:
         - deploy
+      params:
+        do_restart: true
   deploy:
     - on: changed
       repo_id: uci
@@ -14,3 +22,5 @@ actions:
         - 'Cargo.lock.*'
       run_pipelines:
         - deploy
+      params:
+        do_restart: true
