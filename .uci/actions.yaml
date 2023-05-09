@@ -1,17 +1,16 @@
 actions:
-  build:
-    - on: call
-      run_pipelines:
-        - deploy
-      params:
-        do_restart: false
-  deploy_manual:
+  restart:
     - on: call
       run_pipelines:
         - deploy
       params:
         do_restart: true
   deploy:
+    - on: call
+      run_pipelines:
+        - deploy
+      params:
+        do_restart: false
     - on: changed
       repo_id: uci
       changes:
@@ -23,4 +22,4 @@ actions:
       run_pipelines:
         - deploy
       params:
-        do_restart: true
+        do_restart: false
