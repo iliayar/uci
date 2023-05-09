@@ -1,4 +1,5 @@
 * uCI
+[[https://uci.ilyay.space/badge/ghlike?project_id=uci&pipeline_id=deploy&job_id=build]]
 Simple lightweight ci/cd for self-hosting
 
 ** Build

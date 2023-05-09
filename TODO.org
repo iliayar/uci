@@ -4,12 +4,12 @@
   - [ ] Support parameters when call action, update repo, etc...
   - [ ] Support parameters in action description \\
     Allowes reuse pipelines with different behaviour
-- [-] [1/4] Integrations
+- [-] [2/4] Integrations
   - [-] [1/2] Setting commit status on github/gitlab/...
     - [X] Gitlab
     - [ ] Github
   - [X] Telegram notifications
-  - [ ] SVG Badge
+  - [X] SVG Badge
   - [-] [1/2] Webhooks
     - [X] GitLab
     - [ ] GitHub
