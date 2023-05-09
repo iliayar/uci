@@ -207,7 +207,7 @@ impl Project {
         } = self.actions.get_matched_actions(event).await?;
 
 	let mut state = state.clone();
-	state.set_named("actions_params", &params);
+	state.set_named("action_params", &params);
 
         let mut pipeline_tasks = Vec::new();
 
