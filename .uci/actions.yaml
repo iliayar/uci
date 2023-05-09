@@ -7,6 +7,10 @@ actions:
     - on: changed
       repo_id: uci
       changes:
-        - '.*' # All files
+        - 'common.*'
+        - 'runner_lib.*'
+        - 'uci.*'
+        - 'worker_lib.*'
+        - 'Cargo.lock.*'
       run_pipelines:
         - deploy

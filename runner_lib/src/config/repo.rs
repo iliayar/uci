@@ -28,14 +28,17 @@ pub enum Repo {
 }
 
 pub enum Diff {
-    Changes(git::ChangedFiles),
+    Changes {
+        changes: git::ChangedFiles,
+        commit_message: String,
+    },
     Whole,
 }
 
 impl Diff {
     pub fn is_empty(&self) -> bool {
         match self {
-            Diff::Changes(changes) => changes.is_empty(),
+            Diff::Changes { changes, .. } => changes.is_empty(),
             Diff::Whole => false,
         }
     }
@@ -107,9 +110,11 @@ impl Repo {
                     self.clone_if_missing(state).await?;
                     Ok(Diff::Whole)
                 } else {
-                    Ok(Diff::Changes(
-                        git::pull(path.clone(), branch.clone()).await?,
-                    ))
+                    let pull_result = git::pull(path.clone(), branch.clone()).await?;
+                    Ok(Diff::Changes {
+                        changes: pull_result.changes,
+                        commit_message: pull_result.commit_message,
+                    })
                 }
             }
 
@@ -189,10 +194,13 @@ impl Repos {
                         .await;
                 }
                 Ok(changed_files) => match changed_files {
-                    Diff::Changes(changed_files) => {
+                    Diff::Changes {
+                        changes,
+                        commit_message,
+                    } => {
                         run_context
                             .send(common::runner::UpdateRepoMessage::RepoPulled {
-                                changed_files: changed_files.clone(),
+                                changed_files: changes.clone(),
                             })
                             .await;
                     }

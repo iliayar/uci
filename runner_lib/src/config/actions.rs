@@ -45,6 +45,8 @@ pub enum TriggerType {
     ReposUpdated {
         repo_id: String,
         patterns: Vec<regex::Regex>,
+        exclude_patterns: Vec<regex::Regex>,
+        exclude_commits: Vec<regex::Regex>,
     },
 }
 
@@ -141,7 +143,12 @@ impl TriggerType {
                 } => project_id == event_project_id && trigger_id == event_trigger_id,
                 _ => false,
             },
-            TriggerType::ReposUpdated { repo_id, patterns } => match event {
+            TriggerType::ReposUpdated {
+                repo_id,
+                patterns,
+                exclude_patterns,
+                exclude_commits,
+            } => match event {
                 Event::RepoUpdate {
                     repo_id: event_repo_id,
                     diffs,
@@ -150,13 +157,31 @@ impl TriggerType {
                         return false;
                     } else {
                         match diffs {
-                            super::Diff::Changes(diffs) => {
-                                for diff in diffs.iter() {
+                            super::Diff::Changes {
+                                changes,
+                                commit_message,
+                            } => {
+                                for pattern in exclude_commits.iter() {
+                                    if pattern.is_match(commit_message) {
+                                        return false;
+                                    }
+                                }
+
+                                for diff in changes.iter() {
+                                    let mut matched = false;
                                     for pattern in patterns.iter() {
                                         if pattern.is_match(diff) {
-                                            return true;
+                                            matched = true;
                                         }
                                     }
+
+                                    for pattern in exclude_patterns.iter() {
+                                        if pattern.is_match(diff) {
+                                            matched = false;
+                                        }
+                                    }
+
+                                    return matched;
                                 }
                             }
                             super::Diff::Whole => {
@@ -214,6 +239,8 @@ mod raw {
         services: Option<HashMap<String, ServiceAction>>,
         repo_id: Option<String>,
         changes: Option<Vec<String>>,
+        exclude_changes: Option<Vec<String>>,
+        exclude_commits: Option<Vec<String>>,
     }
 
     impl config::LoadRawSync for Actions {
@@ -246,12 +273,26 @@ mod raw {
                         .into_iter()
                         .map(|pattern| Ok(regex::Regex::new(&pattern)?))
                         .collect();
+                    let exclude_changes: Result<Vec<_>, anyhow::Error> = self
+                        .exclude_changes
+                        .unwrap_or_default()
+                        .into_iter()
+                        .map(|pattern| Ok(regex::Regex::new(&pattern)?))
+                        .collect();
+                    let exclude_commits: Result<Vec<_>, anyhow::Error> = self
+                        .exclude_commits
+                        .unwrap_or_default()
+                        .into_iter()
+                        .map(|pattern| Ok(regex::Regex::new(&pattern)?))
+                        .collect();
                     let repo_id = self
                         .repo_id
                         .ok_or_else(|| anyhow!("'repo_id' fieled required for on: changed"))?;
                     super::TriggerType::ReposUpdated {
                         repo_id,
                         patterns: changes?,
+                        exclude_patterns: exclude_changes?,
+                        exclude_commits: exclude_commits?,
                     }
                 }
             };

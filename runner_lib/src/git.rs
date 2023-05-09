@@ -59,7 +59,12 @@ pub async fn check_exists(path: PathBuf) -> Result<bool, GitError> {
         .map(|s| s.success())
 }
 
-pub async fn pull(path: PathBuf, branch: String) -> Result<ChangedFiles, GitError> {
+pub struct PullResult {
+    pub changes: ChangedFiles,
+    pub commit_message: String,
+}
+
+pub async fn pull(path: PathBuf, branch: String) -> Result<PullResult, GitError> {
     let old_commit = current_commit(path.clone()).await?;
 
     git(path.clone(), &[String::from("fetch")]).await?;
@@ -76,16 +81,34 @@ pub async fn pull(path: PathBuf, branch: String) -> Result<ChangedFiles, GitErro
 
     let new_commit = current_commit(path.clone()).await?;
 
-    git_out(
+    let changes = git_out(
         path.clone(),
         &[
             String::from("diff"),
             String::from("--name-only"),
             old_commit,
+            new_commit.clone(),
+        ],
+    )
+    .await?;
+
+    let commit_message = git_out(
+        path.clone(),
+        &[
+            String::from("log"),
+            String::from("--format=%B"),
+            String::from("-n"),
+            String::from("1"),
             new_commit,
         ],
     )
-    .await
+    .await?
+    .join("\n");
+
+    Ok(PullResult {
+        changes,
+        commit_message,
+    })
 }
 
 pub async fn current_commit(path: PathBuf) -> Result<String, GitError> {
