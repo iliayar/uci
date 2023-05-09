@@ -103,7 +103,7 @@ pub async fn validate_hmac_sha256(
     mac.update(&body);
     let result = mac.finalize();
 
-    if header != format!("sha256={:x?}", result.into_bytes()) {
+    if header != format!("sha256={:x}", result.into_bytes()) {
         Err(warp::reject::custom(AuthRejection::TokenIsUnauthorized))
     } else {
         Ok(Some(secret))
