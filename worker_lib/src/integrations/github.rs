@@ -91,8 +91,14 @@ impl super::integration::Integration for GitHubIntegration {
 #[derive(Serialize, Deserialize)]
 struct Body {
     state: State,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
     context: Option<String>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
     target_url: Option<String>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
     description: Option<String>,
 }
 
