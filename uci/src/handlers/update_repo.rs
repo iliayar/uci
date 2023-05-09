@@ -1,3 +1,4 @@
+use bytes::Bytes;
 use runner_lib::{
     call_context::{self, CallContext},
     config,
@@ -5,7 +6,7 @@ use runner_lib::{
 
 use serde::{Deserialize, Serialize};
 
-use crate::filters::{with_call_context, AuthRejection};
+use crate::filters::{validate_hmac_sha256, with_call_context, AuthRejection};
 
 use reqwest::StatusCode;
 use warp::Filter;
@@ -15,7 +16,9 @@ use log::*;
 pub fn filter(
     deps: call_context::Deps,
 ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
-    api_call(deps.clone()).or(gitlab_webhook(deps))
+    api_call(deps.clone())
+        .or(gitlab_webhook(deps.clone()))
+        .or(github_webhook(deps))
 }
 
 pub fn api_call(
@@ -51,6 +54,46 @@ pub fn gitlab_webhook(
         )
         .and(warp::post())
         .and_then(update_repo)
+}
+
+pub fn github_webhook(
+    deps: call_context::Deps,
+) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
+    warp::any()
+        .and(with_validate_github(deps.clone()))
+        .map(move |token: Option<String>| CallContext::for_handler(token, deps.clone()))
+        .and(warp::path!("github" / "update"))
+        .and(
+            warp::query::<Query>().map(|query: Query| common::runner::UpdateRepoBody {
+                project_id: query.project_id,
+                repo_id: query.repo_id,
+                artifact_id: None,
+            }),
+        )
+        .and(warp::post())
+        .and_then(update_repo)
+}
+
+fn with_validate_github(
+    deps: call_context::Deps,
+) -> impl Filter<Extract = (Option<String>,), Error = warp::Rejection> + Clone {
+    warp::body::bytes()
+        .and(warp::header("x-hub-signature-256"))
+        .and_then(move |body: Bytes, header: String| {
+            let deps = deps.clone();
+            async move {
+                let config = deps.context.config().await;
+		// FIXME: From where to get secret better?
+                let secret = if let Some(secret) = config.secrets.get("webhook-secret") {
+                    Some(secret.clone())
+                } else {
+                    warn!("No secret webhook-secret to check github webhook");
+                    None
+                };
+
+                validate_hmac_sha256(header, secret, body).await
+            }
+        })
 }
 
 async fn update_repo(

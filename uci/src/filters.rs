@@ -87,6 +87,30 @@ pub fn with_validation() -> impl Filter<Extract = (Option<String>,), Error = Rej
     })
 }
 
+pub async fn validate_hmac_sha256(
+    header: String,
+    secret: Option<String>,
+    body: Bytes,
+) -> Result<Option<String>, warp::Rejection> {
+    let secret = if let Some(secret) = secret {
+        secret
+    } else {
+        return Ok(None);
+    };
+
+    type HmacSha256 = hmac::Hmac<sha2::Sha256>;
+    let mut mac = HmacSha256::new_from_slice(secret.as_bytes()).unwrap();
+    mac.update(&body);
+    let result = mac.finalize();
+
+    if header != format!("sha256={:x?}", result.into_bytes()) {
+        Err(warp::reject::custom(AuthRejection::TokenIsUnauthorized))
+    } else {
+        Ok(Some(secret))
+    }
+}
+
+#[allow(dead_code)]
 pub fn with_validate_hmac_sha256(
     header: &'static str,
     token: String,
@@ -96,19 +120,7 @@ pub fn with_validate_hmac_sha256(
         .and(warp::body::bytes())
         .and_then(move |header: String, body: Bytes| {
             let token = token.clone();
-
-            async move {
-                type HmacSha256 = hmac::Hmac<sha2::Sha256>;
-                let mut mac = HmacSha256::new_from_slice(token.as_bytes()).unwrap();
-                mac.update(&body);
-                let result = mac.finalize();
-
-                if header != format!("sha256={:x?}", result.into_bytes()) {
-                    Err(warp::reject::custom(AuthRejection::TokenIsUnauthorized))
-                } else {
-                    Ok(Some(token))
-                }
-            }
+            validate_hmac_sha256(header, Some(token), body)
         })
 }
 

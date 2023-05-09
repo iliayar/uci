@@ -5,7 +5,7 @@ actions:
         - deploy
       params:
         do_restart: true
-  deploy:
+  build:
     - on: call
       run_pipelines:
         - deploy
