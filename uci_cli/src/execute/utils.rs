@@ -164,6 +164,8 @@ enum PipelineStatus {
     Running,
     Finished,
     FinishedError { message: String },
+    Canceled,
+    Displaced,
 }
 
 enum JobStatus {
@@ -171,6 +173,7 @@ enum JobStatus {
     Running { step: usize },
     Finished { error: Option<String> },
     Skipped,
+    Canceled,
 }
 
 impl Default for RunState {
@@ -191,6 +194,7 @@ impl RunState {
             if run.run_id == run_id {
                 for (job_id, job) in run.jobs {
                     let job_status = match job.status {
+                        common::runner::JobStatus::Canceled => JobStatus::Canceled,
                         common::runner::JobStatus::Skipped => JobStatus::Skipped,
                         common::runner::JobStatus::Pending => JobStatus::Pending,
                         common::runner::JobStatus::Running { step } => JobStatus::Running { step },
@@ -203,12 +207,16 @@ impl RunState {
                 }
 
                 if let common::runner::RunStatus::Finished(finished_status) = run.status {
-                    let error = match finished_status {
-                        common::runner::RunFinishedStatus::Success => None,
-                        common::runner::RunFinishedStatus::Error { message } => Some(message),
+                    let status = match finished_status {
+                        common::runner::RunFinishedStatus::Error { message } => {
+                            PipelineStatus::FinishedError { message }
+                        }
+                        common::runner::RunFinishedStatus::Success => PipelineStatus::Finished,
+                        common::runner::RunFinishedStatus::Canceled => PipelineStatus::Canceled,
+                        common::runner::RunFinishedStatus::Displaced => PipelineStatus::Displaced,
                     };
 
-                    state.finish_pipeline(run.pipeline, error);
+                    state.finish_pipeline(run.pipeline, status);
                 }
             }
         }
@@ -243,6 +251,12 @@ impl RunState {
                 PipelineStatus::Finished => {
                     print!("{}Finished{}", color::Fg(color::Green), style::Reset)
                 }
+                PipelineStatus::Canceled => {
+                    print!("{}Canceled{}", color::Fg(color::Yellow), style::Reset)
+                }
+                PipelineStatus::Displaced => {
+                    print!("{}Displaced{}", color::Fg(color::LightBlack), style::Reset)
+                }
                 PipelineStatus::FinishedError { message } => {
                     print!("{}Failed{}", color::Fg(color::Red), style::Reset)
                 }
@@ -251,7 +265,10 @@ impl RunState {
             print!(" {}", pipeline_id);
 
             match &pipeline.status {
-                PipelineStatus::Running | PipelineStatus::Finished => println!(),
+                PipelineStatus::Running
+                | PipelineStatus::Finished
+                | PipelineStatus::Canceled
+                | PipelineStatus::Displaced => println!(),
                 PipelineStatus::FinishedError { message } => {
                     println!(" {}{}{}", color::Fg(color::Red), message, style::Reset)
                 }
@@ -262,6 +279,9 @@ impl RunState {
             for (job_id, job_status) in pipeline.jobs.iter() {
                 print!("  ");
                 match job_status {
+                    JobStatus::Canceled => {
+                        print!("{}Canceled{}", color::Fg(color::Yellow), style::Reset)
+                    }
                     JobStatus::Skipped => {
                         print!("{}Skipped{}", color::Fg(color::LightBlack), style::Reset)
                     }
@@ -318,13 +338,7 @@ impl RunState {
         );
     }
 
-    fn finish_pipeline(&mut self, pipeline: String, error: Option<String>) {
-        let status = if let Some(message) = error {
-            PipelineStatus::FinishedError { message }
-        } else {
-            PipelineStatus::Finished
-        };
-
+    fn finish_pipeline(&mut self, pipeline: String, status: PipelineStatus) {
         if let Some(pipeline) = self.pipelines.get_mut(&pipeline) {
             pipeline.status = status;
         } else {
@@ -478,8 +492,25 @@ async fn print_pipeline_run_impl(
             common::runner::PipelineMessage::Start { pipeline } => {
                 state.lock().await.start_pipeline(pipeline);
             }
+            common::runner::PipelineMessage::Canceled { pipeline } => {
+                state
+                    .lock()
+                    .await
+                    .finish_pipeline(pipeline, PipelineStatus::Canceled);
+            }
+            common::runner::PipelineMessage::Displaced { pipeline } => {
+                state
+                    .lock()
+                    .await
+                    .finish_pipeline(pipeline, PipelineStatus::Displaced);
+            }
             common::runner::PipelineMessage::Finish { pipeline, error } => {
-                state.lock().await.finish_pipeline(pipeline, error);
+                let status = if let Some(message) = error {
+                    PipelineStatus::FinishedError { message }
+                } else {
+                    PipelineStatus::Finished
+                };
+                state.lock().await.finish_pipeline(pipeline, status);
             }
             common::runner::PipelineMessage::JobPending { pipeline, job_id } => {
                 state
@@ -507,14 +538,17 @@ async fn print_pipeline_run_impl(
                     .await
                     .set_job_status(pipeline, job_id, JobStatus::Finished { error });
             }
-            common::runner::PipelineMessage::JobSkipped {
-                pipeline,
-                job_id,
-            } => {
+            common::runner::PipelineMessage::JobSkipped { pipeline, job_id } => {
                 state
                     .lock()
                     .await
                     .set_job_status(pipeline, job_id, JobStatus::Skipped);
+            }
+            common::runner::PipelineMessage::JobCanceled { pipeline, job_id } => {
+                state
+                    .lock()
+                    .await
+                    .set_job_status(pipeline, job_id, JobStatus::Canceled);
             }
             common::runner::PipelineMessage::Log {
                 pipeline,

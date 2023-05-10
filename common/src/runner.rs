@@ -214,6 +214,8 @@ pub enum RunStatus {
 pub enum RunFinishedStatus {
     Success,
     Error { message: String },
+    Canceled,
+    Displaced,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -227,11 +229,18 @@ pub enum JobStatus {
     Running { step: usize },
     Finished { error: Option<String> },
     Skipped,
+    Canceled,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum PipelineMessage {
     Start {
+        pipeline: String,
+    },
+    Canceled {
+        pipeline: String,
+    },
+    Displaced {
         pipeline: String,
     },
     Finish {
@@ -253,6 +262,10 @@ pub enum PipelineMessage {
         error: Option<String>,
     },
     JobSkipped {
+        pipeline: String,
+        job_id: String,
+    },
+    JobCanceled {
         pipeline: String,
         job_id: String,
     },

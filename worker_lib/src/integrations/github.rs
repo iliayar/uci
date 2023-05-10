@@ -50,6 +50,20 @@ impl super::integration::Integration for GitHubIntegration {
         Ok(())
     }
 
+    async fn handle_pipeline_canceled(
+        &self,
+        state: &common::state::State,
+    ) -> Result<(), anyhow::Error> {
+        Ok(())
+    }
+
+    async fn handle_pipeline_displaced(
+        &self,
+        state: &common::state::State,
+    ) -> Result<(), anyhow::Error> {
+        Ok(())
+    }
+
     async fn handle_job_pending(
         &self,
         state: &common::state::State,
@@ -67,6 +81,15 @@ impl super::integration::Integration for GitHubIntegration {
     ) -> Result<(), anyhow::Error> {
         self.set_job_status::<&str>(job, State::Success, None)
             .await?;
+        Ok(())
+    }
+
+    async fn handle_job_canceled(
+        &self,
+        state: &common::state::State,
+        job: &str,
+    ) -> Result<(), anyhow::Error> {
+        self.set_job_status::<&str>(job, State::Error, None).await?;
         Ok(())
     }
 

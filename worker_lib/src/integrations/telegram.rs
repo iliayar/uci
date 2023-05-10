@@ -76,6 +76,32 @@ impl super::integration::Integration for TelegramIntegration {
         self.send_message(text).await
     }
 
+    async fn handle_pipeline_canceled(
+        &self,
+        state: &common::state::State,
+    ) -> Result<(), anyhow::Error> {
+        let text = if let Some(pipeline_id) = self.pipeline_id.as_ref() {
+            format!("Pipeline {} canceled", pipeline_id)
+        } else {
+            "Pipeline canceled".to_string()
+        };
+
+        self.send_message(text).await
+    }
+
+    async fn handle_pipeline_displaced(
+        &self,
+        state: &common::state::State,
+    ) -> Result<(), anyhow::Error> {
+        let text = if let Some(pipeline_id) = self.pipeline_id.as_ref() {
+            format!("Pipeline {} displaced", pipeline_id)
+        } else {
+            "Pipeline displaced".to_string()
+        };
+
+        self.send_message(text).await
+    }
+
     async fn handle_job_pending(
         &self,
         state: &common::state::State,
@@ -115,6 +141,28 @@ impl super::integration::Integration for TelegramIntegration {
         }
 
         write!(buf, " skiped").ok();
+
+        self.send_message(String::from_utf8_lossy(&buf).to_string())
+            .await
+    }
+
+    async fn handle_job_canceled(
+        &self,
+        state: &common::state::State,
+        job: &str,
+    ) -> Result<(), anyhow::Error> {
+        if !self.notify_jobs {
+            return Ok(());
+        }
+
+        let mut buf: Vec<u8> = Vec::new();
+        write!(buf, "Job {}", job).ok();
+
+        if let Some(pipeline_id) = self.pipeline_id.as_ref() {
+            write!(buf, " in pipeline {}", pipeline_id).ok();
+        }
+
+        write!(buf, " canceled").ok();
 
         self.send_message(String::from_utf8_lossy(&buf).to_string())
             .await

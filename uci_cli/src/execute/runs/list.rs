@@ -37,10 +37,24 @@ pub async fn execute_runs_list(
                         style::Reset
                     )
                 }
+                common::runner::RunFinishedStatus::Canceled => {
+                    println!(
+                        "  Status: {}Canceled{}",
+                        color::Fg(color::Yellow),
+                        style::Reset
+                    )
+                }
+                common::runner::RunFinishedStatus::Displaced => {
+                    println!(
+                        "  Status: {}Displaced{}",
+                        color::Fg(color::LightBlack),
+                        style::Reset
+                    )
+                }
                 common::runner::RunFinishedStatus::Error { message } => {
                     println!(
                         "  Status: {}Finished ({}){}",
-                        color::Fg(color::Green),
+                        color::Fg(color::Red),
                         message,
                         style::Reset
                     )
@@ -53,10 +67,17 @@ pub async fn execute_runs_list(
             println!("  - Job: {}", job_id);
 
             match job.status {
+                common::runner::JobStatus::Canceled => {
+                    println!(
+                        "    Status: {}Canceled{}",
+                        color::Fg(color::Yellow),
+                        style::Reset
+                    )
+                }
                 common::runner::JobStatus::Skipped => {
                     println!(
                         "    Status: {}Skipped{}",
-                        color::Fg(color::Yellow),
+                        color::Fg(color::LightBlack),
                         style::Reset
                     )
                 }

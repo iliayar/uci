@@ -9,6 +9,8 @@ where
     Self: Send + Sync,
 {
     async fn handle_pipeline_start(&self, state: &State) -> Result<(), anyhow::Error>;
+    async fn handle_pipeline_canceled(&self, state: &State) -> Result<(), anyhow::Error>;
+    async fn handle_pipeline_displaced(&self, state: &State) -> Result<(), anyhow::Error>;
     async fn handle_pipeline_fail(
         &self,
         state: &State,
@@ -30,6 +32,7 @@ where
         error: Option<String>,
     ) -> Result<(), anyhow::Error>;
     async fn handle_job_skipped(&self, state: &State, job: &str) -> Result<(), anyhow::Error>;
+    async fn handle_job_canceled(&self, state: &State, job: &str) -> Result<(), anyhow::Error>;
 }
 
 #[cfg(test)]
@@ -66,6 +69,14 @@ impl Integrations {
         self.foreach(|integration| async move { integration.handle_pipeline_start(state).await })
             .await;
     }
+    pub async fn handle_pipeline_canceled<'a>(&self, state: &State<'a>) {
+        self.foreach(|integration| async move { integration.handle_pipeline_canceled(state).await })
+            .await;
+    }
+    pub async fn handle_pipeline_displaced<'a>(&self, state: &State<'a>) {
+        self.foreach(|integration| async move { integration.handle_pipeline_displaced(state).await })
+            .await;
+    }
     pub async fn handle_pipeline_fail<'a>(&self, state: &State<'a>, error: Option<String>) {
         self.foreach(|integration| {
             let error = error.clone();
@@ -97,6 +108,10 @@ impl Integrations {
     }
     pub async fn handle_job_skipped<'a>(&self, state: &State<'a>, job: &str) {
         self.foreach(|integration| async move { integration.handle_job_skipped(state, job).await })
+            .await
+    }
+    pub async fn handle_job_canceled<'a>(&self, state: &State<'a>, job: &str) {
+        self.foreach(|integration| async move { integration.handle_job_canceled(state, job).await })
             .await
     }
 

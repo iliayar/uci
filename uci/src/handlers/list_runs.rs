@@ -80,6 +80,12 @@ async fn list_runs_impl(
                             }
                             worker_lib::executor::PipelineStatus::Finished(finished_status) => {
                                 common::runner::RunStatus::Finished(match finished_status {
+                                    worker_lib::executor::PipelineFinishedStatus::Canceled => {
+                                        common::runner::RunFinishedStatus::Canceled
+                                    }
+                                    worker_lib::executor::PipelineFinishedStatus::Displaced => {
+                                        common::runner::RunFinishedStatus::Displaced
+                                    }
                                     worker_lib::executor::PipelineFinishedStatus::Success => {
                                         common::runner::RunFinishedStatus::Success
                                     }
@@ -96,6 +102,9 @@ async fn list_runs_impl(
                             let status = match job.status {
                                 worker_lib::executor::JobStatus::Skipped => {
                                     common::runner::JobStatus::Skipped
+                                }
+                                worker_lib::executor::JobStatus::Canceled => {
+                                    common::runner::JobStatus::Canceled
                                 }
                                 worker_lib::executor::JobStatus::Pending => {
                                     common::runner::JobStatus::Pending

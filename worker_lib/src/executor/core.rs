@@ -91,12 +91,15 @@ pub enum JobStatus {
     Running { step: usize },
     Finished { error: Option<String> },
     Skipped,
+    Canceled,
 }
 
 #[derive(Clone)]
 pub enum PipelineFinishedStatus {
     Success,
     Error { message: String },
+    Canceled,
+    Displaced,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -604,39 +607,52 @@ impl Executor {
 
         let res = self.run_impl(&state, pipeline).await;
 
-        let finished_status = match res.as_ref() {
-            Ok(_) => PipelineFinishedStatus::Success,
-            Err(err) => PipelineFinishedStatus::Error {
-                message: err.to_string(),
-            },
-        };
+        if pipeline_run.canceled().await {
+            pipeline_run
+                .set_status(PipelineStatus::Finished(PipelineFinishedStatus::Canceled))
+                .await;
+            run_context
+                .send(common::runner::PipelineMessage::Canceled {
+                    pipeline: pipeline_run.pipeline_id.clone(),
+                })
+                .await;
+            integrations.handle_pipeline_canceled(&state).await;
+        } else {
+            let finished_status = match res.as_ref() {
+                Ok(_) => PipelineFinishedStatus::Success,
+                Err(err) => PipelineFinishedStatus::Error {
+                    message: err.to_string(),
+                },
+            };
 
-        pipeline_run
-            .set_status(PipelineStatus::Finished(finished_status))
-            .await;
+            pipeline_run
+                .set_status(PipelineStatus::Finished(finished_status))
+                .await;
 
-        let error = match res.as_ref() {
-            Ok(_) => None,
-            Err(err) => Some(err.to_string()),
-        };
+            let error = match res.as_ref() {
+                Ok(_) => None,
+                Err(err) => Some(err.to_string()),
+            };
 
-        run_context
-            .send(common::runner::PipelineMessage::Finish {
-                pipeline: pipeline_run.pipeline_id.clone(),
-                error,
-            })
-            .await;
+            run_context
+                .send(common::runner::PipelineMessage::Finish {
+                    pipeline: pipeline_run.pipeline_id.clone(),
+                    error,
+                })
+                .await;
 
-        match res.as_ref() {
-            Ok(_) => {
-                integrations.handle_pipeline_done(&state).await;
-            }
-            Err(err) => {
-                integrations
-                    .handle_pipeline_fail(&state, Some(err.to_string()))
-                    .await;
+            match res.as_ref() {
+                Ok(_) => {
+                    integrations.handle_pipeline_done(&state).await;
+                }
+                Err(err) => {
+                    integrations
+                        .handle_pipeline_fail(&state, Some(err.to_string()))
+                        .await;
+                }
             }
         }
+
         pipeline_run.finish().await?;
 
         res
@@ -830,7 +846,22 @@ impl Executor {
                     })
                     .await;
 
-                if let Err(err) = step.run(&state).await {
+                let res = step.run(&state).await;
+
+                if pipeline_run.canceled().await {
+                    integrations.handle_job_canceled(&state, &id).await;
+                    pipeline_run.set_job_status(&id, JobStatus::Canceled).await;
+                    run_context
+                        .send(common::runner::PipelineMessage::JobCanceled {
+                            pipeline: pipeline_run.pipeline_id.clone(),
+                            job_id: id.clone(),
+                        })
+                        .await;
+
+                    return Err(anyhow!("Canceled"));
+                }
+
+                if let Err(err) = res {
                     integrations
                         .handle_job_done(&state, &id, Some(err.to_string()))
                         .await;
