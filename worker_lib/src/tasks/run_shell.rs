@@ -60,6 +60,7 @@ impl task::Task for common::RunShellConfig {
 
             run_command_builder.env(self.env);
 
+            // TODO: Interrupt somehow
             docker
                 .run_command(
                     state,
@@ -113,6 +114,9 @@ pub async fn run_command_with_log<'a>(
     mut command: tokio::process::Command,
 ) -> Result<ExitStatus, anyhow::Error> {
     let mut logger = Logger::new(state).await?;
+    let pipeline_run: &crate::executor::PipelineRun = state.get()?;
+
+    let mut interval = tokio::time::interval(std::time::Duration::from_secs(1));
 
     command.stdout(Stdio::piped());
     command.stderr(Stdio::piped());
@@ -125,11 +129,28 @@ pub async fn run_command_with_log<'a>(
         .map(OutputLine::Out)
         .merge(stderr.map(OutputLine::Err));
 
-    while let Some(line) = child_out.next().await {
-        match line {
-            OutputLine::Out(text) => logger.regular(text?).await?,
-            OutputLine::Err(text) => logger.error(text?).await?,
+    loop {
+        #[rustfmt::skip]
+        let line = tokio::select! {
+            line = child_out.next() => line,
+            _ = interval.tick() => {
+	    if pipeline_run.canceled().await {
+		child.kill().await?;
+		return Err(anyhow!("Script canceled"))
+	    } else {
+		continue;
+	    }
+            }
         };
+
+        if let Some(line) = line {
+            match line {
+                OutputLine::Out(text) => logger.regular(text?).await?,
+                OutputLine::Err(text) => logger.error(text?).await?,
+            };
+        } else {
+            break;
+        }
     }
 
     let status = child.wait().await?;
