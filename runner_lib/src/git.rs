@@ -65,10 +65,7 @@ pub struct PullResult {
 }
 
 pub async fn fetch(path: PathBuf, branch: String) -> Result<PullResult, GitError> {
-    let current_commit = current_commit(path.clone()).await?;
-
     git(path.clone(), &[String::from("fetch")]).await?;
-    git(path.clone(), &[String::from("checkout"), branch.clone()]).await?;
 
     let remote_branch = format!("origin/{}", branch.clone());
 
@@ -77,7 +74,7 @@ pub async fn fetch(path: PathBuf, branch: String) -> Result<PullResult, GitError
         &[
             String::from("diff"),
             String::from("--name-only"),
-            current_commit,
+            branch,
             remote_branch.clone(),
         ],
     )
@@ -105,6 +102,7 @@ pub async fn fetch(path: PathBuf, branch: String) -> Result<PullResult, GitError
 pub async fn pull(path: PathBuf, branch: String) -> Result<PullResult, GitError> {
     let result = fetch(path.clone(), branch.clone()).await?;
 
+    git(path.clone(), &[String::from("checkout"), branch.clone()]).await?;
     git(
         path,
         &[

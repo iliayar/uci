@@ -115,6 +115,15 @@ pub enum RunCommands {
         #[clap(short, long)]
         status: bool,
     },
+
+    /// Cancel run of pipeline
+    Cancel {
+        #[clap(long)]
+        pipeline: Option<String>,
+
+        #[clap(short, long)]
+        run_id: Option<String>,
+    },
 }
 
 #[derive(Subcommand, Debug)]
