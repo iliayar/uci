@@ -135,7 +135,7 @@ impl CallContext {
         repo_id: &str,
         artifact: Option<PathBuf>,
         dry_run: bool,
-	update_only: bool,
+        update_only: bool,
     ) -> Result<(), anyhow::Error> {
         self.with_state(|state| async move {
             let mut state = state.clone();

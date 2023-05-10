@@ -184,6 +184,13 @@ pub struct RunsLogsRequestQuery {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct RunsCancelRequestBody {
+    pub run: String,
+    pub project: String,
+    pub pipeline: String,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Run {
     pub project: String,
     pub pipeline: String,
@@ -243,7 +250,7 @@ pub enum PipelineMessage {
     JobFinished {
         pipeline: String,
         job_id: String,
-	error: Option<String>,
+        error: Option<String>,
     },
     JobSkipped {
         pipeline: String,

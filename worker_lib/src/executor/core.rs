@@ -69,6 +69,8 @@ pub struct PipelineRun {
     pub status: Mutex<PipelineStatus>,
     pub jobs: Mutex<HashMap<String, PipelineJob>>,
     pub log_file: Arc<Mutex<Option<tokio::fs::File>>>,
+
+    canceled: Mutex<bool>,
 }
 
 #[derive(Clone)]
@@ -278,15 +280,10 @@ impl Runs {
         impl futures::Stream<Item = Result<common::runner::PipelineMessage, anyhow::Error>>,
         anyhow::Error,
     > {
-        let log_file = if let Some(project) = self.get_project_runs(project.as_ref()) {
-            if let Some(pipeline) = project.get_pipeline_runs(pipeline.as_ref()) {
-                pipeline.get_log_file(run_id).await?
-            } else {
-                return Err(anyhow!("No such pipeline {}", pipeline.as_ref()));
-            }
-        } else {
-            return Err(anyhow!("No such project {}", project.as_ref()));
-        };
+        let log_file = self
+            .get_pipeline_runs(project, pipeline)?
+            .get_log_file(run_id)
+            .await?;
         let log_file = BufReader::new(log_file);
 
         let mut lines = log_file.lines();
@@ -301,6 +298,35 @@ impl Runs {
         };
 
         Ok(s)
+    }
+
+    pub async fn cancel(
+        &self,
+        project: impl AsRef<str>,
+        pipeline: impl AsRef<str>,
+        run_id: impl AsRef<str>,
+    ) -> Result<(), anyhow::Error> {
+        let pipeline_runs = self.get_pipeline_runs(project, pipeline)?;
+        let run = pipeline_runs.get_run(run_id)?;
+        run.cancel().await;
+
+        Ok(())
+    }
+
+    fn get_pipeline_runs(
+        &self,
+        project: impl AsRef<str>,
+        pipeline: impl AsRef<str>,
+    ) -> Result<&PipelineRuns, anyhow::Error> {
+        if let Some(project) = self.get_project_runs(project.as_ref()) {
+            if let Some(pipeline) = project.get_pipeline_runs(pipeline.as_ref()) {
+                Ok(pipeline)
+            } else {
+                Err(anyhow!("No such pipeline {}", pipeline.as_ref()))
+            }
+        } else {
+            Err(anyhow!("No such project {}", project.as_ref()))
+        }
     }
 }
 
@@ -368,6 +394,14 @@ impl PipelineRuns {
         PathBuf::from(RUNS_LOGS_DIR).join(format!("{}-{}.log", run_id, self.pipeline_id))
     }
 
+    pub fn get_run(&self, run_id: impl AsRef<str>) -> Result<Arc<PipelineRun>, anyhow::Error> {
+        if let Some(run) = self.runs.get(run_id.as_ref()) {
+            Ok(run.clone())
+        } else {
+            Err(anyhow!("No such run {}", run_id.as_ref()))
+        }
+    }
+
     pub async fn get_log_file(
         &self,
         run_id: impl AsRef<str>,
@@ -425,7 +459,17 @@ impl PipelineRun {
             jobs: Mutex::new(HashMap::default()),
             log_file: Arc::new(Mutex::new(Some(log_file))),
             stage: Mutex::new(None),
+            canceled: Mutex::new(false),
         }
+    }
+
+    pub async fn cancel(&self) {
+        info!("Canceling run {}", self.id);
+        *self.canceled.lock().await = true;
+    }
+
+    pub async fn canceled(&self) -> bool {
+        self.canceled.lock().await.clone()
     }
 
     pub async fn set_status(&self, status: PipelineStatus) {
@@ -769,7 +813,7 @@ impl Executor {
                 })
                 .await;
 
-	    return Ok(id);
+            return Ok(id);
         }
 
         if !dry_run {

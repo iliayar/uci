@@ -13,3 +13,4 @@ pub mod ws;
 pub mod upload;
 pub mod list_repos;
 pub mod badge;
+pub mod cancel_run;
