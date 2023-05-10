@@ -44,9 +44,9 @@ pub fn gitlab_webhook(
     deps: call_context::Deps,
 ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
     warp::any()
+        .and(warp::path!("gitlab" / "update"))
         .and(warp::header("X-Gitlab-Token"))
         .map(move |token: String| CallContext::for_handler(Some(token), deps.clone()))
-        .and(warp::path!("gitlab" / "update"))
         .and(
             warp::query::<Query>().map(|query: Query| common::runner::UpdateRepoBody {
                 project_id: query.project_id,
@@ -64,9 +64,9 @@ pub fn github_webhook(
     deps: call_context::Deps,
 ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
     warp::any()
+        .and(warp::path!("github" / "update"))
         .and(with_validate_github(deps.clone()))
         .map(move |token: Option<String>| CallContext::for_handler(token, deps.clone()))
-        .and(warp::path!("github" / "update"))
         .and(
             warp::query::<Query>().map(|query: Query| common::runner::UpdateRepoBody {
                 project_id: query.project_id,
