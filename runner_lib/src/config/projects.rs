@@ -234,6 +234,11 @@ impl ProjectsStore {
         let mut state = init_state.clone();
         state.set(&project_info);
         let diffs = project_info.update_repo(&state, repo_id, artifact).await?;
+
+        if state.get_named("update_only").cloned().unwrap_or(false) {
+            return Ok(());
+        }
+
         let need_reload_internal_project = !diffs.is_empty();
         self.handle_event(
             &state,

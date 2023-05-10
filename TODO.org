@@ -1,16 +1,18 @@
-* TODO [0/2] Minor stuff
+* TODO [1/2] Minor stuff
 - [-] [2/3] Paramteres from request and from action \\
   - [X] Load pipelines lazy
   - [ ] Support parameters when call action, update repo, etc...
   - [X] Support parameters in action description \\
     Allowes reuse pipelines with different behaviour
-- [-] [2/4] Integrations
-  - [-] [1/2] Setting commit status on github/gitlab/...
+- [X] [4/4] Integrations
+  - [X] [2/2] Setting commit status on github/gitlab/...
     - [X] Gitlab
-    - [ ] Github
+    - [X] Github
   - [X] Telegram notifications
   - [X] SVG Badge
-  - [-] [1/2] Webhooks
+  - [X] [2/2] Webhooks
     - [X] GitLab
-    - [ ] GitHub
+    - [X] GitHub
+- [ ] Dry run
+- [ ] Impove expressions language (JMES like?)
 * TODO Web UI

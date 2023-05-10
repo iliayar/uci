@@ -6,6 +6,7 @@ use termion::{color, style};
 pub async fn execute_action_call(
     config: &crate::config::Config,
     action_id: Option<String>,
+    dry_run: bool,
 ) -> Result<(), execute::ExecuteError> {
     let project_id = config.get_project().await;
     debug!("Executing action call command");
@@ -19,6 +20,7 @@ pub async fn execute_action_call(
     let body = common::runner::CallRequest {
         project_id,
         trigger_id: action_id,
+	dry_run: Some(dry_run),
     };
 
     let response = crate::runner::post_body(config, "/call", &body)?

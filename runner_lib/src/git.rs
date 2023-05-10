@@ -64,30 +64,21 @@ pub struct PullResult {
     pub commit_message: String,
 }
 
-pub async fn pull(path: PathBuf, branch: String) -> Result<PullResult, GitError> {
-    let old_commit = current_commit(path.clone()).await?;
+pub async fn fetch(path: PathBuf, branch: String) -> Result<PullResult, GitError> {
+    let current_commit = current_commit(path.clone()).await?;
 
     git(path.clone(), &[String::from("fetch")]).await?;
     git(path.clone(), &[String::from("checkout"), branch.clone()]).await?;
-    git(
-        path.clone(),
-        &[
-            String::from("reset"),
-            String::from("--hard"),
-            format!("origin/{}", branch.clone()),
-        ],
-    )
-    .await?;
 
-    let new_commit = current_commit(path.clone()).await?;
+    let remote_branch = format!("origin/{}", branch.clone());
 
     let changes = git_out(
         path.clone(),
         &[
             String::from("diff"),
             String::from("--name-only"),
-            old_commit,
-            new_commit.clone(),
+            current_commit,
+            remote_branch.clone(),
         ],
     )
     .await?;
@@ -99,7 +90,7 @@ pub async fn pull(path: PathBuf, branch: String) -> Result<PullResult, GitError>
             String::from("--format=%B"),
             String::from("-n"),
             String::from("1"),
-            new_commit,
+            remote_branch,
         ],
     )
     .await?
@@ -109,6 +100,22 @@ pub async fn pull(path: PathBuf, branch: String) -> Result<PullResult, GitError>
         changes,
         commit_message,
     })
+}
+
+pub async fn pull(path: PathBuf, branch: String) -> Result<PullResult, GitError> {
+    let result = fetch(path.clone(), branch.clone()).await?;
+
+    git(
+        path,
+        &[
+            String::from("reset"),
+            String::from("--hard"),
+            format!("origin/{}", branch.clone()),
+        ],
+    )
+    .await?;
+
+    Ok(result)
 }
 
 pub async fn current_commit(path: PathBuf) -> Result<String, GitError> {

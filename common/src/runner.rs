@@ -106,6 +106,7 @@ pub enum CloneMissingRepos {
 pub struct CallRequest {
     pub project_id: String,
     pub trigger_id: String,
+    pub dry_run: Option<bool>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -159,6 +160,8 @@ pub struct UpdateRepoBody {
     pub project_id: String,
     pub repo_id: String,
     pub artifact_id: Option<String>,
+    pub dry_run: Option<bool>,
+    pub update_only: Option<bool>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]

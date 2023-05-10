@@ -23,6 +23,7 @@ async fn call(
     common::runner::CallRequest {
         project_id,
         trigger_id,
+        dry_run,
     }: common::runner::CallRequest,
 ) -> Result<impl warp::Reply, warp::Rejection> {
     if !call_context
@@ -34,7 +35,10 @@ async fn call(
 
     let run_id = call_context.init_run_buffered().await;
     tokio::spawn(async move {
-        if let Err(err) = call_context.call_trigger(&project_id, &trigger_id).await {
+        if let Err(err) = call_context
+            .call_trigger(&project_id, &trigger_id, dry_run.unwrap_or(false))
+            .await
+        {
             error!("Call action failed: {}", err);
         }
         call_context.finish_run().await;

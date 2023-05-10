@@ -36,6 +36,8 @@ pub fn api_call(
 struct Query {
     project_id: String,
     repo_id: String,
+    dry_run: Option<bool>,
+    update_only: Option<bool>,
 }
 
 pub fn gitlab_webhook(
@@ -50,6 +52,8 @@ pub fn gitlab_webhook(
                 project_id: query.project_id,
                 repo_id: query.repo_id,
                 artifact_id: None,
+                dry_run: query.dry_run,
+                update_only: query.update_only,
             }),
         )
         .and(warp::post())
@@ -68,6 +72,8 @@ pub fn github_webhook(
                 project_id: query.project_id,
                 repo_id: query.repo_id,
                 artifact_id: None,
+                dry_run: query.dry_run,
+                update_only: query.update_only,
             }),
         )
         .and(warp::post())
@@ -83,7 +89,7 @@ fn with_validate_github(
             let deps = deps.clone();
             async move {
                 let config = deps.context.config().await;
-		// FIXME: From where to get secret better?
+                // FIXME: From where to get secret better?
                 let secret = if let Some(secret) = config.secrets.get("webhook-secret") {
                     Some(secret.clone())
                 } else {
@@ -102,6 +108,8 @@ async fn update_repo(
         project_id,
         repo_id,
         artifact_id,
+        dry_run,
+        update_only,
     }: common::runner::UpdateRepoBody,
 ) -> Result<impl warp::Reply, warp::Rejection> {
     if !call_context
@@ -119,7 +127,13 @@ async fn update_repo(
             .await;
         let artifact = artifact_id.map(|id| call_context.artifacts.get_path(id));
         if let Err(err) = call_context
-            .update_repo(&project_id, &repo_id, artifact)
+            .update_repo(
+                &project_id,
+                &repo_id,
+                artifact,
+                dry_run.unwrap_or(false),
+                update_only.unwrap_or(false),
+            )
             .await
         {
             error!("Updating repo failed: {}", err)

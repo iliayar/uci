@@ -13,12 +13,12 @@ and for `cli`
   cargo install --path uci_cli
 #+end_src
 *** Nix
-Flake with packages: `ucid`, `uci`.
+Flake with packages: =ucid=, =uci=.
 #+begin_src nix
   inputs = {
     # ...
 
-    uci.url = 'github:iliayar/uci';
+    uci.url = "github:iliayar/uci";
   }
 #+end_src
 and then `uci.packages.${system}.ucid`
@@ -55,7 +55,10 @@ With client config at host's =.uci/config.yaml=:
 #+begin_src yaml
   __default__:
     runner_url: http://<HOST>
+    ws_runner_url: ws://<HOST>
     token: <TOKEN>
 #+end_src
 
 - =uci config reload= - will pull repo with configs on the server and reload config
+
+*** TODO Example project

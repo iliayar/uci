@@ -88,6 +88,11 @@ impl Repo {
         let executor: &worker_lib::executor::Executor = state.get()?;
         let project_info: &super::ProjectInfo = state.get()?;
 
+        let dry_run = state
+            .get_named::<bool, _>("dry_run")
+            .cloned()
+            .unwrap_or(false);
+
         match self {
             Repo::Regular {
                 id,
@@ -110,7 +115,11 @@ impl Repo {
                     self.clone_if_missing(state).await?;
                     Ok(Diff::Whole)
                 } else {
-                    let pull_result = git::pull(path.clone(), branch.clone()).await?;
+                    let pull_result = if dry_run {
+                        git::fetch(path.clone(), branch.clone()).await?
+                    } else {
+                        git::pull(path.clone(), branch.clone()).await?
+                    };
                     Ok(Diff::Changes {
                         changes: pull_result.changes,
                         commit_message: pull_result.commit_message,
@@ -128,14 +137,17 @@ impl Repo {
                     )
                 })?;
 
-                let file = tokio::fs::File::open(artifact).await?;
-                let mut archive = tokio_tar::Archive::new(file);
+                if !dry_run {
+                    let file = tokio::fs::File::open(artifact).await?;
+                    let mut archive = tokio_tar::Archive::new(file);
 
-                // NOTE: haha, remove it all
-                tokio::fs::remove_dir_all(path).await.ok();
-                tokio::fs::create_dir_all(path).await?;
+                    // NOTE: haha, remove it all
+                    tokio::fs::remove_dir_all(path).await.ok();
+                    tokio::fs::create_dir_all(path).await?;
 
-                archive.unpack(path).await?;
+                    archive.unpack(path).await?;
+                }
+
                 Ok(Diff::Whole)
             }
         }

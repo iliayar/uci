@@ -12,6 +12,8 @@ pub async fn execute_repo_update(
     config: &crate::config::Config,
     repo_id: Option<String>,
     source: Option<PathBuf>,
+    dry_run: bool,
+    update_only: bool,
 ) -> Result<(), execute::ExecuteError> {
     let project_id = config.get_project().await;
     debug!("Executing action call command");
@@ -32,6 +34,8 @@ pub async fn execute_repo_update(
         project_id,
         repo_id,
         artifact_id,
+	dry_run: Some(dry_run),
+	update_only: Some(update_only),
     };
     let response = crate::runner::post_body(config, "/update", &body)?
         .send()

@@ -135,6 +135,11 @@ pub enum ActionCommand {
     Call {
         #[clap(short, long)]
         action: Option<String>,
+
+	/// Only fetch repo and trigger matched pipelines, but do not
+	/// execute jobs
+	#[clap(long)]
+	dry_run: bool,
     },
 
     /// List actions
@@ -150,6 +155,15 @@ pub enum RepoCommand {
 
         #[clap(short, long)]
         source: Option<PathBuf>,
+
+	/// Only fetch repo and trigger matched pipelines, but do not
+	/// execute jobs
+	#[clap(long)]
+	dry_run: bool,
+
+	/// Only update repo and do not trigger pipelines
+	#[clap(long)]
+	update_only: bool,
     },
 
     /// List project repos

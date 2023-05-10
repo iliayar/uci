@@ -22,17 +22,17 @@ pub async fn run_command_with_output(
     while let Some(line) = child_out.next().await {
         match line {
             OutputLine::Out(line) => {
-                info!("{}", line?);
+                trace!("stdout> {}", line?);
             }
             OutputLine::Err(line) => {
-                error!("{}", line?);
+                trace!("stderr> {}", line?);
             }
         }
     }
 
     let status = child.wait().await?;
 
-    info!("Script done with exit status {}", status);
+    debug!("Script done with exit status {}", status);
 
     Ok(status)
 }

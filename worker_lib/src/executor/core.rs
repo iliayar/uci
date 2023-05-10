@@ -453,7 +453,7 @@ impl PipelineRun {
     }
 
     pub async fn job(&self, job: impl AsRef<str>) -> Option<PipelineJob> {
-	self.jobs.lock().await.get(job.as_ref()).cloned()
+        self.jobs.lock().await.get(job.as_ref()).cloned()
     }
 
     pub async fn finish(&self) -> Result<(), anyhow::Error> {
@@ -750,6 +750,7 @@ impl Executor {
     ) -> Result<String, anyhow::Error> {
         let run_context: &RunContext = state.get()?;
         let integrations: &Integrations = state.get()?;
+        let dry_run: bool = state.get_named("dry_run").cloned().unwrap_or(false);
 
         let mut state = state.clone();
         state.set_named("job", &id);
@@ -758,9 +759,9 @@ impl Executor {
         let pipeline_run: &PipelineRun = state.get()?;
 
         for (i, step) in job.steps.into_iter().enumerate() {
-	    if !job.enabled {
-		break;
-	    }
+            if !job.enabled || dry_run {
+                break;
+            }
 
             integrations.handle_job_progress(&state, &id, i).await;
             pipeline_run
@@ -794,7 +795,7 @@ impl Executor {
                     })
                     .await;
 
-		return Err(err);
+                return Err(err);
             }
         }
 

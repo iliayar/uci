@@ -134,8 +134,13 @@ impl CallContext {
         project_id: &str,
         repo_id: &str,
         artifact: Option<PathBuf>,
+        dry_run: bool,
+	update_only: bool,
     ) -> Result<(), anyhow::Error> {
         self.with_state(|state| async move {
+            let mut state = state.clone();
+            state.set_named("dry_run", &dry_run);
+            state.set_named("update_only", &update_only);
             self.context
                 .update_repo(&state, project_id, repo_id, artifact)
                 .await
@@ -171,8 +176,11 @@ impl CallContext {
         &self,
         project_id: &str,
         trigger_id: &str,
+        dry_run: bool,
     ) -> Result<(), anyhow::Error> {
         self.with_state(|state| async move {
+            let mut state = state.clone();
+            state.set_named("dry_run", &dry_run);
             self.context
                 .call_trigger(&state, project_id, trigger_id)
                 .await
