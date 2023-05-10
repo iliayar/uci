@@ -12,8 +12,8 @@ pub fn filter(
     deps: call_context::Deps,
 ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
     warp::any()
-        .and(with_call_context(deps))
         .and(warp::path!("projects" / "services" / "logs"))
+        .and(with_call_context(deps))
         .and(warp::query::<common::runner::ServiceLogsQuery>())
         .and(warp::body::json::<common::runner::ServiceLogsBody>())
         .and(warp::get())

@@ -14,8 +14,8 @@ pub fn filter(
     context: call_context::Deps,
 ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
     warp::any()
-        .and(with_call_context(context))
         .and(warp::path!("upload"))
+        .and(with_call_context(context))
         .and(warp::multipart::form())
         .and(warp::post())
         .and_then(upload)

@@ -11,8 +11,8 @@ pub fn filter(
     deps: call_context::Deps,
 ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
     warp::any()
-        .and(with_call_context(deps))
         .and(warp::path!("projects" / "pipelines" / "list"))
+        .and(with_call_context(deps))
         .and(warp::query::<common::runner::ListPipelinesQuery>())
         .and(warp::get())
         .and_then(list_pipelines)

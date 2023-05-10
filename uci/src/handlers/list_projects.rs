@@ -9,8 +9,8 @@ pub fn filter(
     deps: call_context::Deps,
 ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
     warp::any()
-        .and(with_call_context(deps))
         .and(warp::path!("projects" / "list"))
+        .and(with_call_context(deps))
         .and(warp::get())
         .and_then(list_projects)
 }
