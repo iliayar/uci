@@ -29,6 +29,7 @@ where
         job: &str,
         error: Option<String>,
     ) -> Result<(), anyhow::Error>;
+    async fn handle_job_skipped(&self, state: &State, job: &str) -> Result<(), anyhow::Error>;
 }
 
 #[cfg(test)]
@@ -93,6 +94,10 @@ impl Integrations {
             async move { integration.handle_job_done(state, job, error).await }
         })
         .await
+    }
+    pub async fn handle_job_skipped<'a>(&self, state: &State<'a>, job: &str) {
+        self.foreach(|integration| async move { integration.handle_job_skipped(state, job).await })
+            .await
     }
 
     async fn foreach<'a, F, Fut>(&'a self, f: F)

@@ -62,6 +62,7 @@ async fn ghlike_badge(
         Ok(run) => {
             if let Some(job) = run.job(&job_id).await {
                 let status = match job.status {
+                    worker_lib::executor::JobStatus::Skipped => ghlike::Status::Passing,
                     worker_lib::executor::JobStatus::Pending => ghlike::Status::Running,
                     worker_lib::executor::JobStatus::Running { .. } => ghlike::Status::Running,
                     worker_lib::executor::JobStatus::Finished { error } => match error {

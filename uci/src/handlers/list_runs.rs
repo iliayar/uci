@@ -94,6 +94,9 @@ async fn list_runs_impl(
 
                         for (id, job) in run.jobs().await.into_iter() {
                             let status = match job.status {
+                                worker_lib::executor::JobStatus::Skipped => {
+                                    common::runner::JobStatus::Skipped
+                                }
                                 worker_lib::executor::JobStatus::Pending => {
                                     common::runner::JobStatus::Pending
                                 }

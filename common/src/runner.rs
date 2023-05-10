@@ -219,6 +219,7 @@ pub enum JobStatus {
     Pending,
     Running { step: usize },
     Finished { error: Option<String> },
+    Skipped,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -243,6 +244,10 @@ pub enum PipelineMessage {
         pipeline: String,
         job_id: String,
 	error: Option<String>,
+    },
+    JobSkipped {
+        pipeline: String,
+        job_id: String,
     },
     Log {
         pipeline: String,

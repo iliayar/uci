@@ -98,6 +98,28 @@ impl super::integration::Integration for TelegramIntegration {
             .await
     }
 
+    async fn handle_job_skipped(
+        &self,
+        state: &common::state::State,
+        job: &str,
+    ) -> Result<(), anyhow::Error> {
+        if !self.notify_jobs {
+            return Ok(());
+        }
+
+        let mut buf: Vec<u8> = Vec::new();
+        write!(buf, "Job {}", job).ok();
+
+        if let Some(pipeline_id) = self.pipeline_id.as_ref() {
+            write!(buf, " in pipeline {}", pipeline_id).ok();
+        }
+
+        write!(buf, " skiped").ok();
+
+        self.send_message(String::from_utf8_lossy(&buf).to_string())
+            .await
+    }
+
     async fn handle_job_progress(
         &self,
         state: &common::state::State,

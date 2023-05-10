@@ -60,6 +60,16 @@ impl super::integration::Integration for GitHubIntegration {
         Ok(())
     }
 
+    async fn handle_job_skipped(
+        &self,
+        state: &common::state::State,
+        job: &str,
+    ) -> Result<(), anyhow::Error> {
+        self.set_job_status::<&str>(job, State::Success, None)
+            .await?;
+        Ok(())
+    }
+
     async fn handle_job_progress(
         &self,
         state: &common::state::State,

@@ -53,6 +53,13 @@ pub async fn execute_runs_list(
             println!("  - Job: {}", job_id);
 
             match job.status {
+                common::runner::JobStatus::Skipped => {
+                    println!(
+                        "    Status: {}Skipped{}",
+                        color::Fg(color::Yellow),
+                        style::Reset
+                    )
+                }
                 common::runner::JobStatus::Pending => {
                     println!(
                         "    Status: {}Pending{}",

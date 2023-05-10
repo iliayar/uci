@@ -88,6 +88,7 @@ pub enum JobStatus {
     Pending,
     Running { step: usize },
     Finished { error: Option<String> },
+    Skipped,
 }
 
 #[derive(Clone)]
@@ -758,44 +759,55 @@ impl Executor {
         info!("Runnig job {}", id);
         let pipeline_run: &PipelineRun = state.get()?;
 
-        for (i, step) in job.steps.into_iter().enumerate() {
-            if !job.enabled || dry_run {
-                break;
-            }
-
-            integrations.handle_job_progress(&state, &id, i).await;
-            pipeline_run
-                .set_job_status(&id, JobStatus::Running { step: i })
-                .await;
+        if !job.enabled {
+            integrations.handle_job_skipped(&state, &id).await;
+            pipeline_run.set_job_status(&id, JobStatus::Skipped).await;
             run_context
-                .send(common::runner::PipelineMessage::JobProgress {
+                .send(common::runner::PipelineMessage::JobSkipped {
                     pipeline: pipeline_run.pipeline_id.clone(),
                     job_id: id.clone(),
-                    step: i,
                 })
                 .await;
 
-            if let Err(err) = step.run(&state).await {
-                integrations
-                    .handle_job_done(&state, &id, Some(err.to_string()))
-                    .await;
+	    return Ok(id);
+        }
+
+        if !dry_run {
+            for (i, step) in job.steps.into_iter().enumerate() {
+                integrations.handle_job_progress(&state, &id, i).await;
                 pipeline_run
-                    .set_job_status(
-                        &id,
-                        JobStatus::Finished {
-                            error: Some(err.to_string()),
-                        },
-                    )
+                    .set_job_status(&id, JobStatus::Running { step: i })
                     .await;
                 run_context
-                    .send(common::runner::PipelineMessage::JobFinished {
+                    .send(common::runner::PipelineMessage::JobProgress {
                         pipeline: pipeline_run.pipeline_id.clone(),
                         job_id: id.clone(),
-                        error: Some(err.to_string()),
+                        step: i,
                     })
                     .await;
 
-                return Err(err);
+                if let Err(err) = step.run(&state).await {
+                    integrations
+                        .handle_job_done(&state, &id, Some(err.to_string()))
+                        .await;
+                    pipeline_run
+                        .set_job_status(
+                            &id,
+                            JobStatus::Finished {
+                                error: Some(err.to_string()),
+                            },
+                        )
+                        .await;
+                    run_context
+                        .send(common::runner::PipelineMessage::JobFinished {
+                            pipeline: pipeline_run.pipeline_id.clone(),
+                            job_id: id.clone(),
+                            error: Some(err.to_string()),
+                        })
+                        .await;
+
+                    return Err(err);
+                }
             }
         }
 

@@ -170,6 +170,7 @@ enum JobStatus {
     Pending,
     Running { step: usize },
     Finished { error: Option<String> },
+    Skipped,
 }
 
 impl Default for RunState {
@@ -190,6 +191,7 @@ impl RunState {
             if run.run_id == run_id {
                 for (job_id, job) in run.jobs {
                     let job_status = match job.status {
+                        common::runner::JobStatus::Skipped => JobStatus::Skipped,
                         common::runner::JobStatus::Pending => JobStatus::Pending,
                         common::runner::JobStatus::Running { step } => JobStatus::Running { step },
                         common::runner::JobStatus::Finished { error } => {
@@ -260,6 +262,9 @@ impl RunState {
             for (job_id, job_status) in pipeline.jobs.iter() {
                 print!("  ");
                 match job_status {
+                    JobStatus::Skipped => {
+                        print!("{}Skipped{}", color::Fg(color::LightBlack), style::Reset)
+                    }
                     JobStatus::Pending => print!("Pending"),
                     JobStatus::Running { step } => print!(
                         "[{}{}{}] #{}",
@@ -501,6 +506,15 @@ async fn print_pipeline_run_impl(
                     .lock()
                     .await
                     .set_job_status(pipeline, job_id, JobStatus::Finished { error });
+            }
+            common::runner::PipelineMessage::JobSkipped {
+                pipeline,
+                job_id,
+            } => {
+                state
+                    .lock()
+                    .await
+                    .set_job_status(pipeline, job_id, JobStatus::Skipped);
             }
             common::runner::PipelineMessage::Log {
                 pipeline,
