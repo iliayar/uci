@@ -158,6 +158,9 @@ mod raw {
         #[serde(rename = "displace")]
         Displace,
 
+        #[serde(rename = "cancel")]
+        Cancel,
+
         #[serde(rename = "wait")]
         Wait,
     }
@@ -221,6 +224,7 @@ mod raw {
             Ok(match self {
                 StageOverlapPolicy::Ignore => common::OverlapStrategy::Ignore,
                 StageOverlapPolicy::Displace => common::OverlapStrategy::Displace,
+                StageOverlapPolicy::Cancel => common::OverlapStrategy::Cancel,
                 StageOverlapPolicy::Wait => common::OverlapStrategy::Wait,
             })
         }

@@ -22,23 +22,30 @@ use log::*;
 
 pub struct Executor {
     pub runs: Mutex<Runs>,
-    locks: Mutex<super::locks::Locks>,
+    locks: super::locks::Locks,
 }
 
-pub const DEFEAULT_STAGE: &str = "default";
+pub const DEFEAULT_STAGE: &str = "__default__";
 
 impl Executor {
     async fn run_stage(
         &self,
+        project: impl AsRef<str>,
         pipeline: impl AsRef<str>,
         stage: impl AsRef<str>,
+        run_id: impl AsRef<str>,
         strategy: common::OverlapStrategy,
         repos: &ReposList,
         lock_repos: &Option<common::StageRepos>,
     ) -> super::locks::StageGuard {
-        let mut locks = self.locks.lock().await;
-        locks
-            .run_stage(pipeline, stage, strategy, repos, lock_repos)
+        let run = self
+            .runs
+            .lock()
+            .await
+            .get_pipeline_run(project, pipeline.as_ref(), run_id)
+            .ok();
+        self.locks
+            .run_stage(pipeline, stage, run, strategy, repos, lock_repos)
             .await
     }
 }
@@ -331,6 +338,16 @@ impl Runs {
             Err(anyhow!("No such project {}", project.as_ref()))
         }
     }
+
+    fn get_pipeline_run(
+        &self,
+        project: impl AsRef<str>,
+        pipeline: impl AsRef<str>,
+        run_id: impl AsRef<str>,
+    ) -> Result<Arc<PipelineRun>, anyhow::Error> {
+        let pipeline_runs = self.get_pipeline_runs(project, pipeline)?;
+        pipeline_runs.get_run(run_id)
+    }
 }
 
 fn parse_log(log: String) -> Result<Option<common::runner::PipelineMessage>, anyhow::Error> {
@@ -423,10 +440,24 @@ impl PipelineRuns {
         let log_path = self.get_log_filename(run_id.as_ref());
 
         if self.runs_queue.len() >= self.queue_limit {
-            let run_to_delete = self.runs_queue.pop_front().unwrap();
-            self.runs.remove(&run_to_delete);
-            let run_log_path = self.get_log_filename(&run_to_delete);
-            tokio::fs::remove_file(run_log_path).await?;
+            while !self.runs_queue.is_empty() {
+                let run_to_delete = self.runs_queue.front().unwrap();
+
+                if let Some(run) = self.runs.get(run_to_delete) {
+                    if let PipelineStatus::Finished(_) = run.status().await {
+                        // proceeding with deleting
+                    } else {
+                        break;
+                    }
+                } else {
+                    break;
+                }
+
+                let run_to_delete = self.runs_queue.pop_front().unwrap();
+                self.runs.remove(&run_to_delete);
+                let run_log_path = self.get_log_filename(&run_to_delete);
+                tokio::fs::remove_file(run_log_path).await?;
+            }
         }
 
         let log_file = tokio::fs::File::create(log_path).await?;
@@ -531,11 +562,16 @@ pub struct ReposList {
     pub repos: Vec<String>,
 }
 
+enum RunResult {
+    Ok,
+    Displaced,
+}
+
 impl Executor {
     pub async fn new() -> Result<Executor, anyhow::Error> {
         Ok(Executor {
             runs: Mutex::new(Runs::init().await?),
-            locks: Mutex::new(super::locks::Locks::default()),
+            locks: super::locks::Locks::default(),
         })
     }
 
@@ -544,11 +580,7 @@ impl Executor {
         project_id: impl AsRef<str>,
         repo_id: impl AsRef<str>,
     ) -> Option<OwnedRwLockWriteGuard<()>> {
-        self.locks
-            .lock()
-            .await
-            .write_repo(project_id, repo_id)
-            .await
+        self.locks.write_repo(project_id, repo_id).await
     }
 
     pub async fn run<'a>(&self, state: &State<'a>, config: Pipeline) {
@@ -563,6 +595,7 @@ impl Executor {
         state: &State<'a>,
         config: Pipeline,
     ) -> Result<(), anyhow::Error> {
+        debug!("Running pipeline: {:?}", config);
         self.run_impl_with_run(state, config).await
     }
 
@@ -598,14 +631,14 @@ impl Executor {
             .runs
             .lock()
             .await
-            .init_run(project, pipeline.id.clone(), run_context.id.clone())
+            .init_run(project.clone(), pipeline.id.clone(), run_context.id.clone())
             .await?;
 
         let mut state = state.clone();
         state.set(pipeline_run.as_ref());
         state.set(&integrations);
 
-        let res = self.run_impl(&state, pipeline).await;
+        let res = self.run_impl(&state, &project, pipeline).await;
 
         if pipeline_run.canceled().await {
             pipeline_run
@@ -617,7 +650,17 @@ impl Executor {
                 })
                 .await;
             integrations.handle_pipeline_canceled(&state).await;
-        } else {
+        } else if let Ok(RunResult::Displaced) = res {
+            pipeline_run
+                .set_status(PipelineStatus::Finished(PipelineFinishedStatus::Displaced))
+                .await;
+            run_context
+                .send(common::runner::PipelineMessage::Displaced {
+                    pipeline: pipeline_run.pipeline_id.clone(),
+                })
+                .await;
+            integrations.handle_pipeline_displaced(&state).await;
+	} else {
             let finished_status = match res.as_ref() {
                 Ok(_) => PipelineFinishedStatus::Success,
                 Err(err) => PipelineFinishedStatus::Error {
@@ -655,14 +698,15 @@ impl Executor {
 
         pipeline_run.finish().await?;
 
-        res
+        res.map(|_| ())
     }
 
-    pub async fn run_impl<'a>(
+    async fn run_impl<'a>(
         &self,
         state: &State<'a>,
+        project: impl AsRef<str>,
         mut pipeline: Pipeline,
-    ) -> Result<(), anyhow::Error> {
+    ) -> Result<RunResult, anyhow::Error> {
         info!("Running execution");
         let pipeline_run: &PipelineRun = state.get()?;
         let run_context: &RunContext = state.get()?;
@@ -725,7 +769,24 @@ impl Executor {
                 .await;
         }
 
-        let mut stage_guard: Option<super::locks::StageGuard> = None;
+        let mut stage_guard: Option<super::locks::StageGuard> =
+            if let Some(stage) = pipeline.stages.get(DEFEAULT_STAGE) {
+                Some(
+                    self.run_stage(
+                        &project,
+                        &pipeline.id,
+                        DEFEAULT_STAGE,
+                        &pipeline_run.id,
+                        stage.overlap_strategy.clone(),
+                        &repos,
+                        &stage.repos,
+                    )
+                    .await,
+                )
+            } else {
+                None
+            };
+
         let mut was_stages: HashSet<String> = HashSet::new();
 
         let mut futs: FuturesUnordered<_> = FuturesUnordered::new();
@@ -742,8 +803,10 @@ impl Executor {
                     } else {
                         stage_guard = Some(
                             self.run_stage(
+                                &project,
                                 &pipeline.id,
                                 stage_id,
+                                &pipeline_run.id,
                                 stage.overlap_strategy.clone(),
                                 &repos,
                                 &stage.repos,
@@ -757,11 +820,22 @@ impl Executor {
             futs.push(self.run_job(&state, id, job));
         }
 
-        while let Some(id) = futs.next().await {
+        let mut displaced = false;
+
+        // FIXME: Some races here when at stage's border
+        'outer: while let Some(id) = futs.next().await {
             if let Some(stage_guard) = stage_guard.as_ref() {
-                if stage_guard.interrupted().await {
-                    warn!("Run was displaced");
-                    break;
+                match stage_guard.interrupted().await {
+                    super::locks::Interrupted::Displaced => {
+                        warn!("Run was displaced");
+                        displaced = true;
+                    }
+                    super::locks::Interrupted::Canceled => {
+                        warn!("Run was canceled");
+                        pipeline_run.cancel().await;
+                        break;
+                    }
+                    _ => {}
                 }
             }
 
@@ -772,6 +846,11 @@ impl Executor {
 
             for (id, job) in pop_ready(&mut deps, &mut pipeline) {
                 if let Some(stage_id) = job.stage.as_ref() {
+                    if displaced {
+                        // Do not entering next stage, interrupting
+                        break 'outer;
+                    }
+
                     pipeline_run.set_stage(stage_id.to_string()).await;
                     if let Some(stage) = pipeline.stages.get(stage_id) {
                         if !was_stages.insert(stage_id.to_string()) {
@@ -779,8 +858,10 @@ impl Executor {
                         } else {
                             stage_guard = Some(
                                 self.run_stage(
+                                    &project,
                                     &pipeline.id,
                                     stage_id,
+                                    &pipeline_run.id,
                                     stage.overlap_strategy.clone(),
                                     &repos,
                                     &stage.repos,
@@ -800,7 +881,11 @@ impl Executor {
 
         info!("All jobs done");
 
-        Ok(())
+        Ok(if displaced {
+            RunResult::Displaced
+        } else {
+            RunResult::Ok
+        })
     }
 
     async fn run_job<'a>(

@@ -1,0 +1,23 @@
+jobs:
+  j1:
+    stage: stage_1
+    script: |
+      for i in $(seq 1 5); do
+        echo $i
+        sleep 1
+      done
+
+  j2:
+    needs: ["j1"]
+    stage: stage_2
+    script: |
+      for i in $(seq 1 10); do
+        echo $i
+        sleep 1
+      done
+
+stages:
+  stage_1:
+    on_overlap: displace
+  stage_2:
+    on_overlap: wait

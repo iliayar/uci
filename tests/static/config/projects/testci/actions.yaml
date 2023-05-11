@@ -18,3 +18,9 @@ actions:
     - on: call
       run_pipelines:
         - echo
+
+
+  test_cancel:
+    - on: call
+      run_pipelines:
+        - test_cancel

@@ -117,16 +117,21 @@ pub async fn pull(path: PathBuf, branch: String) -> Result<PullResult, GitError>
 }
 
 pub async fn current_commit(path: PathBuf) -> Result<String, GitError> {
-    git_out(
-        path,
+    let mut lines = git_out(
+        path.clone(),
         &[
             String::from("show-ref"),
             String::from("--hash"),
             String::from("HEAD"),
         ],
     )
-    .await
-    .map(|lines| lines[0].clone())
+    .await?;
+
+    if lines.is_empty() {
+        return Err(anyhow!("No current commit in {}", path.display()).into());
+    }
+
+    Ok(lines.swap_remove(0))
 }
 
 async fn git_out(path: PathBuf, args: &[String]) -> Result<Vec<String>, GitError> {

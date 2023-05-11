@@ -48,8 +48,11 @@ pub enum OverlapStrategy {
     /// Keep going runnig pipelines simultaneously
     Ignore,
 
-    /// Interrupt running pipeline
+    /// Interrupt running pipeline when current stage ends
     Displace,
+
+    /// Force interrupt running pipeline
+    Cancel,
 
     /// Wait for running pipeline to pass this stage
     Wait,
