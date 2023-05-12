@@ -1,5 +1,6 @@
 jobs:
   build:
+    type: script
     script: |
       set -e
       . $HOME/.cargo/env
@@ -9,6 +10,7 @@ jobs:
   restart:
     enabled: ${params.do_restart}
     needs: ['build']
+    type: script
     script: |
       set -e
 
