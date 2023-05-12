@@ -53,10 +53,15 @@ impl task::Task for common::RunShellConfig {
             for (src, dst) in self.volumes {
                 mounts.insert(src, dst);
             }
+
+            run_command_builder.workdir(if !task_context.links.is_empty() {
+                Some(task_context_dir)
+            } else {
+                None
+            });
+
             run_command_builder.mounts(mounts);
             run_command_builder.networks(self.networks);
-
-            run_command_builder.workdir(Some(task_context_dir));
 
             run_command_builder.env(self.env);
 
@@ -156,6 +161,16 @@ pub async fn run_command_with_log<'a>(
     let status = child.wait().await?;
 
     info!("Script done with exit status {}", status);
+
+    if !status.success() {
+        return Err(anyhow!(
+            "Script exited with status code {}",
+            status
+                .code()
+                .map(|i| i.to_string())
+                .unwrap_or("(unknown)".to_string())
+        ));
+    }
 
     Ok(status)
 }

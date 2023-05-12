@@ -14,20 +14,21 @@ pub async fn execute_services_list(
     println!("{}Services{}:", style::Bold, style::Reset);
     for service in response.services.into_iter() {
         let status_string = match service.status {
-            common::runner::ServiceStatus::Running => "running",
-            common::runner::ServiceStatus::Starting => "starting",
-            common::runner::ServiceStatus::NotRunning => "not running",
-            common::runner::ServiceStatus::Dead => "dead",
-            common::runner::ServiceStatus::Exited => "exited",
-            common::runner::ServiceStatus::Restarting => "restartin",
-            common::runner::ServiceStatus::Unknown => "unknown",
+            common::runner::ServiceStatus::Running => "running".to_string(),
+            common::runner::ServiceStatus::Starting => "starting".to_string(),
+            common::runner::ServiceStatus::NotRunning => "not running".to_string(),
+            common::runner::ServiceStatus::Dead => "dead".to_string(),
+            common::runner::ServiceStatus::Exited(code) => format!("exited ({})", code),
+            common::runner::ServiceStatus::Restarting => "restartin".to_string(),
+            common::runner::ServiceStatus::Unknown => "unknown".to_string(),
         };
         let color = match service.status {
             common::runner::ServiceStatus::Running => color::Green.fg_str(),
             common::runner::ServiceStatus::Starting => color::Blue.fg_str(),
             common::runner::ServiceStatus::NotRunning => color::LightBlack.fg_str(),
             common::runner::ServiceStatus::Dead => color::Red.fg_str(),
-            common::runner::ServiceStatus::Exited => color::LightBlack.fg_str(), // FIXME: Make depent on exit code
+            common::runner::ServiceStatus::Exited(0) => color::LightBlack.fg_str(),
+            common::runner::ServiceStatus::Exited(_) => color::Red.fg_str(),
             common::runner::ServiceStatus::Restarting => color::Blue.fg_str(),
             common::runner::ServiceStatus::Unknown => color::LightBlack.fg_str(),
         };

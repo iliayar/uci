@@ -209,7 +209,7 @@ impl ProjectsStore {
             state.set(&project_info);
             let project = project_info.load(&state).await?;
             debug!("Loaded internal project {:#?}", project);
-            project
+            let res = project
                 .handle_event(
                     &state,
                     &super::Event::Call {
@@ -217,7 +217,11 @@ impl ProjectsStore {
                         trigger_id: "__restart__".to_string(),
                     },
                 )
-                .await?;
+                .await;
+
+            if let Err(err) = res {
+                error!("Failed to reload internal project: {}", err);
+            }
         }
 
         Ok(())

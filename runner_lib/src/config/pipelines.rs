@@ -64,7 +64,10 @@ mod raw {
     use common::state::State;
     use serde::{Deserialize, Serialize};
 
-    use crate::{config::{self, Expr}, utils};
+    use crate::{
+        config::{self, Expr},
+        utils,
+    };
 
     use anyhow::anyhow;
 
@@ -117,22 +120,23 @@ mod raw {
 
     #[derive(Deserialize, Serialize)]
     #[serde(deny_unknown_fields)]
-    struct Step {
-        #[serde(rename = "type")]
-        t: Option<Type>,
-        script: Option<String>,
-        interpreter: Option<Vec<String>>,
-        image: Option<String>,
-        networks: Option<Vec<String>>,
-        volumes: Option<HashMap<String, String>>,
-        env: Option<HashMap<String, String>>,
-    }
-
-    #[derive(Deserialize, Serialize, Clone)]
-    #[serde(deny_unknown_fields)]
-    enum Type {
+    #[serde(tag = "type")]
+    enum Step {
         #[serde(rename = "script")]
-        Script,
+        Script {
+            script: String,
+            interpreter: Option<Vec<String>>,
+            image: Option<String>,
+            networks: Option<Vec<String>>,
+            volumes: Option<HashMap<String, String>>,
+            env: Option<HashMap<String, String>>,
+        },
+        #[serde(rename = "build")]
+        BuildImage {
+            path: config::AbsPath,
+            image: String,
+            dockerfile: Option<String>,
+        },
     }
 
     #[derive(Deserialize, Serialize)]
@@ -312,49 +316,50 @@ mod raw {
         type Output = common::Step;
 
         fn load_raw(self, state: &State) -> Result<Self::Output, anyhow::Error> {
-            match get_type(&self)? {
-                Type::Script => {
-                    let networks = config::utils::get_networks_names(
-                        state,
-                        self.networks.unwrap_or_default(),
-                    )?;
+            match self {
+                Step::Script {
+                    networks,
+                    volumes,
+                    script,
+                    image,
+                    interpreter,
+                    env,
+                    ..
+                } => {
+                    let networks =
+                        config::utils::get_networks_names(state, networks.unwrap_or_default())?;
                     let volumes =
-                        config::utils::get_volumes_names(state, self.volumes.unwrap_or_default())?;
+                        config::utils::get_volumes_names(state, volumes.unwrap_or_default())?;
 
                     let config = common::RunShellConfig {
-                        script: self
-                            .script
-                            .ok_or_else(|| anyhow!("'script' step requires 'script' field"))?,
-                        docker_image: self.image,
-                        interpreter: self.interpreter,
-                        env: config::utils::substitute_vars_dict(
-                            state,
-                            self.env.unwrap_or_default(),
-                        )?,
+                        docker_image: image,
+                        env: config::utils::substitute_vars_dict(state, env.unwrap_or_default())?,
+                        script,
+                        interpreter,
                         volumes,
                         networks,
                     };
                     Ok(common::Step::RunShell(config))
                 }
+                Step::BuildImage {
+                    image,
+                    path,
+                    dockerfile,
+                } => {
+                    let config = common::BuildImageConfig {
+                        tag: None,
+                        source: Some(common::BuildImageConfigSource {
+                            path: common::BuildImageConfigSourcePath::Directory(
+                                path.load_raw(state)?.to_string_lossy().to_string(),
+                            ),
+                            dockerfile,
+                        }),
+                        image,
+                    };
+
+                    Ok(common::Step::BuildImage(config))
+                }
             }
-        }
-    }
-
-    fn get_type(step: &Step) -> Result<Type, anyhow::Error> {
-        if let Some(t) = step.t.as_ref() {
-            Ok(t.clone())
-        } else if let Some(t) = guess_type(step) {
-            Ok(t)
-        } else {
-            Err(anyhow!("Type is not specified for step, cannot guess type"))
-        }
-    }
-
-    fn guess_type(step: &Step) -> Option<Type> {
-        if step.script.is_some() {
-            Some(Type::Script)
-        } else {
-            None
         }
     }
 

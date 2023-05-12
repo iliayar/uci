@@ -205,3 +205,17 @@ impl LoadRawSync for Expr<i64> {
         }
     }
 }
+
+#[derive(Deserialize, Serialize, Clone)]
+#[serde(transparent)]
+pub struct AbsPath {
+    value: String,
+}
+
+impl LoadRawSync for AbsPath {
+    type Output = PathBuf;
+
+    fn load_raw(self, state: &State) -> Result<Self::Output, anyhow::Error> {
+        crate::utils::eval_abs_path(state, self.value)
+    }
+}

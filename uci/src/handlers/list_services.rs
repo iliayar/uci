@@ -64,7 +64,7 @@ async fn list_services_impl(
                 common::runner::ServiceStatus::Restarting
             }
             worker_lib::docker::ContainerStatus::Dead => common::runner::ServiceStatus::Dead,
-            worker_lib::docker::ContainerStatus::Exited => common::runner::ServiceStatus::Exited,
+            worker_lib::docker::ContainerStatus::Exited(code) => common::runner::ServiceStatus::Exited(code),
             worker_lib::docker::ContainerStatus::Unknown => common::runner::ServiceStatus::Unknown,
         };
         services.push(common::runner::Service {

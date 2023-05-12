@@ -65,7 +65,7 @@ pub enum ServiceStatus {
     Starting,
     NotRunning,
     Dead,
-    Exited,
+    Exited(i64),
     Restarting,
     Unknown,
 }

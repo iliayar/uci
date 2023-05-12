@@ -660,7 +660,7 @@ impl Executor {
                 })
                 .await;
             integrations.handle_pipeline_displaced(&state).await;
-	} else {
+        } else {
             let finished_status = match res.as_ref() {
                 Ok(_) => PipelineFinishedStatus::Success,
                 Err(err) => PipelineFinishedStatus::Error {
@@ -966,7 +966,7 @@ impl Executor {
                         })
                         .await;
 
-                    return Err(err);
+                    return Err(anyhow!("Step {} in job {} failed: {}", i, id, err));
                 }
             }
         }

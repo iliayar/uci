@@ -115,8 +115,8 @@ mod raw {
     #[derive(Deserialize, Serialize)]
     #[serde(untagged)]
     enum OneOrManySecrets {
-        One(String),
-        Many(Vec<String>),
+        One(config::AbsPath),
+        Many(Vec<config::AbsPath>),
     }
 
     #[async_trait::async_trait]
@@ -125,15 +125,10 @@ mod raw {
 
         async fn load_raw(self, state: &State) -> Result<Self::Output, anyhow::Error> {
             match self {
-                OneOrManySecrets::One(path) => {
-                    let path = utils::eval_abs_path(state, path)?;
-                    config::Secrets::load(path).await
-                }
+                OneOrManySecrets::One(path) => config::Secrets::load(path.load_raw(state)?).await,
                 OneOrManySecrets::Many(paths) => {
-                    let paths: Result<_, anyhow::Error> = paths
-                        .into_iter()
-                        .map(|path| utils::eval_abs_path(state, path))
-                        .collect();
+                    let paths: Result<_, anyhow::Error> =
+                        paths.into_iter().map(|path| path.load_raw(state)).collect();
                     config::Secrets::load_many(paths?).await
                 }
             }

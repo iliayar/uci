@@ -1,23 +1,44 @@
 jobs:
   j1:
-    stage: stage_1
-    script: |
-      for i in $(seq 1 5); do
-        echo $i
-        sleep 1
-      done
-
+    type: build
+    image: test-image
+    path: ${project.repos.test-manual.path}/
   j2:
-    needs: ["j1"]
-    stage: stage_2
+    needs: ['j1']
+    type: script
+    image: test-image
+    interpreter: ['/bin/sh', '-c']
     script: |
-      for i in $(seq 1 10); do
-        echo $i
-        sleep 1
-      done
+      /script.sh
 
-stages:
-  stage_1:
-    on_overlap: displace
-  stage_2:
-    on_overlap: wait
+  # j1:
+  #   image: ubuntu
+  #   type: script
+  #   script: |
+  #     for i in $(seq 1 10); do
+  #       echo $i
+  #       sleep 2
+  #     done
+
+  # j1:
+  #   stage: stage_1
+  #   script: |
+  #     for i in $(seq 1 5); do
+  #       echo $i
+  #       sleep 1
+  #     done
+
+  # j2:
+  #   needs: ["j1"]
+  #   stage: stage_2
+  #   script: |
+  #     for i in $(seq 1 10); do
+  #       echo $i
+  #       sleep 1
+  #     done
+
+# stages:
+#   stage_1:
+#     on_overlap: displace
+#   stage_2:
+#     on_overlap: wait

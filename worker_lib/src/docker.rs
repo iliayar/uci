@@ -133,7 +133,7 @@ pub enum ContainerStatus {
     Starting,
     Restarting,
     Dead,
-    Exited,
+    Exited(i64),
     Unknown,
 }
 
@@ -168,7 +168,8 @@ impl Docker {
                             ContainerStatus::NotRunning
                         }
                         bollard::models::ContainerStateStatusEnum::EXITED => {
-                            ContainerStatus::Exited
+                            // FIXME: Too lazy to make it optional. Why 1?
+                            ContainerStatus::Exited(state.exit_code.unwrap_or(1))
                         }
                         bollard::models::ContainerStateStatusEnum::DEAD => ContainerStatus::Dead,
                     };
@@ -229,6 +230,8 @@ impl Docker {
         let mut logger = super::executor::Logger::new(state).await?;
         let body = file_utils::open_async_stream(params.tar_path).await?;
 
+        let pipeline_run: Option<&super::executor::PipelineRun> = state.get().ok();
+
         let tag = format!("{}:{}", params.image, params.tag);
         let mut results = self.con.build_image::<&str>(
             BuildImageOptions {
@@ -240,9 +243,28 @@ impl Docker {
             Some(body),
         );
 
+        let mut interval = tokio::time::interval(std::time::Duration::from_secs(1));
+
         info!("Building image {} done", params.image);
-        while let Some(result) = results.next().await {
-            let result = result?;
+        loop {
+            #[rustfmt::skip]
+            let result = tokio::select! {
+                result = results.next() => result,
+                _ = interval.tick() => {
+		    if let Some(pipeline_run) = pipeline_run {
+		        if pipeline_run.canceled().await {
+                            break;
+		        }
+		    }
+		    continue;
+                }
+            };
+
+            let result = if let Some(result) = result {
+                result?
+            } else {
+                break;
+            };
 
             if let Some(stream) = result.stream {
                 if !stream.is_empty() {
@@ -385,6 +407,8 @@ impl Docker {
     ) -> Result<(), DockerError> {
         let mut logger = super::executor::Logger::new(state).await?;
 
+        let pipeline_run: Option<&super::executor::PipelineRun> = state.get().ok();
+
         let host_config = HostConfig {
             binds: Some(binds_from_map(params.mounts)),
             ..Default::default()
@@ -442,11 +466,32 @@ impl Docker {
             .await?
             .id;
 
+        let mut interval = tokio::time::interval(std::time::Duration::from_secs(1));
+
         if let StartExecResults::Attached { mut output, .. } =
             self.con.start_exec(&exec, None).await?
         {
-            while let Some(msg) = output.next().await {
-                match msg? {
+            loop {
+                #[rustfmt::skip]
+                let msg = tokio::select! {
+                    msg = output.next() => msg,
+                    _ = interval.tick() => {
+			if let Some(pipeline_run) = pipeline_run {
+			    if pipeline_run.canceled().await {
+				break;
+			    }
+			}
+			continue;
+                    }
+                };
+
+                let msg = if let Some(msg) = msg {
+                    msg?
+                } else {
+                    break;
+                };
+
+                match msg {
                     container::LogOutput::StdErr { message } => {
                         let bytes: Vec<u8> = message.into_iter().collect();
                         logger
@@ -467,7 +512,7 @@ impl Docker {
             unreachable!();
         }
 
-        info!("Container done '{}'", exec);
+        let exec_result = self.con.inspect_exec(&exec).await?;
 
         self.con
             .remove_container(
@@ -478,6 +523,18 @@ impl Docker {
                 }),
             )
             .await?;
+
+        match exec_result.exit_code {
+            None => {
+                info!("Container done '{}' with no status code", exec,);
+            }
+            Some(status) => {
+                info!("Container done '{}' with status code: {}", exec, status,);
+                if status != 0 {
+                    return Err(anyhow!("Script exited with status code {}", status).into());
+                }
+            }
+        }
 
         Ok(())
     }

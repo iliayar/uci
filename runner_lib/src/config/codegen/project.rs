@@ -196,7 +196,8 @@ pipelines:
 jobs:
   run_script:
     steps:
-      - script: |
+      - type: script
+        script: |
           cd caddy
           caddy reload
 links:

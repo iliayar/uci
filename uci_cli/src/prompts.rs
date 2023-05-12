@@ -118,7 +118,7 @@ impl crate::select::SelectOption for common::runner::Service {
             }
             common::runner::ServiceStatus::NotRunning
             | common::runner::ServiceStatus::Dead
-            | common::runner::ServiceStatus::Exited => {
+            | common::runner::ServiceStatus::Exited(_) => {
                 write!(out, "{}Not running{} ", color::Fg(color::Red), style::Reset).ok();
             }
             common::runner::ServiceStatus::Unknown => {}
