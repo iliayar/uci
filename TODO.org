@@ -1,4 +1,4 @@
-* TODO [2/5] Minor stuff
+* TODO [3/7] Minor stuff
 - [-] [2/3] Paramteres from request and from action \\
   - [X] Load pipelines lazy
   - [ ] Support parameters when call action, update repo, etc...
@@ -15,5 +15,9 @@
     - [X] GitHub
 - [X] Dry run
 - [ ] Impove expressions language (JMES like?)
-- [ ] Support cancelation in tasks
+- [X] Support cancelation in tasks
+- [ ] Nix integration!
+- [ ] [0/2] Project configs in multiple repos
+  - [ ] Path to actions, params, etc.. configs in =project.yaml=
+  - [ ] Merging configs
 * TODO Web UI

@@ -1,5 +1,5 @@
 * uCI
-[[https://uci.ilyay.space/badge/ghlike.svg?project_id=uci&pipeline_id=deploy&job_id=build]] \\
+[[https://uci.ilyay.space/badge/ghlike.svg?project_id=uci&pipeline_id=deploy&job_id=build]]\\
 Simple lightweight ci/cd for self-hosting
 
 ** Build
@@ -61,4 +61,12 @@ With client config at host's =.uci/config.yaml=:
 
 - =uci config reload= - will pull repo with configs on the server and reload config
 
-*** TODO Example project
+*** Example projects
+- Handling update of uci in itself [[https://github.com/iliayar/uci/tree/master/.uci][Link]]
+- Static generation of Html from Org [[https://github.com/iliayar/iliayar/tree/master/.uci][Link]], [[https://github.com/iliayar/ITMO/tree/master/.uci][Link]]
+
+
+** CLI
+*** Example
+Trigger action manually and watch logs \\
+[[https://asciinema.org/a/6CFr9sPMv0ToYeODqFTqEEKSF][https://asciinema.org/a/6CFr9sPMv0ToYeODqFTqEEKSF.svg]]
