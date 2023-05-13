@@ -13,14 +13,14 @@ pub fn filter(
     warp::any()
         .and(warp::path!("projects" / "actions" / "list"))
         .and(with_call_context(deps))
-        .and(warp::query::<common::runner::ListActionsQuery>())
+        .and(warp::query::<models::ListActionsQuery>())
         .and(warp::get())
         .and_then(list_actions)
 }
 
 async fn list_actions(
     call_context: call_context::CallContext,
-    common::runner::ListActionsQuery { project_id }: common::runner::ListActionsQuery,
+    models::ListActionsQuery { project_id }: models::ListActionsQuery,
 ) -> Result<impl warp::Reply, warp::Rejection> {
     match list_actions_impl(call_context, &project_id).await {
         Ok(resp) => Ok(warp::reply::with_status(
@@ -36,7 +36,7 @@ async fn list_actions(
 async fn list_actions_impl(
     call_context: call_context::CallContext,
     project_id: &str,
-) -> Result<common::runner::ActionsListResponse, anyhow::Error> {
+) -> Result<models::ActionsListResponse, anyhow::Error> {
     if !call_context
         .check_permissions(Some(project_id), config::ActionType::Read)
         .await
@@ -49,8 +49,8 @@ async fn list_actions_impl(
     let mut actions = Vec::new();
     let actions_description = project.actions.list_actions().await;
     for action in actions_description.actions.into_iter() {
-        actions.push(common::runner::Action { id: action.name });
+        actions.push(models::Action { id: action.name });
     }
 
-    Ok(common::runner::ActionsListResponse { actions })
+    Ok(models::ActionsListResponse { actions })
 }

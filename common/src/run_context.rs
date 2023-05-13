@@ -93,7 +93,7 @@ impl RunContext {
     }
 
     pub async fn heartbeat(&self) {
-        self.send(super::runner::PipelineMessage::Heartbeat).await
+        self.send(models::PipelineMessage::Heartbeat).await
     }
 
     pub async fn send<T: serde::Serialize, TR: AsRef<T>>(&self, msg: TR) {

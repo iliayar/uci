@@ -13,14 +13,14 @@ pub fn filter(
     warp::any()
         .and(warp::path!("projects" / "services" / "list"))
         .and(with_call_context(deps))
-        .and(warp::query::<common::runner::ListServicesQuery>())
+        .and(warp::query::<models::ListServicesQuery>())
         .and(warp::get())
         .and_then(list_services)
 }
 
 async fn list_services(
     call_context: call_context::CallContext,
-    common::runner::ListServicesQuery { project_id }: common::runner::ListServicesQuery,
+    models::ListServicesQuery { project_id }: models::ListServicesQuery,
 ) -> Result<impl warp::Reply, warp::Rejection> {
     match list_services_impl(call_context, &project_id).await {
         Ok(resp) => Ok(warp::reply::with_status(
@@ -36,7 +36,7 @@ async fn list_services(
 async fn list_services_impl(
     call_context: call_context::CallContext,
     project_id: &str,
-) -> Result<common::runner::ServicesListResponse, anyhow::Error> {
+) -> Result<models::ServicesListResponse, anyhow::Error> {
     if !call_context
         .check_permissions(Some(project_id), config::ActionType::Read)
         .await
@@ -53,25 +53,25 @@ async fn list_services_impl(
         .await?;
     for service in services_description.services.into_iter() {
         let status = match service.status {
-            worker_lib::docker::ContainerStatus::Running => common::runner::ServiceStatus::Running,
+            worker_lib::docker::ContainerStatus::Running => models::ServiceStatus::Running,
             worker_lib::docker::ContainerStatus::NotRunning => {
-                common::runner::ServiceStatus::NotRunning
+                models::ServiceStatus::NotRunning
             }
             worker_lib::docker::ContainerStatus::Starting => {
-                common::runner::ServiceStatus::Starting
+                models::ServiceStatus::Starting
             }
             worker_lib::docker::ContainerStatus::Restarting => {
-                common::runner::ServiceStatus::Restarting
+                models::ServiceStatus::Restarting
             }
-            worker_lib::docker::ContainerStatus::Dead => common::runner::ServiceStatus::Dead,
-            worker_lib::docker::ContainerStatus::Exited(code) => common::runner::ServiceStatus::Exited(code),
-            worker_lib::docker::ContainerStatus::Unknown => common::runner::ServiceStatus::Unknown,
+            worker_lib::docker::ContainerStatus::Dead => models::ServiceStatus::Dead,
+            worker_lib::docker::ContainerStatus::Exited(code) => models::ServiceStatus::Exited(code),
+            worker_lib::docker::ContainerStatus::Unknown => models::ServiceStatus::Unknown,
         };
-        services.push(common::runner::Service {
+        services.push(models::Service {
             id: service.name,
             status,
         });
     }
 
-    Ok(common::runner::ServicesListResponse { services })
+    Ok(models::ServicesListResponse { services })
 }

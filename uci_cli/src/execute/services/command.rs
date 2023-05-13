@@ -20,7 +20,7 @@ pub async fn execute_service(
             super::service_command::execute_services_command(
                 config,
                 service,
-                common::runner::ServiceCommand::Start { build: !no_build },
+                models::ServiceCommand::Start { build: !no_build },
                 all,
             )
             .await?
@@ -29,7 +29,7 @@ pub async fn execute_service(
             super::service_command::execute_services_command(
                 config,
                 service,
-                common::runner::ServiceCommand::Stop,
+                models::ServiceCommand::Stop,
                 all,
             )
             .await?
@@ -42,7 +42,7 @@ pub async fn execute_service(
             super::service_command::execute_services_command(
                 config,
                 service,
-                common::runner::ServiceCommand::Restart { build: !no_build },
+                models::ServiceCommand::Restart { build: !no_build },
                 all,
             )
             .await?

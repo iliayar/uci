@@ -17,7 +17,7 @@ pub async fn execute_action_call(
         crate::prompts::promp_action(config, project_id.clone()).await?
     };
 
-    let body = common::runner::CallRequest {
+    let body = models::CallRequest {
         project_id,
         trigger_id: action_id,
 	dry_run: Some(dry_run),
@@ -26,7 +26,7 @@ pub async fn execute_action_call(
     let response = crate::runner::post_body(config, "/call", &body)?
         .send()
         .await;
-    let response: common::runner::ContinueReponse = crate::runner::json(response).await?;
+    let response: models::ContinueReponse = crate::runner::json(response).await?;
 
     debug!("Will follow run {}", response.run_id);
     let mut ws_client = crate::runner::ws(config, response.run_id).await?;

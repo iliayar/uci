@@ -52,7 +52,7 @@ pub async fn execute_runs_logs(
         None
     };
 
-    let query = common::runner::RunsLogsRequestQuery {
+    let query = models::RunsLogsRequestQuery {
         run: run_id.clone(),
         project: project_id,
         pipeline: pipeline_id,
@@ -60,7 +60,7 @@ pub async fn execute_runs_logs(
     let response = crate::runner::get_query(config, "/runs/logs", &query)?
         .send()
         .await;
-    let response: common::runner::ContinueReponse = crate::runner::json(response).await?;
+    let response: models::ContinueReponse = crate::runner::json(response).await?;
 
     debug!("Will follow run {}", response.run_id);
 

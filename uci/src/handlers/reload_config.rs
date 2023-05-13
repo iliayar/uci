@@ -27,7 +27,7 @@ async fn reload_config(
 
     match call_context.reload_config().await {
         Ok(_) => Ok(warp::reply::with_status(
-            warp::reply::json(&common::runner::EmptyResponse {}),
+            warp::reply::json(&models::EmptyResponse {}),
             StatusCode::OK,
         )),
         Err(err) => Err(warp::reject::custom(InternalServerError::Error(

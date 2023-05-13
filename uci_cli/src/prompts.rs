@@ -2,7 +2,7 @@ use crate::{config::Config, execute::ExecuteError};
 
 use termion::{color, style};
 
-impl crate::select::SelectOption for common::runner::Action {
+impl crate::select::SelectOption for models::Action {
     type Data = String;
 
     fn show(&self, out: &mut impl std::io::Write) {
@@ -29,11 +29,11 @@ impl std::fmt::Display for RunSelection {
     }
 }
 
-impl crate::select::SelectOption for common::runner::Run {
+impl crate::select::SelectOption for models::Run {
     type Data = RunSelection;
 
     fn show(&self, out: &mut impl std::io::Write) {
-        if let common::runner::RunStatus::Running = self.status {
+        if let models::RunStatus::Running = self.status {
             write!(
                 out,
                 "{}In progress{} ",
@@ -62,7 +62,7 @@ pub async fn promp_action(config: &Config, project_id: String) -> Result<String,
     Ok(crate::select::prompt(actions.actions.into_iter())?)
 }
 
-impl crate::select::SelectOption for common::runner::Repo {
+impl crate::select::SelectOption for models::Repo {
     type Data = String;
 
     fn show(&self, out: &mut impl std::io::Write) {
@@ -106,22 +106,22 @@ pub async fn promp_run(
     Ok(crate::select::prompt(runs.into_iter())?)
 }
 
-impl crate::select::SelectOption for common::runner::Service {
+impl crate::select::SelectOption for models::Service {
     type Data = String;
 
     fn show(&self, out: &mut impl std::io::Write) {
         match self.status {
-            common::runner::ServiceStatus::Running
-            | common::runner::ServiceStatus::Starting
-            | common::runner::ServiceStatus::Restarting => {
+            models::ServiceStatus::Running
+            | models::ServiceStatus::Starting
+            | models::ServiceStatus::Restarting => {
                 write!(out, "{}Running{} ", color::Fg(color::Green), style::Reset).ok();
             }
-            common::runner::ServiceStatus::NotRunning
-            | common::runner::ServiceStatus::Dead
-            | common::runner::ServiceStatus::Exited(_) => {
+            models::ServiceStatus::NotRunning
+            | models::ServiceStatus::Dead
+            | models::ServiceStatus::Exited(_) => {
                 write!(out, "{}Not running{} ", color::Fg(color::Red), style::Reset).ok();
             }
-            common::runner::ServiceStatus::Unknown => {}
+            models::ServiceStatus::Unknown => {}
         }
         write!(out, "{}", self.id).ok();
     }
@@ -143,7 +143,7 @@ pub async fn promp_services(
     Ok(crate::select::prompt_many(services.services.into_iter())?)
 }
 
-impl crate::select::SelectOption for common::runner::Project {
+impl crate::select::SelectOption for models::Project {
     type Data = String;
 
     fn show(&self, out: &mut impl std::io::Write) {

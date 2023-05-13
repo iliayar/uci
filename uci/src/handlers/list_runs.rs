@@ -13,14 +13,14 @@ pub fn filter(
     warp::any()
         .and(warp::path!("runs" / "list"))
         .and(with_call_context(deps))
-        .and(warp::query::<common::runner::ListRunsRequestQuery>())
+        .and(warp::query::<models::ListRunsRequestQuery>())
         .and(warp::get())
         .and_then(list_runs)
 }
 
 async fn list_runs(
     call_context: call_context::CallContext,
-    query_params: common::runner::ListRunsRequestQuery,
+    query_params: models::ListRunsRequestQuery,
 ) -> Result<impl warp::Reply, warp::Rejection> {
     match list_runs_impl(
         call_context,
@@ -43,7 +43,7 @@ async fn list_runs_impl(
     call_context: call_context::CallContext,
     project_id: Option<String>,
     pipeline_id: Option<String>,
-) -> Result<common::runner::ListRunsResponse, anyhow::Error> {
+) -> Result<models::ListRunsResponse, anyhow::Error> {
     let executor: &worker_lib::executor::Executor = call_context.state.get()?;
     let mut res = Vec::new();
 
@@ -73,25 +73,25 @@ async fn list_runs_impl(
                     for run in pipeline_runs.get_runs().into_iter() {
                         let status = match run.status().await {
                             worker_lib::executor::PipelineStatus::Starting => {
-                                common::runner::RunStatus::Running
+                                models::RunStatus::Running
                             }
                             worker_lib::executor::PipelineStatus::Running => {
-                                common::runner::RunStatus::Running
+                                models::RunStatus::Running
                             }
                             worker_lib::executor::PipelineStatus::Finished(finished_status) => {
-                                common::runner::RunStatus::Finished(match finished_status {
+                                models::RunStatus::Finished(match finished_status {
                                     worker_lib::executor::PipelineFinishedStatus::Canceled => {
-                                        common::runner::RunFinishedStatus::Canceled
+                                        models::RunFinishedStatus::Canceled
                                     }
                                     worker_lib::executor::PipelineFinishedStatus::Displaced => {
-                                        common::runner::RunFinishedStatus::Displaced
+                                        models::RunFinishedStatus::Displaced
                                     }
                                     worker_lib::executor::PipelineFinishedStatus::Success => {
-                                        common::runner::RunFinishedStatus::Success
+                                        models::RunFinishedStatus::Success
                                     }
                                     worker_lib::executor::PipelineFinishedStatus::Error {
                                         message,
-                                    } => common::runner::RunFinishedStatus::Error { message },
+                                    } => models::RunFinishedStatus::Error { message },
                                 })
                             }
                         };
@@ -101,25 +101,25 @@ async fn list_runs_impl(
                         for (id, job) in run.jobs().await.into_iter() {
                             let status = match job.status {
                                 worker_lib::executor::JobStatus::Skipped => {
-                                    common::runner::JobStatus::Skipped
+                                    models::JobStatus::Skipped
                                 }
                                 worker_lib::executor::JobStatus::Canceled => {
-                                    common::runner::JobStatus::Canceled
+                                    models::JobStatus::Canceled
                                 }
                                 worker_lib::executor::JobStatus::Pending => {
-                                    common::runner::JobStatus::Pending
+                                    models::JobStatus::Pending
                                 }
                                 worker_lib::executor::JobStatus::Running { step } => {
-                                    common::runner::JobStatus::Running { step }
+                                    models::JobStatus::Running { step }
                                 }
                                 worker_lib::executor::JobStatus::Finished { error } => {
-                                    common::runner::JobStatus::Finished { error }
+                                    models::JobStatus::Finished { error }
                                 }
                             };
-                            jobs.insert(id, common::runner::Job { status });
+                            jobs.insert(id, models::Job { status });
                         }
 
-                        res.push(common::runner::Run {
+                        res.push(models::Run {
                             project: project.clone(),
                             pipeline: pipeline.clone(),
                             run_id: run.id.clone(),
@@ -134,5 +134,5 @@ async fn list_runs_impl(
         }
     }
 
-    Ok(common::runner::ListRunsResponse { runs: res })
+    Ok(models::ListRunsResponse { runs: res })
 }

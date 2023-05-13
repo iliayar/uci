@@ -283,7 +283,7 @@ impl Docker {
     pub fn logs<'a>(
         &self,
         params: LogsParams,
-    ) -> impl futures::Stream<Item = Result<common::runner::PipelineMessage, anyhow::Error>> {
+    ) -> impl futures::Stream<Item = Result<models::PipelineMessage, anyhow::Error>> {
         let mut logs = self.con.logs(
             &params.container,
             Some(LogsOptions {
@@ -704,12 +704,12 @@ fn get_env(env: HashMap<String, String>) -> Vec<String> {
 fn make_pipeline_log(
     container: String,
     log: bollard::container::LogOutput,
-) -> Result<common::runner::PipelineMessage, anyhow::Error> {
+) -> Result<models::PipelineMessage, anyhow::Error> {
     let (t, text) = match log {
         container::LogOutput::StdErr { message } => {
             let bytes: Vec<u8> = message.into_iter().collect();
             (
-                common::runner::LogType::Error,
+                models::LogType::Error,
                 String::from_utf8_lossy(&bytes).to_string(),
             )
         }
@@ -718,7 +718,7 @@ fn make_pipeline_log(
         | container::LogOutput::Console { message } => {
             let bytes: Vec<u8> = message.into_iter().collect();
             (
-                common::runner::LogType::Regular,
+                models::LogType::Regular,
                 String::from_utf8_lossy(&bytes).to_string(),
             )
         }
@@ -731,7 +731,7 @@ fn make_pipeline_log(
     let timestamp = chrono::DateTime::parse_from_rfc3339(timestamp)
         .map_err(|err| anyhow!("Failed to parse docker timestamp in log: {}", err))?;
 
-    let log = common::runner::PipelineMessage::ContainerLog {
+    let log = models::PipelineMessage::ContainerLog {
         container,
         t,
         text: text.to_string(),

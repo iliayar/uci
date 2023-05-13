@@ -86,7 +86,7 @@ pub async fn json<T: for<'a> Deserialize<'a>>(
             } else {
                 let status = response.status();
                 let text = response.text().await.map_err(Into::<anyhow::Error>::into)?;
-                match serde_json::from_str::<common::runner::ErrorResponse>(&text) {
+                match serde_json::from_str::<models::ErrorResponse>(&text) {
                     Ok(error_response) => {
                         Err(super::execute::ExecuteError::Fatal(error_response.message))
                     }
@@ -198,8 +198,8 @@ pub mod api {
     pub async fn list_services(
         config: &Config,
         project_id: String,
-    ) -> Result<common::runner::ServicesListResponse, ExecuteError> {
-        let query = common::runner::ListServicesQuery { project_id };
+    ) -> Result<models::ServicesListResponse, ExecuteError> {
+        let query = models::ListServicesQuery { project_id };
         let response = crate::runner::get_query(config, "/projects/services/list", &query)?
             .send()
             .await;
@@ -210,8 +210,8 @@ pub mod api {
         config: &Config,
         project_id: Option<String>,
         pipeline_id: Option<String>,
-    ) -> Result<common::runner::ListRunsResponse, ExecuteError> {
-        let query = common::runner::ListRunsRequestQuery {
+    ) -> Result<models::ListRunsResponse, ExecuteError> {
+        let query = models::ListRunsRequestQuery {
             project_id,
             pipeline_id,
         };
@@ -224,8 +224,8 @@ pub mod api {
     pub async fn actions_list(
         config: &Config,
         project_id: String,
-    ) -> Result<common::runner::ActionsListResponse, ExecuteError> {
-        let query = common::runner::ListActionsQuery { project_id };
+    ) -> Result<models::ActionsListResponse, ExecuteError> {
+        let query = models::ListActionsQuery { project_id };
         let response = crate::runner::get_query(config, "/projects/actions/list", &query)?
             .send()
             .await;
@@ -234,7 +234,7 @@ pub mod api {
 
     pub async fn projects_list(
         config: &Config,
-    ) -> Result<common::runner::ProjectsListResponse, ExecuteError> {
+    ) -> Result<models::ProjectsListResponse, ExecuteError> {
         let response = crate::runner::get(config, "/projects/list")?.send().await;
         crate::runner::json(response).await
     }
@@ -242,8 +242,8 @@ pub mod api {
     pub async fn repos_list(
         config: &Config,
         project_id: String,
-    ) -> Result<common::runner::ReposListResponse, ExecuteError> {
-        let query = common::runner::ListReposQuery { project_id };
+    ) -> Result<models::ReposListResponse, ExecuteError> {
+        let query = models::ListReposQuery { project_id };
         let response = crate::runner::get_query(config, "/projects/repos/list", &query)?
             .send()
             .await;
@@ -253,7 +253,7 @@ pub mod api {
     pub async fn upload(
         config: &Config,
 	data: Vec<u8>,
-    ) -> Result<common::runner::UploadResponse, ExecuteError> {
+    ) -> Result<models::UploadResponse, ExecuteError> {
 	let file_part = reqwest::multipart::Part::bytes(data);
 	let form = reqwest::multipart::Form::new().part("file", file_part);
         let response = crate::runner::post(config, "/upload")?.multipart(form).send().await;

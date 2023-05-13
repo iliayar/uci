@@ -26,7 +26,7 @@ pub async fn execute_services_logs(
         crate::prompts::promp_services(config, project_id.clone()).await?
     };
 
-    let body = common::runner::ServiceLogsBody {
+    let body = models::ServiceLogsBody {
         services,
         follow,
 
@@ -38,12 +38,12 @@ pub async fn execute_services_logs(
         },
     };
 
-    let query = common::runner::ServiceLogsQuery { project_id };
+    let query = models::ServiceLogsQuery { project_id };
 
     let response = crate::runner::get_query_body(config, "/projects/services/logs", &query, &body)?
         .send()
         .await;
-    let response: common::runner::ContinueReponse = crate::runner::json(response).await?;
+    let response: models::ContinueReponse = crate::runner::json(response).await?;
 
     debug!("Will follow run {}", response.run_id);
 
@@ -51,9 +51,9 @@ pub async fn execute_services_logs(
 
     execute::utils::print_clone_repos(&mut ws_client).await?;
 
-    while let Some(message) = ws_client.receive::<common::runner::PipelineMessage>().await {
+    while let Some(message) = ws_client.receive::<models::PipelineMessage>().await {
         match message {
-            common::runner::PipelineMessage::ContainerLog {
+            models::PipelineMessage::ContainerLog {
                 t,
                 text,
                 timestamp,
@@ -68,8 +68,8 @@ pub async fn execute_services_logs(
                 );
 
                 match t {
-                    common::runner::LogType::Regular => println!("{}", text.trim_end()),
-                    common::runner::LogType::Error => {
+                    models::LogType::Regular => println!("{}", text.trim_end()),
+                    models::LogType::Error => {
                         println!(
                             "{}{}{}",
                             color::Fg(color::Red),
@@ -77,7 +77,7 @@ pub async fn execute_services_logs(
                             style::Reset
                         )
                     }
-                    common::runner::LogType::Warning => {
+                    models::LogType::Warning => {
                         println!(
                             "{}{}{}",
                             color::Fg(color::Yellow),
@@ -87,8 +87,8 @@ pub async fn execute_services_logs(
                     }
                 }
             }
-            common::runner::PipelineMessage::Log {
-                t: common::runner::LogType::Error,
+            models::PipelineMessage::Log {
+                t: models::LogType::Error,
                 text,
                 ..
             } => {

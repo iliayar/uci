@@ -30,7 +30,7 @@ pub async fn execute_repo_update(
         None
     };
 
-    let body = common::runner::UpdateRepoBody {
+    let body = models::UpdateRepoBody {
         project_id,
         repo_id,
         artifact_id,
@@ -40,17 +40,17 @@ pub async fn execute_repo_update(
     let response = crate::runner::post_body(config, "/update", &body)?
         .send()
         .await;
-    let response: common::runner::ContinueReponse = crate::runner::json(response).await?;
+    let response: models::ContinueReponse = crate::runner::json(response).await?;
 
     debug!("Will follow run {}", response.run_id);
 
     let mut ws_client = crate::runner::ws(config, response.run_id).await?;
 
     match ws_client
-        .receive::<common::runner::UpdateRepoMessage>()
+        .receive::<models::UpdateRepoMessage>()
         .await
     {
-        Some(common::runner::UpdateRepoMessage::PullingRepo) => {
+        Some(models::UpdateRepoMessage::PullingRepo) => {
             println!(
                 "{}Updating repo {bold}{}{no_bold} in project {bold}{}{no_bold} {}",
                 color::Fg(color::Blue),
@@ -77,11 +77,11 @@ pub async fn execute_repo_update(
     let mut spinner = Spinner::new();
     loop {
         if let Some(message) = ws_client
-            .try_receive::<common::runner::UpdateRepoMessage>()
+            .try_receive::<models::UpdateRepoMessage>()
             .await
         {
             match message {
-                common::runner::UpdateRepoMessage::NoSuchRepo => {
+                models::UpdateRepoMessage::NoSuchRepo => {
                     println!(
                         "{}No such repo {bold}{}{no_bold} in project {bold}{}{no_bold} {}",
                         color::Fg(color::Red),
@@ -92,7 +92,7 @@ pub async fn execute_repo_update(
                         no_bold = style::NoBold,
                     );
                 }
-                common::runner::UpdateRepoMessage::RepoPulled { changed_files } => {
+                models::UpdateRepoMessage::RepoPulled { changed_files } => {
                     println!(
                         "{}{}Repo {}{}{} updated{}",
                         clear::CurrentLine,
@@ -112,7 +112,7 @@ pub async fn execute_repo_update(
                         }
                     }
                 }
-                common::runner::UpdateRepoMessage::WholeRepoUpdated => {
+                models::UpdateRepoMessage::WholeRepoUpdated => {
                     println!(
                         "{}{}Repo {}{}{} pulled{}",
                         clear::CurrentLine,
@@ -124,7 +124,7 @@ pub async fn execute_repo_update(
                     );
                     println!("Whole repos changes");
                 }
-                common::runner::UpdateRepoMessage::FailedToPull { err } => {
+                models::UpdateRepoMessage::FailedToPull { err } => {
                     println!(
                         "{} Failed to pull repo {}{}{}: {}{}",
                         color::Fg(color::Red),

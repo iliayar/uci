@@ -13,18 +13,18 @@ pub fn filter(
     warp::any()
         .and(warp::path!("projects" / "services" / "command"))
         .and(with_call_context(deps))
-        .and(warp::body::json::<common::runner::ServiceCommandRequest>())
+        .and(warp::body::json::<models::ServiceCommandRequest>())
         .and(warp::post())
         .and_then(service_command)
 }
 
 async fn service_command(
     mut call_context: call_context::CallContext,
-    common::runner::ServiceCommandRequest {
+    models::ServiceCommandRequest {
         project_id,
         services,
         command,
-    }: common::runner::ServiceCommandRequest,
+    }: models::ServiceCommandRequest,
 ) -> Result<impl warp::Reply, warp::Rejection> {
     if !call_context
         .check_permissions(Some(&project_id), config::ActionType::Execute)
@@ -34,9 +34,9 @@ async fn service_command(
     }
 
     let service_action = match command {
-        common::runner::ServiceCommand::Stop => config::ServiceAction::Stop,
-        common::runner::ServiceCommand::Start { build } => config::ServiceAction::Start { build },
-        common::runner::ServiceCommand::Restart { build } => {
+        models::ServiceCommand::Stop => config::ServiceAction::Stop,
+        models::ServiceCommand::Start { build } => config::ServiceAction::Start { build },
+        models::ServiceCommand::Restart { build } => {
             config::ServiceAction::Restart { build }
         }
     };
@@ -53,7 +53,7 @@ async fn service_command(
     });
 
     Ok(warp::reply::with_status(
-        warp::reply::json(&common::runner::ContinueReponse { run_id }),
+        warp::reply::json(&models::ContinueReponse { run_id }),
         StatusCode::ACCEPTED,
     ))
 }

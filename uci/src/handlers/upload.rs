@@ -46,7 +46,7 @@ async fn upload(
 async fn upload_impl(
     artifacts: call_context::ArtifactsStorage,
     mut form: FormData,
-) -> Result<common::runner::UploadResponse, anyhow::Error> {
+) -> Result<models::UploadResponse, anyhow::Error> {
     let (artifact, filename) = artifacts.create().await;
     info!("Uploading artifact {}", artifact);
 
@@ -60,7 +60,7 @@ async fn upload_impl(
                 file.write_all_buf(&mut chunk).await?;
             }
 
-            return Ok(common::runner::UploadResponse { artifact });
+            return Ok(models::UploadResponse { artifact });
         }
     }
 

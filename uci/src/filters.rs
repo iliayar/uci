@@ -140,7 +140,7 @@ pub async fn report_rejection(r: Rejection) -> Result<impl warp::Reply, Rejectio
             }
         };
         return Ok(warp::reply::with_status(
-            warp::reply::json(&common::runner::ErrorResponse { message }),
+            warp::reply::json(&models::ErrorResponse { message }),
             StatusCode::UNAUTHORIZED,
         ));
     } else if let Some(internal_server_error) = r.find::<InternalServerError>() {
@@ -148,7 +148,7 @@ pub async fn report_rejection(r: Rejection) -> Result<impl warp::Reply, Rejectio
             InternalServerError::Error(err) => err.clone(),
         };
         return Ok(warp::reply::with_status(
-            warp::reply::json(&common::runner::ErrorResponse { message }),
+            warp::reply::json(&models::ErrorResponse { message }),
             StatusCode::INTERNAL_SERVER_ERROR,
         ));
     }

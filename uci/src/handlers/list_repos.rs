@@ -13,14 +13,14 @@ pub fn filter(
     warp::any()
         .and(warp::path!("projects" / "repos" / "list"))
         .and(with_call_context(deps))
-        .and(warp::query::<common::runner::ListReposQuery>())
+        .and(warp::query::<models::ListReposQuery>())
         .and(warp::get())
         .and_then(list_repos)
 }
 
 async fn list_repos(
     call_context: call_context::CallContext,
-    common::runner::ListReposQuery { project_id }: common::runner::ListReposQuery,
+    models::ListReposQuery { project_id }: models::ListReposQuery,
 ) -> Result<impl warp::Reply, warp::Rejection> {
     match list_repos_impl(call_context, &project_id).await {
         Ok(resp) => Ok(warp::reply::with_status(
@@ -36,7 +36,7 @@ async fn list_repos(
 async fn list_repos_impl(
     call_context: call_context::CallContext,
     project_id: &str,
-) -> Result<common::runner::ReposListResponse, anyhow::Error> {
+) -> Result<models::ReposListResponse, anyhow::Error> {
     if !call_context
         .check_permissions(Some(project_id), config::ActionType::Read)
         .await
@@ -49,8 +49,8 @@ async fn list_repos_impl(
     let mut repos = Vec::new();
 
     for repo_id in project_info.repos.list_repos().into_iter() {
-        repos.push(common::runner::Repo { id: repo_id });
+        repos.push(models::Repo { id: repo_id });
     }
 
-    Ok(common::runner::ReposListResponse { repos })
+    Ok(models::ReposListResponse { repos })
 }

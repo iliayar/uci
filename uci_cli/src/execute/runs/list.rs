@@ -22,36 +22,36 @@ pub async fn execute_runs_list(
         println!("  Started: {}", run.started);
 
         match run.status {
-            common::runner::RunStatus::Running => {
+            models::RunStatus::Running => {
                 println!(
                     "  Status: {}Running{}",
                     color::Fg(color::Blue),
                     style::Reset
                 )
             }
-            common::runner::RunStatus::Finished(finished_status) => match finished_status {
-                common::runner::RunFinishedStatus::Success => {
+            models::RunStatus::Finished(finished_status) => match finished_status {
+                models::RunFinishedStatus::Success => {
                     println!(
                         "  Status: {}Finished{}",
                         color::Fg(color::Green),
                         style::Reset
                     )
                 }
-                common::runner::RunFinishedStatus::Canceled => {
+                models::RunFinishedStatus::Canceled => {
                     println!(
                         "  Status: {}Canceled{}",
                         color::Fg(color::Yellow),
                         style::Reset
                     )
                 }
-                common::runner::RunFinishedStatus::Displaced => {
+                models::RunFinishedStatus::Displaced => {
                     println!(
                         "  Status: {}Displaced{}",
                         color::Fg(color::LightBlack),
                         style::Reset
                     )
                 }
-                common::runner::RunFinishedStatus::Error { message } => {
+                models::RunFinishedStatus::Error { message } => {
                     println!(
                         "  Status: {}Finished ({}){}",
                         color::Fg(color::Red),
@@ -67,28 +67,28 @@ pub async fn execute_runs_list(
             println!("  - Job: {}", job_id);
 
             match job.status {
-                common::runner::JobStatus::Canceled => {
+                models::JobStatus::Canceled => {
                     println!(
                         "    Status: {}Canceled{}",
                         color::Fg(color::Yellow),
                         style::Reset
                     )
                 }
-                common::runner::JobStatus::Skipped => {
+                models::JobStatus::Skipped => {
                     println!(
                         "    Status: {}Skipped{}",
                         color::Fg(color::LightBlack),
                         style::Reset
                     )
                 }
-                common::runner::JobStatus::Pending => {
+                models::JobStatus::Pending => {
                     println!(
                         "    Status: {}Pending{}",
                         color::Fg(color::LightBlack),
                         style::Reset
                     )
                 }
-                common::runner::JobStatus::Running { step } => {
+                models::JobStatus::Running { step } => {
                     println!(
                         "    Status: {}Running #{}{}",
                         color::Fg(color::Blue),
@@ -96,7 +96,7 @@ pub async fn execute_runs_list(
                         style::Reset
                     )
                 }
-                common::runner::JobStatus::Finished { error } => {
+                models::JobStatus::Finished { error } => {
                     if let Some(error) = error {
                         println!(
                             "    Status: {}Failed: {}{}",

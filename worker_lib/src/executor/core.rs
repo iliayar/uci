@@ -183,11 +183,11 @@ impl<'a> Logger<'a> {
 
     pub async fn log(&mut self, log: LogLine) -> Result<(), anyhow::Error> {
         self.run_context
-            .send(common::runner::PipelineMessage::Log {
+            .send(models::PipelineMessage::Log {
                 t: match log.level {
-                    LogLevel::Regular => common::runner::LogType::Regular,
-                    LogLevel::Error => common::runner::LogType::Error,
-                    LogLevel::Warning => common::runner::LogType::Warning,
+                    LogLevel::Regular => models::LogType::Regular,
+                    LogLevel::Error => models::LogType::Error,
+                    LogLevel::Warning => models::LogType::Warning,
                 },
                 text: log.text.clone(),
                 timestamp: log.time,
@@ -287,7 +287,7 @@ impl Runs {
         pipeline: impl AsRef<str>,
         run_id: impl AsRef<str>,
     ) -> Result<
-        impl futures::Stream<Item = Result<common::runner::PipelineMessage, anyhow::Error>>,
+        impl futures::Stream<Item = Result<models::PipelineMessage, anyhow::Error>>,
         anyhow::Error,
     > {
         let log_file = self
@@ -350,16 +350,16 @@ impl Runs {
     }
 }
 
-fn parse_log(log: String) -> Result<Option<common::runner::PipelineMessage>, anyhow::Error> {
+fn parse_log(log: String) -> Result<Option<models::PipelineMessage>, anyhow::Error> {
     let log: LogLine = serde_json::from_str(&log)?;
     if let Some(pipeline) = log.pipeline {
         if let Some(job_id) = log.job {
             let t = match log.level {
-                LogLevel::Regular => common::runner::LogType::Regular,
-                LogLevel::Error => common::runner::LogType::Error,
-                LogLevel::Warning => common::runner::LogType::Warning,
+                LogLevel::Regular => models::LogType::Regular,
+                LogLevel::Error => models::LogType::Error,
+                LogLevel::Warning => models::LogType::Warning,
             };
-            return Ok(Some(common::runner::PipelineMessage::Log {
+            return Ok(Some(models::PipelineMessage::Log {
                 pipeline,
                 job_id,
                 t,
@@ -645,7 +645,7 @@ impl Executor {
                 .set_status(PipelineStatus::Finished(PipelineFinishedStatus::Canceled))
                 .await;
             run_context
-                .send(common::runner::PipelineMessage::Canceled {
+                .send(models::PipelineMessage::Canceled {
                     pipeline: pipeline_run.pipeline_id.clone(),
                 })
                 .await;
@@ -655,7 +655,7 @@ impl Executor {
                 .set_status(PipelineStatus::Finished(PipelineFinishedStatus::Displaced))
                 .await;
             run_context
-                .send(common::runner::PipelineMessage::Displaced {
+                .send(models::PipelineMessage::Displaced {
                     pipeline: pipeline_run.pipeline_id.clone(),
                 })
                 .await;
@@ -678,7 +678,7 @@ impl Executor {
             };
 
             run_context
-                .send(common::runner::PipelineMessage::Finish {
+                .send(models::PipelineMessage::Finish {
                     pipeline: pipeline_run.pipeline_id.clone(),
                     error,
                 })
@@ -753,7 +753,7 @@ impl Executor {
         integrations.handle_pipeline_start(&state).await;
         pipeline_run.set_status(PipelineStatus::Running).await;
         run_context
-            .send(common::runner::PipelineMessage::Start {
+            .send(models::PipelineMessage::Start {
                 pipeline: pipeline.id.clone(),
             })
             .await;
@@ -762,7 +762,7 @@ impl Executor {
             integrations.handle_job_pending(&state, &job_id).await;
             pipeline_run.init_job(job_id).await;
             run_context
-                .send(common::runner::PipelineMessage::JobPending {
+                .send(models::PipelineMessage::JobPending {
                     pipeline: pipeline.id.clone(),
                     job_id: job_id.clone(),
                 })
@@ -908,7 +908,7 @@ impl Executor {
             integrations.handle_job_skipped(&state, &id).await;
             pipeline_run.set_job_status(&id, JobStatus::Skipped).await;
             run_context
-                .send(common::runner::PipelineMessage::JobSkipped {
+                .send(models::PipelineMessage::JobSkipped {
                     pipeline: pipeline_run.pipeline_id.clone(),
                     job_id: id.clone(),
                 })
@@ -924,7 +924,7 @@ impl Executor {
                     .set_job_status(&id, JobStatus::Running { step: i })
                     .await;
                 run_context
-                    .send(common::runner::PipelineMessage::JobProgress {
+                    .send(models::PipelineMessage::JobProgress {
                         pipeline: pipeline_run.pipeline_id.clone(),
                         job_id: id.clone(),
                         step: i,
@@ -937,7 +937,7 @@ impl Executor {
                     integrations.handle_job_canceled(&state, &id).await;
                     pipeline_run.set_job_status(&id, JobStatus::Canceled).await;
                     run_context
-                        .send(common::runner::PipelineMessage::JobCanceled {
+                        .send(models::PipelineMessage::JobCanceled {
                             pipeline: pipeline_run.pipeline_id.clone(),
                             job_id: id.clone(),
                         })
@@ -959,7 +959,7 @@ impl Executor {
                         )
                         .await;
                     run_context
-                        .send(common::runner::PipelineMessage::JobFinished {
+                        .send(models::PipelineMessage::JobFinished {
                             pipeline: pipeline_run.pipeline_id.clone(),
                             job_id: id.clone(),
                             error: Some(err.to_string()),
@@ -976,7 +976,7 @@ impl Executor {
             .set_job_status(&id, JobStatus::Finished { error: None })
             .await;
         run_context
-            .send(common::runner::PipelineMessage::JobFinished {
+            .send(models::PipelineMessage::JobFinished {
                 pipeline: pipeline_run.pipeline_id.clone(),
                 job_id: id.clone(),
                 error: None,

@@ -9,11 +9,11 @@ pub async fn execute_pipelines_list(
     let project_id = config.get_project().await;
     debug!("Executing pipelines list command");
 
-    let query = common::runner::ListPipelinesQuery { project_id };
+    let query = models::ListPipelinesQuery { project_id };
     let response = crate::runner::get_query(config, "/projects/pipelines/list", &query)?
         .send()
         .await;
-    let response: common::runner::PipelinesListResponse = crate::runner::json(response).await?;
+    let response: models::PipelinesListResponse = crate::runner::json(response).await?;
 
     println!("{}Pipelines{}:", style::Bold, style::Reset);
     for pipeline in response.pipelines.into_iter() {

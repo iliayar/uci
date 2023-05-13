@@ -13,18 +13,18 @@ pub fn filter(
     warp::any()
         .and(warp::path!("call"))
         .and(with_call_context(deps))
-        .and(warp::body::json::<common::runner::CallRequest>())
+        .and(warp::body::json::<models::CallRequest>())
         .and(warp::post())
         .and_then(call)
 }
 
 async fn call(
     mut call_context: call_context::CallContext,
-    common::runner::CallRequest {
+    models::CallRequest {
         project_id,
         trigger_id,
         dry_run,
-    }: common::runner::CallRequest,
+    }: models::CallRequest,
 ) -> Result<impl warp::Reply, warp::Rejection> {
     if !call_context
         .check_permissions(Some(&project_id), config::ActionType::Execute)
@@ -45,7 +45,7 @@ async fn call(
     });
 
     Ok(warp::reply::with_status(
-        warp::reply::json(&common::runner::ContinueReponse { run_id }),
+        warp::reply::json(&models::ContinueReponse { run_id }),
         StatusCode::ACCEPTED,
     ))
 }

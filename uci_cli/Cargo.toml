@@ -17,6 +17,7 @@ simplelog = "0.12.1"
 termion = "2.0.1"
 tokio = { version = "1.27.0", features = ["process", "macros", "fs"] }
 common = { path = "../common" }
+models = { path = "../models" }
 thiserror = "1.0.40"
 tokio-tungstenite = { version = "0.18.0", features = ["native-tls"] }
 futures-util = { version = "0.3.28", features = ["sink"] }

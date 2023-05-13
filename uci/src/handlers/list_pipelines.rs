@@ -13,14 +13,14 @@ pub fn filter(
     warp::any()
         .and(warp::path!("projects" / "pipelines" / "list"))
         .and(with_call_context(deps))
-        .and(warp::query::<common::runner::ListPipelinesQuery>())
+        .and(warp::query::<models::ListPipelinesQuery>())
         .and(warp::get())
         .and_then(list_pipelines)
 }
 
 async fn list_pipelines(
     call_context: call_context::CallContext,
-    common::runner::ListPipelinesQuery { project_id }: common::runner::ListPipelinesQuery,
+    models::ListPipelinesQuery { project_id }: models::ListPipelinesQuery,
 ) -> Result<impl warp::Reply, warp::Rejection> {
     match list_pipelines_impl(call_context, &project_id).await {
         Ok(resp) => Ok(warp::reply::with_status(
@@ -36,7 +36,7 @@ async fn list_pipelines(
 async fn list_pipelines_impl(
     call_context: call_context::CallContext,
     project_id: &str,
-) -> Result<common::runner::PipelinesListResponse, anyhow::Error> {
+) -> Result<models::PipelinesListResponse, anyhow::Error> {
     if !call_context
         .check_permissions(Some(project_id), config::ActionType::Read)
         .await
@@ -49,8 +49,8 @@ async fn list_pipelines_impl(
     let mut pipelines = Vec::new();
     let pipelines_description = project.pipelines.list_pipelines().await;
     for pipeline in pipelines_description.pipelines.into_iter() {
-        pipelines.push(common::runner::Pipeline { id: pipeline.name });
+        pipelines.push(models::Pipeline { id: pipeline.name });
     }
 
-    Ok(common::runner::PipelinesListResponse { pipelines })
+    Ok(models::PipelinesListResponse { pipelines })
 }

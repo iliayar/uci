@@ -27,7 +27,7 @@ pub fn api_call(
     warp::any()
         .and(warp::path!("update"))
         .and(with_call_context(deps))
-        .and(warp::body::json::<common::runner::UpdateRepoBody>())
+        .and(warp::body::json::<models::UpdateRepoBody>())
         .and(warp::post())
         .and_then(update_repo)
 }
@@ -48,7 +48,7 @@ pub fn gitlab_webhook(
         .and(warp::header("X-Gitlab-Token"))
         .map(move |token: String| CallContext::for_handler(Some(token), deps.clone()))
         .and(
-            warp::query::<Query>().map(|query: Query| common::runner::UpdateRepoBody {
+            warp::query::<Query>().map(|query: Query| models::UpdateRepoBody {
                 project_id: query.project_id,
                 repo_id: query.repo_id,
                 artifact_id: None,
@@ -68,7 +68,7 @@ pub fn github_webhook(
         .and(with_validate_github(deps.clone()))
         .map(move |token: Option<String>| CallContext::for_handler(token, deps.clone()))
         .and(
-            warp::query::<Query>().map(|query: Query| common::runner::UpdateRepoBody {
+            warp::query::<Query>().map(|query: Query| models::UpdateRepoBody {
                 project_id: query.project_id,
                 repo_id: query.repo_id,
                 artifact_id: None,
@@ -104,13 +104,13 @@ fn with_validate_github(
 
 async fn update_repo(
     mut call_context: call_context::CallContext,
-    common::runner::UpdateRepoBody {
+    models::UpdateRepoBody {
         project_id,
         repo_id,
         artifact_id,
         dry_run,
         update_only,
-    }: common::runner::UpdateRepoBody,
+    }: models::UpdateRepoBody,
 ) -> Result<impl warp::Reply, warp::Rejection> {
     if !call_context
         .check_permissions(Some(&project_id), config::ActionType::Write)
@@ -142,7 +142,7 @@ async fn update_repo(
     });
 
     Ok(warp::reply::with_status(
-        warp::reply::json(&common::runner::ContinueReponse { run_id }),
+        warp::reply::json(&models::ContinueReponse { run_id }),
         StatusCode::ACCEPTED,
     ))
 }

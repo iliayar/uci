@@ -31,15 +31,15 @@ async fn list_projects(
 
 async fn list_projects_impl(
     call_context: call_context::CallContext,
-) -> Result<common::runner::ProjectsListResponse, anyhow::Error> {
+) -> Result<models::ProjectsListResponse, anyhow::Error> {
     let mut projects = Vec::new();
     for project in call_context.list_projects().await? {
         if call_context
             .check_permissions(Some(&project.id), config::ActionType::Read)
             .await
         {
-            projects.push(common::runner::Project { id: project.id });
+            projects.push(models::Project { id: project.id });
         }
     }
-    Ok(common::runner::ProjectsListResponse { projects })
+    Ok(models::ProjectsListResponse { projects })
 }

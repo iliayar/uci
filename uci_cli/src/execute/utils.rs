@@ -51,10 +51,10 @@ pub async fn upload_archive(
 
 pub async fn print_clone_repos(ws_client: &mut WsClient) -> Result<(), super::ExecuteError> {
     match ws_client
-        .receive::<common::runner::CloneMissingRepos>()
+        .receive::<models::CloneMissingRepos>()
         .await
     {
-        Some(common::runner::CloneMissingRepos::Begin) => {}
+        Some(models::CloneMissingRepos::Begin) => {}
         _ => {
             return Err(super::ExecuteError::Warning(
                 "Expect begin message for clone missing repos".to_string(),
@@ -72,12 +72,12 @@ pub async fn print_clone_repos(ws_client: &mut WsClient) -> Result<(), super::Ex
 
     loop {
         if let Some(message) = ws_client
-            .try_receive::<common::runner::CloneMissingRepos>()
+            .try_receive::<models::CloneMissingRepos>()
             .await
         {
             match message {
-                common::runner::CloneMissingRepos::Begin => unreachable!(),
-                common::runner::CloneMissingRepos::ClonningRepo { repo_id } => {
+                models::CloneMissingRepos::Begin => unreachable!(),
+                models::CloneMissingRepos::ClonningRepo { repo_id } => {
                     if repos_to_clone.is_empty() {
                         println!(
                             "{}Clonning missing repos:{}",
@@ -87,10 +87,10 @@ pub async fn print_clone_repos(ws_client: &mut WsClient) -> Result<(), super::Ex
                     }
                     repos_to_clone.insert(repo_id, Status::InProgress);
                 }
-                common::runner::CloneMissingRepos::RepoCloned { repo_id } => {
+                models::CloneMissingRepos::RepoCloned { repo_id } => {
                     repos_to_clone.insert(repo_id, Status::Done);
                 }
-                common::runner::CloneMissingRepos::Finish => {
+                models::CloneMissingRepos::Finish => {
                     if !repos_to_clone.is_empty() {
                         let mut stdout = std::io::stdout().into_raw_mode().unwrap();
                         print!("{}{}", cursor::Up(1), clear::AfterCursor);
@@ -186,7 +186,7 @@ impl RunState {
     fn from_runs_list(
         print_state: bool,
         run_id: String,
-        runs_list: common::runner::ListRunsResponse,
+        runs_list: models::ListRunsResponse,
     ) -> Self {
         let mut state = RunState::new(print_state);
 
@@ -194,11 +194,11 @@ impl RunState {
             if run.run_id == run_id {
                 for (job_id, job) in run.jobs {
                     let job_status = match job.status {
-                        common::runner::JobStatus::Canceled => JobStatus::Canceled,
-                        common::runner::JobStatus::Skipped => JobStatus::Skipped,
-                        common::runner::JobStatus::Pending => JobStatus::Pending,
-                        common::runner::JobStatus::Running { step } => JobStatus::Running { step },
-                        common::runner::JobStatus::Finished { error } => {
+                        models::JobStatus::Canceled => JobStatus::Canceled,
+                        models::JobStatus::Skipped => JobStatus::Skipped,
+                        models::JobStatus::Pending => JobStatus::Pending,
+                        models::JobStatus::Running { step } => JobStatus::Running { step },
+                        models::JobStatus::Finished { error } => {
                             JobStatus::Finished { error }
                         }
                     };
@@ -206,14 +206,14 @@ impl RunState {
                     state.set_job_status(run.pipeline.clone(), job_id, job_status);
                 }
 
-                if let common::runner::RunStatus::Finished(finished_status) = run.status {
+                if let models::RunStatus::Finished(finished_status) = run.status {
                     let status = match finished_status {
-                        common::runner::RunFinishedStatus::Error { message } => {
+                        models::RunFinishedStatus::Error { message } => {
                             PipelineStatus::FinishedError { message }
                         }
-                        common::runner::RunFinishedStatus::Success => PipelineStatus::Finished,
-                        common::runner::RunFinishedStatus::Canceled => PipelineStatus::Canceled,
-                        common::runner::RunFinishedStatus::Displaced => PipelineStatus::Displaced,
+                        models::RunFinishedStatus::Success => PipelineStatus::Finished,
+                        models::RunFinishedStatus::Canceled => PipelineStatus::Canceled,
+                        models::RunFinishedStatus::Displaced => PipelineStatus::Displaced,
                     };
 
                     state.finish_pipeline(run.pipeline, status);
@@ -371,7 +371,7 @@ pub async fn print_pipeline_run(ws_client: &mut WsClient) -> Result<(), super::E
 pub async fn print_pipeline_run_init(
     ws_client: &mut WsClient,
     run_id: String,
-    runs_list: common::runner::ListRunsResponse,
+    runs_list: models::ListRunsResponse,
 ) -> Result<(), super::ExecuteError> {
     let state = Arc::new(Mutex::new(get_state_with_init(
         true,
@@ -384,7 +384,7 @@ pub async fn print_pipeline_run_init(
 pub async fn print_pipeline_run_follow(
     ws_client: &mut WsClient,
     follow_ws_client: &mut WsClient,
-    init_state: common::runner::ListRunsResponse,
+    init_state: models::ListRunsResponse,
 ) -> Result<(), super::ExecuteError> {
     print_pipeline_run_follow_impl(ws_client, follow_ws_client, true, None).await
 }
@@ -393,7 +393,7 @@ pub async fn print_pipeline_run_follow_init(
     ws_client: &mut WsClient,
     follow_ws_client: &mut WsClient,
     run_id: String,
-    runs_list: common::runner::ListRunsResponse,
+    runs_list: models::ListRunsResponse,
 ) -> Result<(), super::ExecuteError> {
     print_pipeline_run_follow_impl(ws_client, follow_ws_client, true, Some((run_id, runs_list)))
         .await
@@ -410,7 +410,7 @@ pub async fn print_pipeline_run_no_state(
 pub async fn print_pipeline_run_no_state_init(
     ws_client: &mut WsClient,
     run_id: String,
-    runs_list: common::runner::ListRunsResponse,
+    runs_list: models::ListRunsResponse,
 ) -> Result<(), super::ExecuteError> {
     let state = Arc::new(Mutex::new(get_state_with_init(
         false,
@@ -431,7 +431,7 @@ pub async fn print_pipeline_run_no_state_follow_init(
     ws_client: &mut WsClient,
     follow_ws_client: &mut WsClient,
     run_id: String,
-    runs_list: common::runner::ListRunsResponse,
+    runs_list: models::ListRunsResponse,
 ) -> Result<(), super::ExecuteError> {
     print_pipeline_run_follow_impl(
         ws_client,
@@ -447,7 +447,7 @@ pub async fn print_pipeline_run_follow_impl(
     ws_client: &mut WsClient,
     follow_ws_client: &mut WsClient,
     print_state: bool,
-    init_state: Option<(String, common::runner::ListRunsResponse)>,
+    init_state: Option<(String, models::ListRunsResponse)>,
 ) -> Result<(), super::ExecuteError> {
     let state = Arc::new(Mutex::new(get_state_with_init(print_state, init_state)));
     let last_log = print_pipeline_run_impl(ws_client, state.clone(), None).await?;
@@ -457,7 +457,7 @@ pub async fn print_pipeline_run_follow_impl(
 
 fn get_state_with_init(
     print_state: bool,
-    init_state: Option<(String, common::runner::ListRunsResponse)>,
+    init_state: Option<(String, models::ListRunsResponse)>,
 ) -> RunState {
     if let Some((run_id, runs_list)) = init_state {
         RunState::from_runs_list(print_state, run_id, runs_list)
@@ -486,25 +486,25 @@ async fn print_pipeline_run_impl(
         }
     });
 
-    while let Some(message) = ws_client.receive::<common::runner::PipelineMessage>().await {
+    while let Some(message) = ws_client.receive::<models::PipelineMessage>().await {
         state.lock().await.clear()?;
         match message {
-            common::runner::PipelineMessage::Start { pipeline } => {
+            models::PipelineMessage::Start { pipeline } => {
                 state.lock().await.start_pipeline(pipeline);
             }
-            common::runner::PipelineMessage::Canceled { pipeline } => {
+            models::PipelineMessage::Canceled { pipeline } => {
                 state
                     .lock()
                     .await
                     .finish_pipeline(pipeline, PipelineStatus::Canceled);
             }
-            common::runner::PipelineMessage::Displaced { pipeline } => {
+            models::PipelineMessage::Displaced { pipeline } => {
                 state
                     .lock()
                     .await
                     .finish_pipeline(pipeline, PipelineStatus::Displaced);
             }
-            common::runner::PipelineMessage::Finish { pipeline, error } => {
+            models::PipelineMessage::Finish { pipeline, error } => {
                 let status = if let Some(message) = error {
                     PipelineStatus::FinishedError { message }
                 } else {
@@ -512,13 +512,13 @@ async fn print_pipeline_run_impl(
                 };
                 state.lock().await.finish_pipeline(pipeline, status);
             }
-            common::runner::PipelineMessage::JobPending { pipeline, job_id } => {
+            models::PipelineMessage::JobPending { pipeline, job_id } => {
                 state
                     .lock()
                     .await
                     .set_job_status(pipeline, job_id, JobStatus::Pending);
             }
-            common::runner::PipelineMessage::JobProgress {
+            models::PipelineMessage::JobProgress {
                 pipeline,
                 job_id,
                 step,
@@ -528,7 +528,7 @@ async fn print_pipeline_run_impl(
                     .await
                     .set_job_status(pipeline, job_id, JobStatus::Running { step });
             }
-            common::runner::PipelineMessage::JobFinished {
+            models::PipelineMessage::JobFinished {
                 pipeline,
                 job_id,
                 error,
@@ -538,19 +538,19 @@ async fn print_pipeline_run_impl(
                     .await
                     .set_job_status(pipeline, job_id, JobStatus::Finished { error });
             }
-            common::runner::PipelineMessage::JobSkipped { pipeline, job_id } => {
+            models::PipelineMessage::JobSkipped { pipeline, job_id } => {
                 state
                     .lock()
                     .await
                     .set_job_status(pipeline, job_id, JobStatus::Skipped);
             }
-            common::runner::PipelineMessage::JobCanceled { pipeline, job_id } => {
+            models::PipelineMessage::JobCanceled { pipeline, job_id } => {
                 state
                     .lock()
                     .await
                     .set_job_status(pipeline, job_id, JobStatus::Canceled);
             }
-            common::runner::PipelineMessage::Log {
+            models::PipelineMessage::Log {
                 pipeline,
                 job_id,
                 t,
@@ -580,8 +580,8 @@ async fn print_pipeline_run_impl(
                 );
 
                 match t {
-                    common::runner::LogType::Regular => println!("{}", text.trim_end()),
-                    common::runner::LogType::Error => {
+                    models::LogType::Regular => println!("{}", text.trim_end()),
+                    models::LogType::Error => {
                         println!(
                             "{}{}{}",
                             color::Fg(color::Red),
@@ -589,7 +589,7 @@ async fn print_pipeline_run_impl(
                             style::Reset
                         )
                     }
-                    common::runner::LogType::Warning => {
+                    models::LogType::Warning => {
                         println!(
                             "{}{}{}",
                             color::Fg(color::Yellow),

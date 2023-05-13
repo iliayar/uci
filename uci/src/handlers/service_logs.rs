@@ -14,16 +14,16 @@ pub fn filter(
     warp::any()
         .and(warp::path!("projects" / "services" / "logs"))
         .and(with_call_context(deps))
-        .and(warp::query::<common::runner::ServiceLogsQuery>())
-        .and(warp::body::json::<common::runner::ServiceLogsBody>())
+        .and(warp::query::<models::ServiceLogsQuery>())
+        .and(warp::body::json::<models::ServiceLogsBody>())
         .and(warp::get())
         .and_then(service_logs)
 }
 
 async fn service_logs(
     call_context: call_context::CallContext,
-    query: common::runner::ServiceLogsQuery,
-    body: common::runner::ServiceLogsBody,
+    query: models::ServiceLogsQuery,
+    body: models::ServiceLogsBody,
 ) -> Result<impl warp::Reply, warp::Rejection> {
     match service_logs_impl(call_context, query, body).await {
         Ok(resp) => Ok(warp::reply::with_status(
@@ -38,13 +38,13 @@ async fn service_logs(
 
 async fn service_logs_impl(
     mut call_context: call_context::CallContext,
-    common::runner::ServiceLogsQuery { project_id }: common::runner::ServiceLogsQuery,
-    common::runner::ServiceLogsBody {
+    models::ServiceLogsQuery { project_id }: models::ServiceLogsQuery,
+    models::ServiceLogsBody {
         services,
         follow,
         tail,
-    }: common::runner::ServiceLogsBody,
-) -> Result<common::runner::ContinueReponse, anyhow::Error> {
+    }: models::ServiceLogsBody,
+) -> Result<models::ContinueReponse, anyhow::Error> {
     if !call_context
         .check_permissions(Some(&project_id), config::ActionType::Read)
         .await
@@ -75,5 +75,5 @@ async fn service_logs_impl(
         call_context.finish_run().await;
     });
 
-    Ok(common::runner::ContinueReponse { run_id })
+    Ok(models::ContinueReponse { run_id })
 }

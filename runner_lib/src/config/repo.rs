@@ -57,13 +57,13 @@ impl Repo {
                 if !git::check_exists(path.clone()).await? {
                     let run_context: &RunContext = state.get()?;
                     run_context
-                        .send(common::runner::CloneMissingRepos::ClonningRepo {
+                        .send(models::CloneMissingRepos::ClonningRepo {
                             repo_id: id.to_string(),
                         })
                         .await;
                     git::clone(source.clone(), path.clone()).await?;
                     run_context
-                        .send(common::runner::CloneMissingRepos::RepoCloned {
+                        .send(models::CloneMissingRepos::RepoCloned {
                             repo_id: id.to_string(),
                         })
                         .await;
@@ -192,7 +192,7 @@ impl Repos {
     ) -> Result<Diff, anyhow::Error> {
         let run_context: &RunContext = state.get()?;
         run_context
-            .send(common::runner::UpdateRepoMessage::PullingRepo)
+            .send(models::UpdateRepoMessage::PullingRepo)
             .await;
         if let Some(repo) = self.repos.get(repo_id) {
             let res = repo.update(state, artifact).await;
@@ -200,7 +200,7 @@ impl Repos {
             match res.as_ref() {
                 Err(err) => {
                     run_context
-                        .send(common::runner::UpdateRepoMessage::FailedToPull {
+                        .send(models::UpdateRepoMessage::FailedToPull {
                             err: err.to_string(),
                         })
                         .await;
@@ -211,14 +211,14 @@ impl Repos {
                         commit_message,
                     } => {
                         run_context
-                            .send(common::runner::UpdateRepoMessage::RepoPulled {
+                            .send(models::UpdateRepoMessage::RepoPulled {
                                 changed_files: changes.clone(),
                             })
                             .await;
                     }
                     Diff::Whole => {
                         run_context
-                            .send(common::runner::UpdateRepoMessage::WholeRepoUpdated)
+                            .send(models::UpdateRepoMessage::WholeRepoUpdated)
                             .await;
                     }
                 },
@@ -227,7 +227,7 @@ impl Repos {
             res
         } else {
             run_context
-                .send(common::runner::UpdateRepoMessage::NoSuchRepo)
+                .send(models::UpdateRepoMessage::NoSuchRepo)
                 .await;
             Err(anyhow!("No such repo: {}", repo_id))
         }
@@ -238,7 +238,7 @@ impl Repos {
         let mut git_tasks = Vec::new();
 
         run_context
-            .send(common::runner::CloneMissingRepos::Begin)
+            .send(models::CloneMissingRepos::Begin)
             .await;
 
         for (id, repo) in self.repos.iter() {
@@ -249,7 +249,7 @@ impl Repos {
         futures::future::try_join_all(git_tasks).await?;
 
         run_context
-            .send(common::runner::CloneMissingRepos::Finish)
+            .send(models::CloneMissingRepos::Finish)
             .await;
 
         Ok(())

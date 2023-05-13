@@ -2,6 +2,7 @@
 members = [
     "uci",
     "common",
+    "models",
     "worker_lib",
     "uci_cli",
     "runner_lib",

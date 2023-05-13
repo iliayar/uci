@@ -24,7 +24,7 @@ pub async fn execute_config_reload(
 ) -> Result<(), super::ExecuteError> {
     debug!("Executing project list command");
 
-    let response: common::runner::EmptyResponse = async {
+    let response: models::EmptyResponse = async {
         let response = crate::runner::post(config, "/reload")?.send().await;
         crate::runner::json(response).await
     }

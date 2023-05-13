@@ -16,14 +16,14 @@ pub fn filter(
     warp::any()
         .and(warp::path!("runs" / "logs"))
         .and(with_call_context(deps))
-        .and(warp::query::<common::runner::RunsLogsRequestQuery>())
+        .and(warp::query::<models::RunsLogsRequestQuery>())
         .and(warp::get())
         .and_then(run_logs)
 }
 
 async fn run_logs(
     call_context: call_context::CallContext,
-    query_params: common::runner::RunsLogsRequestQuery,
+    query_params: models::RunsLogsRequestQuery,
 ) -> Result<impl warp::Reply, warp::Rejection> {
     match run_logs_impl(call_context, query_params).await {
         Ok(resp) => Ok(warp::reply::with_status(
@@ -38,8 +38,8 @@ async fn run_logs(
 
 async fn run_logs_impl(
     mut call_context: call_context::CallContext,
-    query: common::runner::RunsLogsRequestQuery,
-) -> Result<common::runner::ContinueReponse, anyhow::Error> {
+    query: models::RunsLogsRequestQuery,
+) -> Result<models::ContinueReponse, anyhow::Error> {
     if !call_context
         .check_permissions(Some(&query.project), config::ActionType::Read)
         .await
@@ -58,16 +58,16 @@ async fn run_logs_impl(
         call_context.finish_run().await;
     });
 
-    Ok(common::runner::ContinueReponse { run_id })
+    Ok(models::ContinueReponse { run_id })
 }
 
 async fn run_logs_job<'a>(
     state: &State<'a>,
-    common::runner::RunsLogsRequestQuery {
+    models::RunsLogsRequestQuery {
         run,
         project,
         pipeline,
-    }: common::runner::RunsLogsRequestQuery,
+    }: models::RunsLogsRequestQuery,
 ) -> Result<(), anyhow::Error> {
     let executor: &worker_lib::executor::Executor = state.get()?;
     let run_context: &RunContext = state.get()?;

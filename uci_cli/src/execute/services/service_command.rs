@@ -5,7 +5,7 @@ use log::*;
 pub async fn execute_services_command(
     config: &crate::config::Config,
     service: Option<Vec<String>>,
-    command: common::runner::ServiceCommand,
+    command: models::ServiceCommand,
     all: bool,
 ) -> Result<(), execute::ExecuteError> {
     let project_id = config.get_project().await;
@@ -24,7 +24,7 @@ pub async fn execute_services_command(
         crate::prompts::promp_services(config, project_id.clone()).await?
     };
 
-    let body = common::runner::ServiceCommandRequest {
+    let body = models::ServiceCommandRequest {
         project_id,
         services,
         command,
@@ -33,7 +33,7 @@ pub async fn execute_services_command(
     let response = crate::runner::post_body(config, "/projects/services/command", &body)?
         .send()
         .await;
-    let response: common::runner::ContinueReponse = crate::runner::json(response).await?;
+    let response: models::ContinueReponse = crate::runner::json(response).await?;
 
     debug!("Will follow run {}", response.run_id);
 

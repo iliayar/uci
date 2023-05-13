@@ -22,12 +22,12 @@ pub async fn execute_runs_cancel(
         }
     };
 
-    let body = common::runner::RunsCancelRequestBody {
+    let body = models::RunsCancelRequestBody {
         project,
         pipeline,
         run,
     };
-    let response: common::runner::EmptyResponse = async {
+    let response: models::EmptyResponse = async {
         let response = crate::runner::post_body(config, "/runs/cancel", &body)?
             .send()
             .await;

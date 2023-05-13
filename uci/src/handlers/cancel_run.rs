@@ -13,14 +13,14 @@ pub fn filter(
     warp::any()
         .and(warp::path!("runs" / "cancel"))
         .and(with_call_context(deps))
-        .and(warp::body::json::<common::runner::RunsCancelRequestBody>())
+        .and(warp::body::json::<models::RunsCancelRequestBody>())
         .and(warp::post())
         .and_then(run_cancel)
 }
 
 async fn run_cancel(
     call_context: call_context::CallContext,
-    body: common::runner::RunsCancelRequestBody,
+    body: models::RunsCancelRequestBody,
 ) -> Result<impl warp::Reply, warp::Rejection> {
     match run_cancel_impl(call_context, body).await {
         Ok(resp) => Ok(warp::reply::with_status(
@@ -35,12 +35,12 @@ async fn run_cancel(
 
 async fn run_cancel_impl(
     call_context: call_context::CallContext,
-    common::runner::RunsCancelRequestBody {
+    models::RunsCancelRequestBody {
         run,
         project,
         pipeline,
-    }: common::runner::RunsCancelRequestBody,
-) -> Result<common::runner::EmptyResponse, anyhow::Error> {
+    }: models::RunsCancelRequestBody,
+) -> Result<models::EmptyResponse, anyhow::Error> {
     if !call_context
         .check_permissions(Some(&project), config::ActionType::Execute)
         .await
@@ -52,5 +52,5 @@ async fn run_cancel_impl(
     let runs = executor.runs.lock().await;
     runs.cancel(project, pipeline, run).await?;
 
-    Ok(common::runner::EmptyResponse {})
+    Ok(models::EmptyResponse {})
 }

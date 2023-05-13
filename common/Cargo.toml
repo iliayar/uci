@@ -16,3 +16,4 @@ thiserror = "1.0.39"
 uuid = { version = "1.3.1", features = ["v4"] }
 serde_json = "1.0.95"
 chrono = { version = "0.4.24", features = ["serde"] }
+models = { path = "../models" }

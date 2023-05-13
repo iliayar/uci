@@ -261,7 +261,7 @@ impl Service {
         follow: bool,
         tail: Option<usize>,
     ) -> Result<
-        impl futures::Stream<Item = Result<common::runner::PipelineMessage, anyhow::Error>>,
+        impl futures::Stream<Item = Result<models::PipelineMessage, anyhow::Error>>,
         anyhow::Error,
     > {
         let docker: &worker_lib::docker::Docker = state.get()?;
