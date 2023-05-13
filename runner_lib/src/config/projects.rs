@@ -145,11 +145,12 @@ impl ProjectsStore {
 
         for project_info in self.list_projects_raw(state).await?.into_iter() {
             let project = project_info.load(state).await?;
-            if let Some(caddy) = project.caddy.as_ref() {
+
+            for caddy in project.caddy.iter() {
                 caddy_builder.add(caddy)?;
             }
 
-            if let Some(bind) = project.bind.as_ref() {
+            for bind in project.bind.iter() {
                 bind_builder.add(bind)?;
             }
         }
@@ -192,7 +193,7 @@ impl ProjectsStore {
             return Ok(Some(ProjectInfo {
                 tokens,
                 id: INTERNAL_PROJECT_ID.to_string(),
-                path: project_root,
+                path: vec![project_root],
                 enabled: true,
                 repos: super::Repos::default(),
                 secrets: super::Secrets::default(),
@@ -282,7 +283,7 @@ impl ProjectsStore {
 pub struct ProjectInfo {
     pub id: String,
     pub enabled: bool,
-    pub path: PathBuf,
+    pub path: Vec<PathBuf>,
     pub repos: super::Repos,
     pub tokens: super::Tokens,
     pub secrets: super::Secrets,

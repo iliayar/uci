@@ -22,6 +22,23 @@ pub struct PipelineDescription {
 }
 
 impl Pipelines {
+    pub fn merge(self, other: Pipelines) -> Result<Pipelines, anyhow::Error> {
+        let mut pipelines = HashMap::new();
+
+        for (id, pipeline) in self
+            .pipelines
+            .into_iter()
+            .chain(other.pipelines.into_iter())
+        {
+            if pipelines.contains_key(&id) {
+                return Err(anyhow!("Pipeline {} duplicates", id));
+            }
+            pipelines.insert(id, pipeline);
+        }
+
+        Ok(Pipelines { pipelines })
+    }
+
     pub async fn load<'a>(state: &State<'a>) -> Result<Pipelines, anyhow::Error> {
         raw::load(state)
             .await
@@ -183,8 +200,8 @@ mod raw {
         type Output = super::PipelineLocation;
 
         fn load_raw(self, state: &State) -> Result<Self::Output, anyhow::Error> {
-            let project_info: &config::ProjectInfo = state.get()?;
-            let path = utils::eval_rel_path(state, self.path, project_info.path.clone())?;
+            let current_project: &config::CurrentProject = state.get()?;
+            let path = utils::eval_rel_path(state, self.path, current_project.path.clone())?;
             Ok(super::PipelineLocation { path })
         }
     }
@@ -377,8 +394,8 @@ mod raw {
     }
 
     pub async fn load<'a>(state: &State<'a>) -> Result<super::Pipelines, anyhow::Error> {
-        let project_info: &config::ProjectInfo = state.get()?;
-        let path = project_info.path.join(super::PIPELINES_CONFIG);
+        let current_project: &config::CurrentProject = state.get()?;
+        let path = current_project.path.join(super::PIPELINES_CONFIG);
         if !path.exists() {
             return Ok(Default::default());
         }

@@ -1,8 +1,32 @@
 use std::{collections::HashMap, path::PathBuf};
 
+use anyhow::anyhow;
+
 #[derive(Debug, Default, Clone)]
 pub struct Secrets {
     secrets: HashMap<String, String>,
+}
+
+pub mod raw {
+    use std::collections::HashMap;
+
+    use serde::{Deserialize, Serialize};
+
+    #[derive(Serialize, Deserialize)]
+    #[serde(transparent)]
+    pub struct Secrets {
+        secrets: HashMap<String, String>,
+    }
+
+    impl crate::config::LoadRawSync for Secrets {
+        type Output = super::Secrets;
+
+        fn load_raw(self, state: &common::state::State) -> Result<Self::Output, anyhow::Error> {
+            Ok(super::Secrets {
+                secrets: self.secrets,
+            })
+        }
+    }
 }
 
 impl Secrets {
@@ -13,12 +37,15 @@ impl Secrets {
         })
     }
 
-    pub async fn load_many(paths: Vec<PathBuf>) -> Result<Secrets, anyhow::Error> {
-        let mut res = Secrets::default();
-        for path in paths.into_iter() {
-            res = res.merged(Secrets::load(path).await?);
+    pub fn merge(self, other: Secrets) -> Result<Secrets, anyhow::Error> {
+        let mut secrets = HashMap::new();
+        for (id, value) in self.secrets.into_iter().chain(other.secrets.into_iter()) {
+            if secrets.contains_key(&id) {
+                return Err(anyhow!("Secret {} duplicates", id));
+            }
+            secrets.insert(id, value);
         }
-        Ok(res)
+        Ok(Secrets { secrets })
     }
 
     pub fn get(&self, k: impl AsRef<str>) -> Option<String> {

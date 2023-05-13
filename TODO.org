@@ -1,4 +1,4 @@
-* TODO [3/7] Minor stuff
+* TODO [4/7] Minor stuff
 - [-] [2/3] Paramteres from request and from action \\
   - [X] Load pipelines lazy
   - [ ] Support parameters when call action, update repo, etc...
@@ -17,7 +17,8 @@
 - [ ] Impove expressions language (JMES like?)
 - [X] Support cancelation in tasks
 - [ ] Nix integration!
-- [ ] [0/2] Project configs in multiple repos
-  - [ ] Path to actions, params, etc.. configs in =project.yaml=
-  - [ ] Merging configs
+- [X] [2/2] Project configs in multiple repos
+  - [X] Path to actions, params, etc.. configs in =project.yaml= \\
+        Project can be splitted in mutliple repos
+  - [X] Merging configs
 * TODO Web UI

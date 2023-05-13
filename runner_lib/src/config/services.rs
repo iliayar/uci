@@ -52,6 +52,41 @@ pub struct ServiceDescription {
 }
 
 impl Services {
+    pub fn merge(self, other: Services) -> Result<Services, anyhow::Error> {
+        let mut services = HashMap::new();
+
+        for (id, service) in self.services.into_iter().chain(other.services.into_iter()) {
+            if services.contains_key(&id) {
+                return Err(anyhow!("Service {} duplicates", id));
+            }
+            services.insert(id, service);
+        }
+
+        let mut networks = HashMap::new();
+
+        for (id, network) in self.networks.into_iter().chain(other.networks.into_iter()) {
+            if networks.contains_key(&id) {
+                return Err(anyhow!("Network {} duplicates", id));
+            }
+            networks.insert(id, network);
+        }
+
+        let mut volumes = HashMap::new();
+
+        for (id, volume) in self.volumes.into_iter().chain(other.volumes.into_iter()) {
+            if volumes.contains_key(&id) {
+                return Err(anyhow!("Volume {} duplicates", id));
+            }
+            volumes.insert(id, volume);
+        }
+
+        return Ok(Services {
+            services,
+            networks,
+            volumes,
+        });
+    }
+
     pub async fn load<'a>(state: &State<'a>) -> Result<Services, anyhow::Error> {
         raw::load(state).await
     }
@@ -121,9 +156,9 @@ impl Service {
         steps.push(common::Step::RunContainer(self.get_run_config()?));
 
         let job = common::Job {
-	    enabled: true,
+            enabled: true,
             needs: vec![],
-	    stage: None,
+            stage: None,
             steps,
         };
 
@@ -134,9 +169,9 @@ impl Service {
         let steps = vec![common::Step::StopContainer(self.get_stop_config()?)];
 
         let job = common::Job {
-	    enabled: true,
+            enabled: true,
             needs: vec![],
-	    stage: None,
+            stage: None,
             steps,
         };
 
@@ -152,9 +187,9 @@ impl Service {
         steps.push(common::Step::RunContainer(self.get_run_config()?));
 
         let job = common::Job {
-	    enabled: true,
+            enabled: true,
             needs: vec![],
-	    stage: None,
+            stage: None,
             steps,
         };
 
@@ -171,9 +206,9 @@ impl Service {
         let steps = vec![common::Step::ServiceLogs(config)];
 
         let job = common::Job {
-	    enabled: true,
+            enabled: true,
             needs: vec![],
-	    stage: None,
+            stage: None,
             steps,
         };
 
@@ -476,8 +511,8 @@ mod raw {
     }
 
     pub async fn load<'a>(state: &State<'a>) -> Result<super::Services, anyhow::Error> {
-        let project_info: &config::ProjectInfo = state.get()?;
-        let path = project_info.path.join(super::SERVICES_CONFIG);
+        let current_project: &config::CurrentProject = state.get()?;
+        let path = current_project.path.join(super::SERVICES_CONFIG);
         if !path.exists() {
             return Ok(Default::default());
         }

@@ -1,5 +1,6 @@
 use std::collections::{HashMap, HashSet};
 
+use anyhow::anyhow;
 use common::state::State;
 use log::*;
 
@@ -73,6 +74,20 @@ pub struct ActionDescription {
 pub const ACTIONS_CONFIG: &str = "actions.yaml";
 
 impl Actions {
+    pub fn merge(self, other: Actions) -> Result<Actions, anyhow::Error> {
+        let mut actions = HashMap::new();
+
+        for (id, action) in self.actions.into_iter().chain(other.actions.into_iter()) {
+            if actions.contains_key(&id) {
+                return Err(anyhow!("Action {} duplicate", id));
+            }
+
+            actions.insert(id, action);
+        }
+
+        Ok(Actions { actions })
+    }
+
     pub async fn load<'a>(state: &State<'a>) -> Result<Actions, anyhow::Error> {
         raw::load(state).await
     }
@@ -114,7 +129,7 @@ impl Actions {
         Ok(super::EventActions {
             run_pipelines,
             services,
-	    params,
+            params,
         })
     }
 
@@ -249,7 +264,7 @@ mod raw {
         changes: Option<Vec<String>>,
         exclude_changes: Option<Vec<String>>,
         exclude_commits: Option<Vec<String>>,
-	params: Option<HashMap<String, common::vars::Value>>,
+        params: Option<HashMap<String, common::vars::Value>>,
     }
 
     impl config::LoadRawSync for Actions {
@@ -309,7 +324,7 @@ mod raw {
             Ok(super::Trigger {
                 run_pipelines: self.run_pipelines,
                 services: self.services.load_raw(state)?,
-		params: self.params.unwrap_or_default(),
+                params: self.params.unwrap_or_default(),
                 on,
             })
         }
@@ -326,8 +341,8 @@ mod raw {
     }
 
     pub async fn load<'a>(state: &State<'a>) -> Result<super::Actions, anyhow::Error> {
-        let projects_info: &config::ProjectInfo = state.get()?;
-        let path = projects_info.path.join(super::ACTIONS_CONFIG);
+        let current_project: &config::CurrentProject = state.get()?;
+        let path = current_project.path.join(super::ACTIONS_CONFIG);
         if !path.exists() {
             return Ok(Default::default());
         }

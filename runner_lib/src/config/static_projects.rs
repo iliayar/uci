@@ -87,7 +87,7 @@ impl StaticProjects {
 mod raw {
     use std::{collections::HashMap, path::PathBuf};
 
-    use crate::{config, utils};
+    use crate::config;
 
     use common::state::State;
     use config::LoadRawSync;
@@ -105,34 +105,11 @@ mod raw {
     #[serde(deny_unknown_fields)]
     struct Project {
         enabled: Option<bool>,
-        path: String,
+        path: config::OneOrMany<config::AbsPath>,
         #[serde(default)]
         repos: HashMap<String, config::repos_raw::Repo>,
-        secrets: Option<OneOrManySecrets>,
+        secrets: Option<config::OneOrMany<config::File<config::secrets::raw::Secrets>>>,
         tokens: Option<config::permissions_raw::Tokens>,
-    }
-
-    #[derive(Deserialize, Serialize)]
-    #[serde(untagged)]
-    enum OneOrManySecrets {
-        One(config::AbsPath),
-        Many(Vec<config::AbsPath>),
-    }
-
-    #[async_trait::async_trait]
-    impl config::LoadRaw for OneOrManySecrets {
-        type Output = config::Secrets;
-
-        async fn load_raw(self, state: &State) -> Result<Self::Output, anyhow::Error> {
-            match self {
-                OneOrManySecrets::One(path) => config::Secrets::load(path.load_raw(state)?).await,
-                OneOrManySecrets::Many(paths) => {
-                    let paths: Result<_, anyhow::Error> =
-                        paths.into_iter().map(|path| path.load_raw(state)).collect();
-                    config::Secrets::load_many(paths?).await
-                }
-            }
-        }
     }
 
     #[async_trait::async_trait]
@@ -174,17 +151,22 @@ mod raw {
             res.path = {
                 let mut state = state.clone();
                 state.set(&res);
-                utils::eval_abs_path(&state, self.path)?
+                self.path.load_raw(&state)?
             };
 
             res.secrets = {
                 let mut state = state.clone();
                 state.set(&res);
-                self.secrets
+                let secrets: Vec<config::Secrets> = self
+                    .secrets
                     .load_raw(&state)
                     .await
                     .map_err(|err| anyhow!("Failed to load secrets: {}", err))?
-                    .unwrap_or_default()
+                    .unwrap_or_default();
+
+                secrets
+                    .into_iter()
+                    .try_fold(config::Secrets::default(), config::Secrets::merge)?
             };
 
             res.tokens = {

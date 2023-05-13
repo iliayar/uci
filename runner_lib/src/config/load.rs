@@ -58,6 +58,22 @@ impl<T: LoadRawSync> LoadRawSync for Vec<T> {
     }
 }
 
+#[async_trait::async_trait]
+impl<T: LoadRaw + Send> LoadRaw for Vec<T>
+where
+    T::Output: Send,
+{
+    type Output = Vec<T::Output>;
+
+    async fn load_raw(self, state: &State) -> Result<Self::Output, anyhow::Error> {
+        let mut res = Vec::new();
+        for v in self {
+            res.push(v.load_raw(state).await?);
+        }
+        Ok(res)
+    }
+}
+
 impl<T: LoadRawSync> LoadRawSync for HashMap<String, T> {
     type Output = HashMap<String, <T as LoadRawSync>::Output>;
 
@@ -114,25 +130,6 @@ impl<T: LoadRaw + Send> LoadRaw for Option<T> {
         } else {
             Ok(None)
         }
-    }
-}
-
-pub trait AutoLoadRaw {}
-
-impl<T: AutoLoadRaw> LoadRawSync for T {
-    type Output = T;
-
-    fn load_raw(self, state: &State) -> Result<Self::Output, anyhow::Error> {
-        Ok(self)
-    }
-}
-
-#[async_trait::async_trait]
-impl<T: AutoLoadRaw + Send> LoadRaw for T {
-    type Output = T;
-
-    async fn load_raw(self, state: &State) -> Result<Self::Output, anyhow::Error> {
-        Ok(self)
     }
 }
 
@@ -217,5 +214,61 @@ impl LoadRawSync for AbsPath {
 
     fn load_raw(self, state: &State) -> Result<Self::Output, anyhow::Error> {
         crate::utils::eval_abs_path(state, self.value)
+    }
+}
+
+#[derive(Deserialize, Serialize, Clone)]
+#[serde(untagged)]
+pub enum OneOrMany<T> {
+    One(T),
+    Many(Vec<T>),
+}
+
+impl<T: LoadRawSync> LoadRawSync for OneOrMany<T> {
+    type Output = Vec<T::Output>;
+
+    fn load_raw(self, state: &State) -> Result<Self::Output, anyhow::Error> {
+        match self {
+            OneOrMany::One(value) => Ok(vec![value.load_raw(state)?]),
+            OneOrMany::Many(value) => Ok(value.load_raw(state)?),
+        }
+    }
+}
+
+#[async_trait::async_trait]
+impl<T: LoadRaw + Send> LoadRaw for OneOrMany<T>
+where
+    T::Output: Send,
+{
+    type Output = Vec<T::Output>;
+
+    async fn load_raw(self, state: &State) -> Result<Self::Output, anyhow::Error> {
+        match self {
+            OneOrMany::One(value) => Ok(vec![value.load_raw(state).await?]),
+            OneOrMany::Many(values) => Ok(values.load_raw(state).await?),
+        }
+    }
+}
+
+#[derive(Deserialize, Serialize, Clone)]
+#[serde(transparent)]
+pub struct File<T> {
+    value: AbsPath,
+
+    _phantom: PhantomData<T>,
+}
+
+#[async_trait::async_trait]
+impl<T: LoadRawSync + Send> LoadRaw for File<T>
+where
+    T: for<'a> Deserialize<'a>,
+{
+    type Output = T::Output;
+
+    async fn load_raw(self, state: &State) -> Result<Self::Output, anyhow::Error> {
+        let path: PathBuf = self.value.load_raw(state)?;
+        let content = tokio::fs::read_to_string(path).await?;
+        let value: T = serde_yaml::from_str(&content)?;
+        Ok(value.load_raw(state)?)
     }
 }

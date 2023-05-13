@@ -10,15 +10,18 @@ use log::*;
 #[derive(Debug)]
 pub struct Project {
     pub id: String,
-    pub path: PathBuf,
     pub actions: super::Actions,
     pub pipelines: super::Pipelines,
     pub services: super::Services,
-    pub bind: Option<super::Bind>,
-    pub caddy: Option<super::Caddy>,
+    pub bind: Vec<super::Bind>,
+    pub caddy: Vec<super::Caddy>,
 
     // TODO: Allow common::vars::Value here
     pub params: HashMap<String, String>,
+}
+
+pub struct CurrentProject {
+    pub path: PathBuf,
 }
 
 const PROJECT_CONFIG: &str = "project.yaml";
@@ -37,53 +40,112 @@ impl EventActions {
 }
 
 impl Project {
-    pub async fn load<'a>(state: &State<'a>) -> Result<Project, anyhow::Error> {
-        let mut state = state.clone();
-        let project_info: &super::ProjectInfo = state.get()?;
+    pub fn merge(self, other: Project) -> Result<Project, anyhow::Error> {
+        assert!(self.id == other.id);
+        let id = self.id;
 
-        let project_id: String = project_info.id.clone();
-        let project_root: PathBuf = project_info.path.clone();
+        let actions = self.actions.merge(other.actions)?;
+        let pipelines = self.pipelines.merge(other.pipelines)?;
+        let services = self.services.merge(other.services)?;
 
-        let params = load_params(project_root.join(PARAMS_CONFIG), &state)
-            .await?
-            .unwrap_or_default();
-        state.set_named("project_params", &params);
+        let caddy = self
+            .caddy
+            .into_iter()
+            .chain(other.caddy.into_iter())
+            .collect();
 
-        let project_config = project_root.join(PROJECT_CONFIG);
-        state.set_named("project_config", &project_config);
+        let bind = self
+            .bind
+            .into_iter()
+            .chain(other.bind.into_iter())
+            .collect();
 
-        let bind = super::Bind::load(&state)
-            .await
-            .map_err(|err| anyhow!("Failed to load bind config: {}", err))?;
-        let caddy = super::Caddy::load(&state)
-            .await
-            .map_err(|err| anyhow!("Failed to load caddy config: {}", err))?;
-
-        let services = super::Services::load(&state)
-            .await
-            .map_err(|err| anyhow!("Failed to load services: {}", err))?;
-
-        let mut state = state.clone();
-        state.set(&services);
-
-        let actions = super::Actions::load(&state)
-            .await
-            .map_err(|err| anyhow!("Failed to load actions: {}", err))?;
-
-        let pipelines = super::Pipelines::load(&state)
-            .await
-            .map_err(|err| anyhow!("Failed to load pipelines: {}", err))?;
+        let mut params = HashMap::new();
+        for (id, value) in self.params.into_iter().chain(other.params.into_iter()) {
+            if params.contains_key(&id) {
+                return Err(anyhow!("Param {} duplicates", id));
+            }
+            params.insert(id, value);
+        }
 
         Ok(Project {
-            id: project_id,
-            path: project_root,
-            params,
+            id,
             actions,
-            services,
             pipelines,
-            bind,
+            services,
             caddy,
+            bind,
+            params,
         })
+    }
+
+    pub async fn load<'a>(state: &State<'a>) -> Result<Project, anyhow::Error> {
+        let project_info: &super::ProjectInfo = state.get()?;
+        let project_id: String = project_info.id.clone();
+
+        let mut project: Option<Project> = None;
+
+        // NOTE: Maybe merge not a whole project, but parts
+        for project_root in project_info.path.iter() {
+            let mut state = state.clone();
+
+	    let current_project = CurrentProject {
+		path: project_root.clone(),
+	    };
+	    state.set(&current_project);
+
+            let params = load_params(project_root.join(PARAMS_CONFIG), &state)
+                .await?
+                .unwrap_or_default();
+            state.set_named("project_params", &params);
+
+            let project_config = project_root.join(PROJECT_CONFIG);
+            state.set_named("project_config", &project_config);
+
+            let bind = super::Bind::load(&state)
+                .await
+                .map_err(|err| anyhow!("Failed to load bind config: {}", err))?
+                .into_iter()
+                .collect();
+            let caddy = super::Caddy::load(&state)
+                .await
+                .map_err(|err| anyhow!("Failed to load caddy config: {}", err))?
+                .into_iter()
+                .collect();
+
+            let services = super::Services::load(&state)
+                .await
+                .map_err(|err| anyhow!("Failed to load services: {}", err))?;
+
+            let mut state = state.clone();
+            state.set(&services);
+
+            let actions = super::Actions::load(&state)
+                .await
+                .map_err(|err| anyhow!("Failed to load actions: {}", err))?;
+
+            let pipelines = super::Pipelines::load(&state)
+                .await
+                .map_err(|err| anyhow!("Failed to load pipelines: {}", err))?;
+
+            let new_project = Project {
+                id: project_id.clone(),
+                params,
+                actions,
+                services,
+                pipelines,
+                bind,
+                caddy,
+            };
+
+            project = if let Some(project) = project.take() {
+                Some(project.merge(new_project)?)
+            } else {
+                Some(new_project)
+            };
+        }
+
+        Ok(project.ok_or_else(|| anyhow!("Must be at least one project"))?)
     }
 
     pub async fn run_pipeline<'a>(
@@ -203,11 +265,11 @@ impl Project {
         let EventActions {
             run_pipelines,
             services,
-	    params,
+            params,
         } = self.actions.get_matched_actions(event).await?;
 
-	let mut state = state.clone();
-	state.set_named("action_params", &params);
+        let mut state = state.clone();
+        state.set_named("action_params", &params);
 
         let mut pipeline_tasks = Vec::new();
 

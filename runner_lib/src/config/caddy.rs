@@ -78,7 +78,13 @@ mod raw {
         }
     }
 
-    impl config::AutoLoadRaw for Config {}
+    impl config::LoadRawSync for Config {
+        type Output = Config;
+
+        fn load_raw(self, state: &State) -> Result<Self::Output, anyhow::Error> {
+            Ok(self)
+        }
+    }
 
     pub async fn load<'a>(state: &State<'a>) -> Result<Option<super::Caddy>, anyhow::Error> {
         let path: PathBuf = state.get_named("project_config").cloned()?;
