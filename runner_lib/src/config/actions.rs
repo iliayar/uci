@@ -178,41 +178,45 @@ impl TriggerType {
                 } => {
                     if repo_id != event_repo_id {
                         return false;
-                    } else {
-                        match diffs {
-                            super::Diff::Changes {
-                                changes,
-                                commit_message,
-                            } => {
-                                for pattern in exclude_commits.iter() {
-                                    if pattern.is_match(commit_message) {
-                                        return false;
-                                    }
-                                }
-
-                                for diff in changes.iter() {
-                                    let mut matched = false;
-                                    for pattern in patterns.iter() {
-                                        if pattern.is_match(diff) {
-                                            matched = true;
-                                        }
-                                    }
-
-                                    for pattern in exclude_patterns.iter() {
-                                        if pattern.is_match(diff) {
-                                            matched = false;
-                                        }
-                                    }
-
-                                    return matched;
-                                }
-                            }
-                            super::Diff::Whole => {
-                                return true;
-                            }
-                        }
                     }
-                    false
+
+                    match diffs {
+                        super::Diff::Changes {
+                            changes,
+                            commit_message,
+                        } => {
+                            for pattern in exclude_commits.iter() {
+                                if pattern.is_match(commit_message) {
+                                    return false;
+                                }
+                            }
+
+                            let mut matched = false;
+
+                            for diff in changes.iter() {
+				let mut current_matches = false;
+
+                                for pattern in patterns.iter() {
+                                    if pattern.is_match(diff) {
+                                        current_matches = true;
+					break;
+                                    }
+                                }
+
+                                for pattern in exclude_patterns.iter() {
+                                    if pattern.is_match(diff) {
+                                        current_matches = false;
+					break;
+                                    }
+                                }
+
+				matched |= current_matches;
+                            }
+
+                            matched
+                        }
+                        super::Diff::Whole => true,
+                    }
                 }
                 _ => false,
             },
