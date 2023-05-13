@@ -65,6 +65,42 @@ With client config at host's =.uci/config.yaml=:
 - Handling update of uci in itself [[https://github.com/iliayar/uci/tree/master/.uci][Link]]
 - Static generation of Html from Org [[https://github.com/iliayar/iliayar/tree/master/.uci][Link]], [[https://github.com/iliayar/ITMO/tree/master/.uci][Link]]
 
+And corresponding =projects.yaml= for the second example:
+#+begin_src yaml
+  projects:
+    # Other projects ...
+
+    personal-site:
+      path:
+        - ${project.repos.main.path}/.uci
+        - ${project.repos.conspects.path}/.uci
+      repos:
+        main:
+          source: git@github.com:iliayar/iliayar.git
+          branch: master
+
+        conspects:
+          source: git@github.com:iliayar/itmo.git
+          branch: master
+
+      tokens:
+        - token: ${config.secrets.admin-token}
+          permissions:
+            - read
+            - write
+            - execute
+
+        - token: ${config.secrets.webhook-secret}
+          permissions:
+            - write
+
+        - # anonymous
+          permissions:
+            - read
+
+      secrets: ~/.uci-secrets/personal-site.yaml
+#+end_src
+
 
 ** CLI
 *** Example
