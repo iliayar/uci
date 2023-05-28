@@ -131,6 +131,22 @@ impl Services {
             Ok(volume)
         }
     }
+
+    pub fn get_networks<S: AsRef<str>>(&self, project_id: S) -> Result<Vec<String>, anyhow::Error> {
+        let mut res = Vec::new();
+        for (network, _) in self.networks.iter() {
+            res.push(self.get_network_name(project_id.as_ref(), network.to_string())?);
+        }
+        Ok(res)
+    }
+
+    pub fn get_volumes<S: AsRef<str>>(&self, project_id: S) -> Result<Vec<String>, anyhow::Error> {
+        let mut res = Vec::new();
+        for (volume, _) in self.volumes.iter() {
+            res.push(self.get_volume_name(project_id.as_ref(), volume.to_string())?);
+        }
+        Ok(res)
+    }
 }
 
 impl Service {
@@ -245,7 +261,7 @@ impl Service {
             command: self.command.clone(),
             restart_policy: self.restart.clone(),
             env: self.env.clone(),
-	    hostname: self.hostname.clone(),
+            hostname: self.hostname.clone(),
             volumes,
             networks,
         })
@@ -326,7 +342,7 @@ mod raw {
         #[serde(default)]
         env: HashMap<String, String>,
 
-	hostname: Option<String>,
+        hostname: Option<String>,
     }
 
     #[derive(Serialize, Deserialize)]
@@ -426,7 +442,7 @@ mod raw {
                 ports: parse_port_mapping(self.ports)?,
                 restart: self.restart.unwrap_or_else(|| String::from("on_failure")),
                 env: config::utils::substitute_vars_dict(state, self.env)?,
-		hostname: self.hostname,
+                hostname: self.hostname,
                 networks,
                 volumes,
                 build,

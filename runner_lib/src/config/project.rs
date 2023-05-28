@@ -89,10 +89,10 @@ impl Project {
         for project_root in project_info.path.iter() {
             let mut state = state.clone();
 
-	    let current_project = CurrentProject {
-		path: project_root.clone(),
-	    };
-	    state.set(&current_project);
+            let current_project = CurrentProject {
+                path: project_root.clone(),
+            };
+            state.set(&current_project);
 
             let params = load_params(project_root.join(PARAMS_CONFIG), &state)
                 .await?
@@ -220,8 +220,8 @@ impl Project {
             stages: HashMap::from_iter([(worker_lib::executor::DEFEAULT_STAGE.to_string(), stage)]),
             id: "service-action".to_string(),
             links: Default::default(),
-            networks: Default::default(),
-            volumes: Default::default(),
+            networks: self.services.get_networks(&self.id)?,
+            volumes: self.services.get_volumes(&self.id)?,
             integrations: Default::default(),
         };
 
