@@ -18,7 +18,8 @@ impl task::Task for RunContainerConfig {
             .ports(self.ports)
             .command(self.command)
             .restart(self.restart_policy)
-            .env(self.env);
+            .env(self.env)
+            .hostname(self.hostname);
 
         let name = docker
             .create_container(

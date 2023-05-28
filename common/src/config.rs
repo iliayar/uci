@@ -89,6 +89,7 @@ pub struct RunContainerConfig {
     pub ports: Vec<PortMapping>,
     pub restart_policy: String,
     pub env: HashMap<String, String>,
+    pub hostname: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]

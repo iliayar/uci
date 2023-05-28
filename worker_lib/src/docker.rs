@@ -82,6 +82,8 @@ pub struct CreateContainerParams {
 
     #[builder(default = "Default::default()")]
     env: HashMap<String, String>,
+
+    hostname: Option<String>,
 }
 
 #[derive(derive_builder::Builder)]
@@ -349,6 +351,7 @@ impl Docker {
             cmd: params.command,
             exposed_ports: Some(exposed_ports),
             env: Some(get_env(params.env)),
+	    hostname: params.hostname,
             ..Default::default()
         };
 

@@ -26,6 +26,7 @@ pub struct Service {
     container: String,
     build: Option<Build>,
     image: String,
+    hostname: Option<String>,
     volumes: HashMap<String, String>,
     networks: Vec<String>,
     ports: Vec<common::PortMapping>,
@@ -244,6 +245,7 @@ impl Service {
             command: self.command.clone(),
             restart_policy: self.restart.clone(),
             env: self.env.clone(),
+	    hostname: self.hostname.clone(),
             volumes,
             networks,
         })
@@ -323,6 +325,8 @@ mod raw {
 
         #[serde(default)]
         env: HashMap<String, String>,
+
+	hostname: Option<String>,
     }
 
     #[derive(Serialize, Deserialize)]
@@ -422,6 +426,7 @@ mod raw {
                 ports: parse_port_mapping(self.ports)?,
                 restart: self.restart.unwrap_or_else(|| String::from("on_failure")),
                 env: config::utils::substitute_vars_dict(state, self.env)?,
+		hostname: self.hostname,
                 networks,
                 volumes,
                 build,
