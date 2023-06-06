@@ -49,7 +49,7 @@
             cargoBuildFlags = "-p ucid";
 
             nativeBuildInputs = with pkgs; [ pkg-config ];
-            buildInputs = with pkgs; [ openssl ];
+            buildInputs = with pkgs; [ openssl stdenv.cc.cc.lib ];
             cargoLock = { lockFile = ./Cargo.lock; };
           };
 
@@ -60,7 +60,7 @@
             cargoBuildFlags = "-p uci";
 
             nativeBuildInputs = with pkgs; [ pkg-config ];
-            buildInputs = with pkgs; [ openssl ];
+            buildInputs = with pkgs; [ openssl stdenv.cc.cc.lib ];
             cargoLock = { lockFile = ./Cargo.lock; };
           };
 
