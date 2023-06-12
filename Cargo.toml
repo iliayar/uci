@@ -6,4 +6,7 @@ members = [
     "worker_lib",
     "uci_cli",
     "runner_lib",
+    "runner_client",
 ]
+
+exclude = [ "webgui" ]

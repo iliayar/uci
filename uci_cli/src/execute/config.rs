@@ -5,6 +5,8 @@ use crate::utils::WithSpinner;
 use log::*;
 use termion::{color, style};
 
+use runner_client::*;
+
 pub async fn execute_config(
     config: &crate::config::Config,
     command: ConfigCommands,
@@ -25,8 +27,8 @@ pub async fn execute_config_reload(
     debug!("Executing project list command");
 
     let response: models::EmptyResponse = async {
-        let response = crate::runner::post(config, "/reload")?.send().await;
-        crate::runner::json(response).await
+        let response = post(config, "/reload")?.send().await;
+        json(response).await
     }
     .with_spinner("Updating config")
     .await?;

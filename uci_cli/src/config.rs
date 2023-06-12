@@ -13,6 +13,16 @@ pub struct Config {
     pub project_arg: Option<Option<String>>,
 }
 
+impl runner_client::RunnerClientConfig for Config {
+    fn runner_url(&self) -> Option<&str> {
+        self.runner_url.as_ref().map(|u| u.as_str())
+    }
+
+    fn token(&self) -> Option<&str> {
+        self.runner_url.as_ref().map(|u| u.as_str())
+    }
+}
+
 impl Config {
     pub async fn load(
         path: PathBuf,

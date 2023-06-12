@@ -4,6 +4,8 @@ use termion::{color, style};
 
 use log::*;
 
+use runner_client::*;
+
 pub async fn execute_runs_list(
     config: &crate::config::Config,
     pipeline_id: Option<String>,
@@ -11,7 +13,7 @@ pub async fn execute_runs_list(
     let project_id = config.try_get_project().await;
     debug!("Executing runs list command");
 
-    let response = crate::runner::api::list_runs(config, project_id, pipeline_id).await?;
+    let response = api::list_runs(config, project_id, pipeline_id).await?;
 
     println!("{}Runs{}:", style::Bold, style::Reset);
     for run in response.runs.into_iter() {

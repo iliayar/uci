@@ -3,6 +3,8 @@ use crate::{execute, utils::ucolor};
 use log::*;
 use termion::{color, style};
 
+use runner_client::*;
+
 pub async fn execute_services_logs(
     config: &crate::config::Config,
     service: Option<Vec<String>>,
@@ -16,7 +18,7 @@ pub async fn execute_services_logs(
     let services = if let Some(services) = service {
         services
     } else if all {
-        crate::runner::api::list_services(config, project_id.clone())
+        api::list_services(config, project_id.clone())
             .await?
             .services
             .into_iter()
@@ -40,10 +42,10 @@ pub async fn execute_services_logs(
 
     let query = models::ServiceLogsQuery { project_id };
 
-    let response = crate::runner::get_query_body(config, "/projects/services/logs", &query, &body)?
+    let response = get_query_body(config, "/projects/services/logs", &query, &body)?
         .send()
         .await;
-    let response: models::ContinueReponse = crate::runner::json(response).await?;
+    let response: models::ContinueReponse = json(response).await?;
 
     debug!("Will follow run {}", response.run_id);
 

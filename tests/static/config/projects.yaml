@@ -19,3 +19,6 @@ projects:
         permissions:
           - read
           - write
+
+      - permissions:
+          - read

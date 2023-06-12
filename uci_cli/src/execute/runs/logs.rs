@@ -3,6 +3,8 @@ use crate::execute;
 use log::*;
 use termion::{color, style};
 
+use runner_client::*;
+
 pub async fn execute_runs_logs(
     config: &crate::config::Config,
     pipeline_id: Option<String>,
@@ -40,14 +42,7 @@ pub async fn execute_runs_logs(
     };
 
     let runs_list = if status {
-        Some(
-            crate::runner::api::list_runs(
-                config,
-                Some(project_id.clone()),
-                Some(pipeline_id.clone()),
-            )
-            .await?,
-        )
+        Some(api::list_runs(config, Some(project_id.clone()), Some(pipeline_id.clone())).await?)
     } else {
         None
     };
@@ -57,10 +52,8 @@ pub async fn execute_runs_logs(
         project: project_id,
         pipeline: pipeline_id,
     };
-    let response = crate::runner::get_query(config, "/runs/logs", &query)?
-        .send()
-        .await;
-    let response: models::ContinueReponse = crate::runner::json(response).await?;
+    let response = get_query(config, "/runs/logs", &query)?.send().await;
+    let response: models::ContinueReponse = json(response).await?;
 
     debug!("Will follow run {}", response.run_id);
 

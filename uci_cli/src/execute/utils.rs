@@ -11,6 +11,8 @@ use tokio::sync::Mutex;
 
 use log::*;
 
+use runner_client::*;
+
 pub async fn upload_archive(
     config: &Config,
     dirpath: PathBuf,
@@ -35,7 +37,7 @@ pub async fn upload_archive(
         .map_err(|err| {
             super::ExecuteError::Fatal(format!("Failed to create archive with repo: {}", err))
         })?;
-    let response = crate::runner::api::upload(config, data)
+    let response = api::upload(config, data)
         .with_spinner("Uploading tar")
         .await?;
 
@@ -50,10 +52,7 @@ pub async fn upload_archive(
 }
 
 pub async fn print_clone_repos(ws_client: &mut WsClient) -> Result<(), super::ExecuteError> {
-    match ws_client
-        .receive::<models::CloneMissingRepos>()
-        .await
-    {
+    match ws_client.receive::<models::CloneMissingRepos>().await {
         Some(models::CloneMissingRepos::Begin) => {}
         _ => {
             return Err(super::ExecuteError::Warning(
@@ -71,10 +70,7 @@ pub async fn print_clone_repos(ws_client: &mut WsClient) -> Result<(), super::Ex
     let mut spinner = Spinner::new();
 
     loop {
-        if let Some(message) = ws_client
-            .try_receive::<models::CloneMissingRepos>()
-            .await
-        {
+        if let Some(message) = ws_client.try_receive::<models::CloneMissingRepos>().await {
             match message {
                 models::CloneMissingRepos::Begin => unreachable!(),
                 models::CloneMissingRepos::ClonningRepo { repo_id } => {
@@ -198,9 +194,7 @@ impl RunState {
                         models::JobStatus::Skipped => JobStatus::Skipped,
                         models::JobStatus::Pending => JobStatus::Pending,
                         models::JobStatus::Running { step } => JobStatus::Running { step },
-                        models::JobStatus::Finished { error } => {
-                            JobStatus::Finished { error }
-                        }
+                        models::JobStatus::Finished { error } => JobStatus::Finished { error },
                     };
 
                     state.set_job_status(run.pipeline.clone(), job_id, job_status);

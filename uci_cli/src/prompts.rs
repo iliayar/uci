@@ -2,6 +2,8 @@ use crate::{config::Config, execute::ExecuteError};
 
 use termion::{color, style};
 
+use runner_client::*;
+
 impl crate::select::SelectOption for models::Action {
     type Data = String;
 
@@ -58,7 +60,7 @@ impl crate::select::SelectOption for models::Run {
 }
 
 pub async fn promp_action(config: &Config, project_id: String) -> Result<String, ExecuteError> {
-    let actions = crate::runner::api::actions_list(config, project_id).await?;
+    let actions = api::actions_list(config, project_id).await?;
     Ok(crate::select::prompt(actions.actions.into_iter())?)
 }
 
@@ -79,7 +81,7 @@ impl crate::select::SelectOption for models::Repo {
 }
 
 pub async fn promp_repo(config: &Config, project_id: String) -> Result<String, ExecuteError> {
-    let repos = crate::runner::api::repos_list(config, project_id).await?;
+    let repos = api::repos_list(config, project_id).await?;
     Ok(crate::select::prompt(repos.repos.into_iter())?)
 }
 
@@ -89,7 +91,7 @@ pub async fn promp_run(
     run_id: Option<String>,
     pipeline_id: Option<String>,
 ) -> Result<RunSelection, ExecuteError> {
-    let runs = crate::runner::api::list_runs(config, project_id, pipeline_id).await?;
+    let runs = api::list_runs(config, project_id, pipeline_id).await?;
     let runs = if let Some(run_id) = run_id {
         runs.runs
             .into_iter()
@@ -139,7 +141,7 @@ pub async fn promp_services(
     config: &Config,
     project_id: String,
 ) -> Result<Vec<String>, ExecuteError> {
-    let services = crate::runner::api::list_services(config, project_id).await?;
+    let services = api::list_services(config, project_id).await?;
     Ok(crate::select::prompt_many(services.services.into_iter())?)
 }
 
@@ -160,6 +162,6 @@ impl crate::select::SelectOption for models::Project {
 }
 
 pub async fn promp_project(config: &Config) -> Result<String, ExecuteError> {
-    let projects = crate::runner::api::projects_list(config).await?;
+    let projects = api::projects_list(config).await?;
     Ok(crate::select::prompt(projects.projects.into_iter())?)
 }

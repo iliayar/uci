@@ -2,6 +2,8 @@ use crate::execute;
 
 use log::*;
 
+use runner_client::*;
+
 pub async fn execute_services_command(
     config: &crate::config::Config,
     service: Option<Vec<String>>,
@@ -14,7 +16,7 @@ pub async fn execute_services_command(
     let services = if let Some(services) = service {
         services
     } else if all {
-        crate::runner::api::list_services(config, project_id.clone())
+        api::list_services(config, project_id.clone())
             .await?
             .services
             .into_iter()
@@ -30,10 +32,10 @@ pub async fn execute_services_command(
         command,
     };
 
-    let response = crate::runner::post_body(config, "/projects/services/command", &body)?
+    let response = post_body(config, "/projects/services/command", &body)?
         .send()
         .await;
-    let response: models::ContinueReponse = crate::runner::json(response).await?;
+    let response: models::ContinueReponse = json(response).await?;
 
     debug!("Will follow run {}", response.run_id);
 

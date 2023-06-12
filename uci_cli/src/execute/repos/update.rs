@@ -8,6 +8,8 @@ use crate::{
 use log::*;
 use termion::{clear, color, scroll, style};
 
+use runner_client::*;
+
 pub async fn execute_repo_update(
     config: &crate::config::Config,
     repo_id: Option<String>,
@@ -34,22 +36,17 @@ pub async fn execute_repo_update(
         project_id,
         repo_id,
         artifact_id,
-	dry_run: Some(dry_run),
-	update_only: Some(update_only),
+        dry_run: Some(dry_run),
+        update_only: Some(update_only),
     };
-    let response = crate::runner::post_body(config, "/update", &body)?
-        .send()
-        .await;
-    let response: models::ContinueReponse = crate::runner::json(response).await?;
+    let response = post_body(config, "/update", &body)?.send().await;
+    let response: models::ContinueReponse = json(response).await?;
 
     debug!("Will follow run {}", response.run_id);
 
     let mut ws_client = crate::runner::ws(config, response.run_id).await?;
 
-    match ws_client
-        .receive::<models::UpdateRepoMessage>()
-        .await
-    {
+    match ws_client.receive::<models::UpdateRepoMessage>().await {
         Some(models::UpdateRepoMessage::PullingRepo) => {
             println!(
                 "{}Updating repo {bold}{}{no_bold} in project {bold}{}{no_bold} {}",
@@ -76,10 +73,7 @@ pub async fn execute_repo_update(
 
     let mut spinner = Spinner::new();
     loop {
-        if let Some(message) = ws_client
-            .try_receive::<models::UpdateRepoMessage>()
-            .await
-        {
+        if let Some(message) = ws_client.try_receive::<models::UpdateRepoMessage>().await {
             match message {
                 models::UpdateRepoMessage::NoSuchRepo => {
                     println!(

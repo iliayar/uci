@@ -5,6 +5,8 @@ use crate::utils::WithSpinner;
 use log::*;
 use termion::{color, style};
 
+use runner_client::*;
+
 pub async fn execute_runs_cancel(
     config: &crate::config::Config,
     pipeline: Option<String>,
@@ -28,10 +30,8 @@ pub async fn execute_runs_cancel(
         run,
     };
     let response: models::EmptyResponse = async {
-        let response = crate::runner::post_body(config, "/runs/cancel", &body)?
-            .send()
-            .await;
-        crate::runner::json(response).await
+        let response = post_body(config, "/runs/cancel", &body)?.send().await;
+        json(response).await
     }
     .with_spinner("Canceling run")
     .await?;

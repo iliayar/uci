@@ -3,13 +3,15 @@ use crate::execute;
 use log::*;
 use termion::{color, style};
 
+use runner_client::*;
+
 pub async fn execute_services_list(
     config: &crate::config::Config,
 ) -> Result<(), execute::ExecuteError> {
     let project_id = config.get_project().await;
     debug!("Executing services list command");
 
-    let response = crate::runner::api::list_services(config, project_id).await?;
+    let response = api::list_services(config, project_id).await?;
 
     println!("{}Services{}:", style::Bold, style::Reset);
     for service in response.services.into_iter() {

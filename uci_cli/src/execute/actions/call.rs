@@ -3,6 +3,8 @@ use crate::execute;
 use log::*;
 use termion::{color, style};
 
+use runner_client::*;
+
 pub async fn execute_action_call(
     config: &crate::config::Config,
     action_id: Option<String>,
@@ -20,13 +22,11 @@ pub async fn execute_action_call(
     let body = models::CallRequest {
         project_id,
         trigger_id: action_id,
-	dry_run: Some(dry_run),
+        dry_run: Some(dry_run),
     };
 
-    let response = crate::runner::post_body(config, "/call", &body)?
-        .send()
-        .await;
-    let response: models::ContinueReponse = crate::runner::json(response).await?;
+    let response = post_body(config, "/call", &body)?.send().await;
+    let response: models::ContinueReponse = json(response).await?;
 
     debug!("Will follow run {}", response.run_id);
     let mut ws_client = crate::runner::ws(config, response.run_id).await?;
