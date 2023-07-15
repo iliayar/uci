@@ -105,4 +105,4 @@ And corresponding =projects.yaml= for the second example:
 ** CLI
 *** Example
 Trigger action manually and watch logs \\
-[[https://asciinema.org/a/6CFr9sPMv0ToYeODqFTqEEKSF][https://asciinema.org/a/6CFr9sPMv0ToYeODqFTqEEKSF.svg]]
+[[https://asciinema.org/a/596894][https://asciinema.org/a/596894.svg]]
