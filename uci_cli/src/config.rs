@@ -14,6 +14,10 @@ pub struct Config {
 }
 
 impl runner_client::RunnerClientConfig for Config {
+    fn ws_runner_url(&self) -> Option<&str> {
+        self.ws_runner_url.as_ref().map(|u| u.as_str())
+    }
+
     fn runner_url(&self) -> Option<&str> {
         self.runner_url.as_ref().map(|u| u.as_str())
     }

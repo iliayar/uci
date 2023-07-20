@@ -3,7 +3,7 @@
 
   inputs = {
     flake-utils.url = "github:numtide/flake-utils";
-    nixpkgs.url = "github:nixos/nixpkgs/nixos-22.05";
+    nixpkgs.url = "github:nixos/nixpkgs/nixos-unstable";
     rust-overlay = {
       url = "github:oxalica/rust-overlay";
       inputs.nixpkgs.follows = "nixpkgs";
@@ -27,6 +27,12 @@
               rust-analyzer
               rustfmt
               trunk
+              # cargo-leptos
+
+              nodePackages.prettier
+              tailwindcss
+
+              caddy
             ];
         };
       });

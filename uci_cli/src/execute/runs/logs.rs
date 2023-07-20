@@ -52,8 +52,7 @@ pub async fn execute_runs_logs(
         project: project_id,
         pipeline: pipeline_id,
     };
-    let response = get_query(config, "/runs/logs", &query)?.send().await;
-    let response: models::ContinueReponse = json(response).await?;
+    let response = api::run_logs(config, &query).await?;
 
     debug!("Will follow run {}", response.run_id);
 

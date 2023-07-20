@@ -26,12 +26,9 @@ pub async fn execute_config_reload(
 ) -> Result<(), super::ExecuteError> {
     debug!("Executing project list command");
 
-    let response: models::EmptyResponse = async {
-        let response = post(config, "/reload")?.send().await;
-        json(response).await
-    }
-    .with_spinner("Updating config")
-    .await?;
+    let response: models::EmptyResponse = api::reload_config(config)
+        .with_spinner("Updating config")
+        .await?;
 
     println!("{}Config reloaded{}", color::Fg(color::Green), style::Reset);
 

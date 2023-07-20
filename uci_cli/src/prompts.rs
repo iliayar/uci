@@ -60,7 +60,7 @@ impl crate::select::SelectOption for models::Run {
 }
 
 pub async fn promp_action(config: &Config, project_id: String) -> Result<String, ExecuteError> {
-    let actions = api::actions_list(config, project_id).await?;
+    let actions = api::list_actions(config, project_id).await?;
     Ok(crate::select::prompt(actions.actions.into_iter())?)
 }
 

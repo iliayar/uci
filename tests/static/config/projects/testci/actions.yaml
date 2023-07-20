@@ -24,3 +24,8 @@ actions:
     - on: call
       run_pipelines:
         - test_cancel
+
+  test_web:
+    - on: call
+      run_pipelines:
+        - test_web

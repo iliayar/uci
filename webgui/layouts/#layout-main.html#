@@ -1,0 +1,76 @@
+<html>
+  <head>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script
+      src="https://kit.fontawesome.com/65c902a011.js"
+      crossorigin="anonymous"
+    ></script>
+  </head>
+    <div class="h-screen flex flex-col">
+      <div
+        class="w-full bg-gray-100 border-b-2 border-gray-200 h-fit flex flex-row justify-between"
+      >
+        <div class="flex flex-row">
+          <div class="p-1 pr-5">μCI</div>
+          <div class="relative">
+            <button class="p-1 hover:bg-gray-300 bg-gray-100">
+              Project: project-1
+              <i class="fa-solid fa-angle-down"></i>
+            </button>
+            <div
+              class="absolute w-full bg-gray-100 p-1 text-center border-b-2 border-x-2"
+            >
+              <ul>
+                <li><a class="hover:bg-gray-300 block">project-1</a></li>
+                <li><a class="hover:bg-gray-300 block">project-2</a></li>
+                <li><a class="hover:bg-gray-300 block">project-3</a></li>
+              </ul>
+            </div>
+          </div>
+        </div>
+        <div class="flex flex-row justify-between">
+          <!-- Authed  -->
+            <!-- <div class="pr-5 p-1">
+		 <label class="pr-1 inline">Authed</label>
+		 <button class="border-2 hover:bg-gray-300">Deauth</button>
+		 </div> -->
+          <!-- Anonymous  -->
+          <div class="pr-5 p-1">
+              <label class="pr-1 inline">Anonymous</label>
+	      <input type="text" placeholder="Token" class="border-2" />
+	      <button class="border-2 hover:bg-gray-300">Auth</button>
+          </div>
+          <button class="hover:bg-gray-300">
+            <i class="fa-regular fa-sun p-1"></i>
+            <!-- <i class="fa-regular fa-moon py-1"></i> -->
+          </button>
+        </div>
+      </div>
+      <div class="grow flex flex-row w-full">
+        <div class="bg-slate-100 border-r-2 border-gray-200 basis-1/5">
+          <div class="pt-1">
+            <a
+              class="p-0.5 w-full text-left hover:bg-gray-300 block"
+              href="#runs"
+            >
+              Runs
+            </a>
+            <a
+              class="p-0.5 w-full text-left hover:bg-gray-300 block bg-blue-200"
+              href="#actions"
+            >
+              Actions
+            </a>
+            <a
+              class="p-0.5 w-full text-left hover:bg-gray-300 block"
+              href="#services"
+            >
+              Services
+            </a>
+          </div>
+        </div>
+        <div class="bg-slate-50 p-1 w-full">Content here</div>
+      </div>
+    </div>
+  </body>
+</html>

@@ -25,8 +25,7 @@ pub async fn execute_action_call(
         dry_run: Some(dry_run),
     };
 
-    let response = post_body(config, "/call", &body)?.send().await;
-    let response: models::ContinueReponse = json(response).await?;
+    let response = api::action_call(config, &body).await?;
 
     debug!("Will follow run {}", response.run_id);
     let mut ws_client = crate::runner::ws(config, response.run_id).await?;

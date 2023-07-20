@@ -11,7 +11,7 @@ pub async fn execute_action_list(
     let project_id = config.get_project().await;
     debug!("Executing action call command");
 
-    let response = api::actions_list(config, project_id).await?;
+    let response = api::list_actions(config, project_id).await?;
 
     println!("{}Actions{}:", style::Bold, style::Reset);
     for action in response.actions.into_iter() {

@@ -7,3 +7,5 @@ pipelines:
     path: pipelines/stub_pipeline.yaml
   test_cancel:
     path: pipelines/test_cancel.yaml
+  test_web:
+    path: pipelines/test_web.yaml

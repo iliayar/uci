@@ -7,6 +7,7 @@ use log::*;
 
 pub trait RunnerClientConfig {
     fn runner_url(&self) -> Option<&str>;
+    fn ws_runner_url(&self) -> Option<&str>;
     fn token(&self) -> Option<&str>;
 }
 
@@ -143,7 +144,7 @@ pub mod api {
         super::json(response).await
     }
 
-    pub async fn actions_list<C: RunnerClientConfig>(
+    pub async fn list_actions<C: RunnerClientConfig>(
         config: &C,
         project_id: String,
     ) -> Result<models::ActionsListResponse, anyhow::Error> {
@@ -179,6 +180,29 @@ pub mod api {
         let file_part = reqwest::multipart::Part::bytes(data);
         let form = reqwest::multipart::Form::new().part("file", file_part);
         let response = super::post(config, "/upload")?.multipart(form).send().await;
+        super::json(response).await
+    }
+
+    pub async fn reload_config<C: RunnerClientConfig>(
+        config: &C,
+    ) -> Result<models::EmptyResponse, anyhow::Error> {
+        let response = super::post(config, "/reload")?.send().await;
+        super::json(response).await
+    }
+
+    pub async fn action_call<C: RunnerClientConfig>(
+        config: &C,
+        request: &models::CallRequest,
+    ) -> Result<models::ContinueReponse, anyhow::Error> {
+        let response = super::post_body(config, "/call", request)?.send().await;
+        super::json(response).await
+    }
+
+    pub async fn run_logs<C: RunnerClientConfig>(
+        config: &C,
+        query: &models::RunsLogsRequestQuery,
+    ) -> Result<models::ContinueReponse, anyhow::Error> {
+        let response = super::get_query(config, "/runs/logs", query)?.send().await;
         super::json(response).await
     }
 }
