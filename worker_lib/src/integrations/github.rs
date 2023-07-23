@@ -181,7 +181,7 @@ impl GitHubIntegration {
     async fn set_job_status<'a, DS: AsRef<str>>(
         &self,
         state: &common::state::State<'a>,
-        name: impl AsRef<str>,
+        job: impl AsRef<str>,
         job_state: State,
         description: Option<DS>,
     ) -> Result<(), anyhow::Error> {
@@ -190,13 +190,16 @@ impl GitHubIntegration {
             self.repo, self.rev
         );
 
+        let project: String = state.get_named("project").cloned()?;
+        let pipeline_run: &crate::executor::PipelineRun = state.get()?;
+
+
+	let name = format!("{}/{}", pipeline_run.pipeline_id, job.as_ref());
+
         let target_url = self
             .ui_url
             .as_ref()
             .map(|url| -> Result<String, anyhow::Error> {
-                let project: String = state.get_named("project").cloned()?;
-                let pipeline_run: &crate::executor::PipelineRun = state.get()?;
-
                 Ok(format!(
                     "{}/projects/{}/runs/{}/{}",
                     url, project, pipeline_run.id, pipeline_run.pipeline_id
@@ -210,7 +213,7 @@ impl GitHubIntegration {
 
         let body = Body {
             state: job_state,
-            context: Some(name.as_ref().to_string()),
+            context: Some(name),
             description: description.map(|d| d.as_ref().to_string()),
             target_url,
         };
