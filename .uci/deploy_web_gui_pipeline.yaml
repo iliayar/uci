@@ -28,7 +28,7 @@ jobs:
     type: script
     env:
       DATA_DIR: ${project.data.path}/webgui
-      DIST_DIR: ${project.repos.uci.path}/dist
+      DIST_DIR: ${project.repos.uci.path}/webgui/dist
     script: |
       set -e
 
