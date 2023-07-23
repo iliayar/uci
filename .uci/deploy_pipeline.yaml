@@ -36,6 +36,7 @@ integrations:
     token: ${project.secrets.github_token}
     repo: 'iliayar/uci'
     rev: ${project.repos.uci.rev}
+    ui_url: 'https://uci.ilyay.space'
 
   telegram:
     token: ${project.secrets.tg_token}

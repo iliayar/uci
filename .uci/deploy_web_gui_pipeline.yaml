@@ -36,3 +36,12 @@ jobs:
 
       cd webgui
       /trunk build -d /dist
+
+integrations:
+  github:
+    token: ${project.secrets.github_token}
+    repo: 'iliayar/uci'
+    rev: ${project.repos.uci.rev}
+    ui_url: 'https://uci.ilyay.space'
+    jobs_to_report:
+      - build
