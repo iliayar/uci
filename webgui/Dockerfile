@@ -15,5 +15,7 @@ RUN /rustup.sh -y --default-toolchain nightly -t wasm32-unknown-unknown
 
 RUN wget -qO- https://github.com/thedodd/trunk/releases/download/v0.17.2/trunk-x86_64-unknown-linux-gnu.tar.gz | tar -xzf-
 
+RUN apt-get install gcc
+
 WORKDIR /build
 
