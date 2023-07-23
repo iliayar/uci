@@ -30,5 +30,7 @@ jobs:
     script: |
       set -e
 
+      . /root/.cargo/env
+
       mkdir -p ${DATA_DIR} || echo "Already exists"
       cp -r ${DIST_DIR}/* ${DATA_DIR}/
