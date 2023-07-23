@@ -15,6 +15,7 @@ actions:
       repo_id: uci
       changes:
         - '^common.*'
+        - '^models.*'
         - '^runner_lib.*'
         - '^uci.*'
         - '^worker_lib.*'
@@ -23,3 +24,17 @@ actions:
         - deploy
       params:
         do_restart: false
+
+  build_web_gui:
+    - on: call
+      run_pipelines:
+        - deploy_web_gui
+        
+    - on: changed
+      repo_id: uci
+      changes:
+        - '^models.*'
+        - '^runner_client.*'
+        - '^webgui.*'
+      run_pipelines:
+        - deploy_web_gui

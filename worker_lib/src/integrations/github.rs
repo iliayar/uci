@@ -5,6 +5,8 @@ pub struct GitHubIntegration {
     token: String,
     repo: String,
     rev: String,
+    jobs_to_report: Option<Vec<String>>,
+    ui_url: Option<String>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -37,7 +39,7 @@ impl super::integration::Integration for GitHubIntegration {
         error: Option<String>,
     ) -> Result<(), anyhow::Error> {
         if let Some(error) = error {
-            self.set_job_status("pipeline", State::Failure, Some(error))
+            self.set_job_status(state, "pipeline", State::Failure, Some(error))
                 .await?;
         }
         Ok(())
@@ -69,7 +71,11 @@ impl super::integration::Integration for GitHubIntegration {
         state: &common::state::State,
         job: &str,
     ) -> Result<(), anyhow::Error> {
-        self.set_job_status::<&str>(job, State::Pending, None)
+        if self.should_skip_job(job) {
+            return Ok(());
+        }
+
+        self.set_job_status::<&str>(state, job, State::Pending, None)
             .await?;
         Ok(())
     }
@@ -79,7 +85,11 @@ impl super::integration::Integration for GitHubIntegration {
         state: &common::state::State,
         job: &str,
     ) -> Result<(), anyhow::Error> {
-        self.set_job_status::<&str>(job, State::Success, None)
+        if self.should_skip_job(job) {
+            return Ok(());
+        }
+
+        self.set_job_status::<&str>(state, job, State::Success, None)
             .await?;
         Ok(())
     }
@@ -89,7 +99,12 @@ impl super::integration::Integration for GitHubIntegration {
         state: &common::state::State,
         job: &str,
     ) -> Result<(), anyhow::Error> {
-        self.set_job_status::<&str>(job, State::Error, None).await?;
+        if self.should_skip_job(job) {
+            return Ok(());
+        }
+
+        self.set_job_status::<&str>(state, job, State::Error, None)
+            .await?;
         Ok(())
     }
 
@@ -99,7 +114,11 @@ impl super::integration::Integration for GitHubIntegration {
         job: &str,
         step: usize,
     ) -> Result<(), anyhow::Error> {
-        self.set_job_status(job, State::Pending, Some(format!("Step {}", step)))
+        if self.should_skip_job(job) {
+            return Ok(());
+        }
+
+        self.set_job_status(state, job, State::Pending, Some(format!("Step {}", step)))
             .await?;
         Ok(())
     }
@@ -110,11 +129,20 @@ impl super::integration::Integration for GitHubIntegration {
         job: &str,
         error: Option<String>,
     ) -> Result<(), anyhow::Error> {
+        if self.should_skip_job(job) {
+            return Ok(());
+        }
+
         if let Some(error) = error {
-            self.set_job_status(job, State::Failure, Some(format!("Failed: {}", error)))
-                .await?;
+            self.set_job_status(
+                state,
+                job,
+                State::Failure,
+                Some(format!("Failed: {}", error)),
+            )
+            .await?;
         } else {
-            self.set_job_status::<&str>(job, State::Success, None)
+            self.set_job_status::<&str>(state, job, State::Success, None)
                 .await?;
         }
         Ok(())
@@ -136,26 +164,55 @@ struct Body {
 }
 
 impl GitHubIntegration {
+    fn should_skip_job(&self, job: &str) -> bool {
+        if let Some(jobs_to_report) = self.jobs_to_report.as_ref() {
+            // FIXME: meh
+            !jobs_to_report.contains(&job.to_string())
+        } else {
+            false
+        }
+    }
+
     pub fn from_value(value: serde_json::Value) -> Result<Self, anyhow::Error> {
         let int = serde_json::from_value(value)?;
         Ok(int)
     }
 
-    async fn set_job_status<DS: AsRef<str>>(
+    async fn set_job_status<'a, DS: AsRef<str>>(
         &self,
+        state: &common::state::State<'a>,
         name: impl AsRef<str>,
-        state: State,
+        job_state: State,
         description: Option<DS>,
     ) -> Result<(), anyhow::Error> {
         let url = format!(
             "https://api.github.com/repos/{}/statuses/{}",
             self.repo, self.rev
         );
+
+        let target_url = self
+            .ui_url
+            .as_ref()
+            .map(|url| -> Result<String, anyhow::Error> {
+                let project: String = state.get_named("project").cloned()?;
+                let pipeline_run: &crate::executor::PipelineRun = state.get()?;
+
+                Ok(format!(
+                    "{}/projects/{}/runs/{}/{}",
+                    url, project, pipeline_run.id, pipeline_run.pipeline_id
+                ))
+            });
+        let target_url = if let Some(target_url) = target_url {
+            Some(target_url?)
+        } else {
+            None
+        };
+
         let body = Body {
-            state,
+            state: job_state,
             context: Some(name.as_ref().to_string()),
-            target_url: None,
             description: description.map(|d| d.as_ref().to_string()),
+            target_url,
         };
 
         let client = reqwest::Client::builder();

@@ -6,4 +6,12 @@ bind9:
 caddy:
   hostnames:
     'uci.ilyay.space': |
-      reverse_proxy :3002
+      handle /api/* {
+          uri strip_prefix /api
+          reverse_proxy :3002
+      }
+
+      handle * {
+          file_server
+          root * ${project.data.path}/webgui
+      }

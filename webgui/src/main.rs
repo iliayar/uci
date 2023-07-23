@@ -12,8 +12,8 @@ use leptos::*;
 use app::*;
 
 fn main() {
-    let runner_url = "http://localhost:3000/api".to_string();
-    let ws_runner_url = "ws://localhost:3000/api".to_string();
+    let runner_url = env!("UCI_BASE_URL");
+    let ws_runner_url = env!("UCI_WS_BASE_URL");
 
     mount_to_body(|cx| {
 	view! { cx,  <App runner_url={runner_url} ws_runner_url={ws_runner_url}/> }

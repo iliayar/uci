@@ -1,0 +1,34 @@
+jobs:
+  build-docker-image:
+    type: build
+    image: uci-web-gui-build
+    path: ${project.repos.uci.path}/webgui
+
+  build:
+    needs:
+      - build-docker-image
+
+    type: script
+    image: uci-web-gui-build
+    volumes:
+      '/build': ${project.repos.uci.path}
+    env:
+      UCI_BASE_URL: 'https://uci.ilyay.space/api'
+      UCI_WS_BASE_URL: 'wss://uci.ilyay.space/api'
+    script: |
+      set -e
+
+      cd webgui
+      /trunk build
+
+  deploy:
+    needs: ['build']
+    type: script
+    env:
+      DATA_DIR: ${project.data.path}/webgui
+      DIST_DIR: ${project.repos.uci.path}/dist
+    script: |
+      set -e
+
+      mkdir -p ${DATA_DIR} || echo "Already exists"
+      cp -r ${DIST_DIR}/* ${DATA_DIR}/
