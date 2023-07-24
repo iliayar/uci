@@ -2,7 +2,7 @@ jobs:
   run_script:
     steps:
       - type: script
-        # image: ubuntu
+        image: ubuntu
         script: |
           set -e
 
@@ -15,3 +15,5 @@ jobs:
           echo "6"
           echo "ba"
           printf "\n\n"
+
+          printf "\e[32mABOBA\e[0m"

@@ -31,6 +31,12 @@ impl LinesQueue {
 
     pub fn finish(mut self) -> Vec<String> {
         self.parse_lines();
+
+        if !self.data.is_empty() {
+            self.lines
+                .push_back(String::from_utf8_lossy(&self.data).to_string());
+        }
+
         self.lines.into_iter().collect()
     }
 

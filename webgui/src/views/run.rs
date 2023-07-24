@@ -32,6 +32,10 @@ pub fn LogLine(
 ) -> impl IntoView {
     let (t, text, ts, _pipeline, job) = params;
 
+    let text_raw_html = ansi_to_html::convert_escaped(&text).unwrap();
+    let text = view!{cx, <div class="inline"></div>};
+    text.set_inner_html(&text_raw_html);
+
     let ts = ts.format("%Y-%m-%d %H:%M:%S").to_string();
     let ts = view! {cx, <code class="text-black-1-light dark:text-black-1-dark pr-1">{ts}</code>};
 
@@ -41,9 +45,14 @@ pub fn LogLine(
 
     let text = match t {
         models::LogType::Regular => view! {cx, <code>{text}</code>},
-        models::LogType::Error => view! {cx, <code class="text-red-0-light dark:text-red-0-dark">{text}</code>},
-        models::LogType::Warning => view! {cx, <code class="text-yellow-0-light dark:text-yellow-0-dark">{text}</code>},
+        models::LogType::Error => {
+            view! {cx, <code class="text-red-0-light dark:text-red-0-dark">{text}</code>}
+        }
+        models::LogType::Warning => {
+            view! {cx, <code class="text-yellow-0-light dark:text-yellow-0-dark">{text}</code>}
+        }
     };
+
     view! {cx, <div>{ts} {job} {text}</div>}
 }
 
@@ -101,9 +110,9 @@ pub fn Run(cx: Scope) -> impl IntoView {
 
             let events_follow = ws(&config, run).await;
             let events = ws(&config, logs_run_id.run_id).await;
-            let mut last_ts = None;
 
-            let handle_events = |mut events: WsStream| async move {
+            let handle_events = |mut events: WsStream, since: Option<DateTime<Utc>>| async move {
+                let mut last_ts: Option<DateTime<Utc>> = None;
                 while let Some(event) = events.next().await {
                     match event {
                         WsMessage::Text(message) => {
@@ -116,15 +125,15 @@ pub fn Run(cx: Scope) -> impl IntoView {
                                     pipeline,
                                     job_id,
                                 }) => {
-                                    match last_ts {
-                                        None => {
-                                            last_ts = Some(timestamp);
-                                        }
-                                        Some(ts) => {
-                                            if timestamp <= ts {
-                                                continue;
-                                            }
-                                            last_ts = Some(ts.max(timestamp))
+                                    if let Some(ts) = last_ts {
+                                        last_ts = Some(ts.max(timestamp));
+                                    } else {
+                                        last_ts = Some(timestamp);
+                                    }
+
+                                    if let Some(since) = since.as_ref() {
+                                        if &timestamp <= since {
+                                            continue;
                                         }
                                     }
                                     add_log(t, text, timestamp, pipeline, job_id);
@@ -137,14 +146,17 @@ pub fn Run(cx: Scope) -> impl IntoView {
                         }
                     };
                 }
+
+                return last_ts;
             };
 
+            let mut last_ts = None;
             if let Some(events) = events {
-                handle_events(events).await;
+                last_ts = handle_events(events, None).await;
             }
 
             if let Some(events_follow) = events_follow {
-                handle_events(events_follow).await;
+                handle_events(events_follow, last_ts).await;
             }
         }
     });
