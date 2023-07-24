@@ -301,6 +301,7 @@ impl Docker {
             }),
         );
 
+	// FIXME: Make it work with LinesQueue
         #[rustfmt::skip]
         async_stream::try_stream! {
             while let Some(log) = logs.next().await {
@@ -351,7 +352,7 @@ impl Docker {
             cmd: params.command,
             exposed_ports: Some(exposed_ports),
             env: Some(get_env(params.env)),
-	    hostname: params.hostname,
+            hostname: params.hostname,
             ..Default::default()
         };
 
@@ -471,6 +472,9 @@ impl Docker {
 
         let mut interval = tokio::time::interval(std::time::Duration::from_secs(1));
 
+        let mut lines_regular = crate::utils::log_utils::LinesQueue::new();
+        let mut lines_error = crate::utils::log_utils::LinesQueue::new();
+
         if let StartExecResults::Attached { mut output, .. } =
             self.con.start_exec(&exec, None).await?
         {
@@ -496,20 +500,29 @@ impl Docker {
 
                 match msg {
                     container::LogOutput::StdErr { message } => {
-                        let bytes: Vec<u8> = message.into_iter().collect();
-                        logger
-                            .error(String::from_utf8_lossy(&bytes).to_string())
-                            .await?;
+                        lines_error.push(message.into_iter().collect());
                     }
                     container::LogOutput::StdOut { message }
                     | container::LogOutput::StdIn { message }
                     | container::LogOutput::Console { message } => {
-                        let bytes: Vec<u8> = message.into_iter().collect();
-                        logger
-                            .regular(String::from_utf8_lossy(&bytes).to_string())
-                            .await?;
+                        lines_regular.push(message.into_iter().collect());
                     }
                 }
+
+                while let Some(line) = lines_regular.next() {
+                    logger.regular(line).await?;
+                }
+
+                while let Some(line) = lines_error.next() {
+                    logger.error(line).await?;
+                }
+            }
+
+            for line in lines_regular.finish() {
+                logger.regular(line).await?;
+            }
+            for line in lines_error.finish() {
+                logger.error(line).await?;
             }
         } else {
             unreachable!();

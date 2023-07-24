@@ -2,10 +2,16 @@ jobs:
   run_script:
     steps:
       - type: script
+        # image: ubuntu
         script: |
           set -e
 
-          for i in $(seq 1 10); do
-            echo $i
-            sleep 1
-          done
+          echo "abo"
+          echo -n "1"
+          echo -n "2"
+          sleep 1
+          echo -n "345"
+          sleep 1
+          echo "6"
+          echo "ba"
+          printf "\n\n"
