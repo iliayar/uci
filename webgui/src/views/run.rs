@@ -33,7 +33,7 @@ pub fn LogLine(
     let (t, text, ts, _pipeline, job) = params;
 
     let text_raw_html = ansi_to_html::convert_escaped(&text).unwrap();
-    let text = view!{cx, <div class="inline"></div>};
+    let text = view! {cx, <div class="inline"></div>};
     text.set_inner_html(&text_raw_html);
 
     let ts = ts.format("%Y-%m-%d %H:%M:%S").to_string();
@@ -111,7 +111,9 @@ pub fn Run(cx: Scope) -> impl IntoView {
             let events_follow = ws(&config, run).await;
             let events = ws(&config, logs_run_id.run_id).await;
 
-            let handle_events = |mut events: WsStream, since: Option<DateTime<Utc>>| async move {
+            let handle_events = |mut events: WsStream,
+                                 since: Option<DateTime<Utc>>,
+                                 pipeline: String| async move {
                 let mut last_ts: Option<DateTime<Utc>> = None;
                 while let Some(event) = events.next().await {
                     match event {
@@ -122,9 +124,13 @@ pub fn Run(cx: Scope) -> impl IntoView {
                                     t,
                                     text,
                                     timestamp,
-                                    pipeline,
+                                    pipeline: log_pipeline,
                                     job_id,
                                 }) => {
+                                    if pipeline != log_pipeline {
+                                        continue;
+                                    }
+
                                     if let Some(ts) = last_ts {
                                         last_ts = Some(ts.max(timestamp));
                                     } else {
@@ -136,7 +142,7 @@ pub fn Run(cx: Scope) -> impl IntoView {
                                             continue;
                                         }
                                     }
-                                    add_log(t, text, timestamp, pipeline, job_id);
+                                    add_log(t, text, timestamp, log_pipeline, job_id);
                                 }
                                 _ => {}
                             }
@@ -152,11 +158,11 @@ pub fn Run(cx: Scope) -> impl IntoView {
 
             let mut last_ts = None;
             if let Some(events) = events {
-                last_ts = handle_events(events, None).await;
+                last_ts = handle_events(events, None, pipeline.clone()).await;
             }
 
             if let Some(events_follow) = events_follow {
-                handle_events(events_follow, last_ts).await;
+                handle_events(events_follow, last_ts, pipeline).await;
             }
         }
     });
