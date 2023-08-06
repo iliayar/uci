@@ -321,9 +321,17 @@ impl Docker {
             if let Ok(container) = self.con.inspect_container(name, None).await {
                 if let Some(id) = container.id {
                     logger
-                        .warning(format!("Container {} already exists. Skip creating", name))
+                        .warning(format!("Container {} already exists. Recreating", name))
                         .await?;
-                    return Ok(id);
+                    self.con
+                        .remove_container(
+                            &name,
+                            Some(RemoveContainerOptions {
+                                force: true,
+                                ..Default::default()
+                            }),
+                        )
+                        .await?;
                 }
             }
         }

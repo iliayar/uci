@@ -197,10 +197,10 @@ impl Service {
 
     pub fn get_restart_job(&self, build: bool) -> Option<common::Job> {
         let mut steps = Vec::new();
-        steps.push(common::Step::StopContainer(self.get_stop_config()?));
         if build {
             steps.push(common::Step::BuildImage(self.get_build_config()?));
         }
+        steps.push(common::Step::StopContainer(self.get_stop_config()?));
         steps.push(common::Step::RunContainer(self.get_run_config()?));
 
         let job = common::Job {

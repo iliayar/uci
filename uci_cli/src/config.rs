@@ -23,7 +23,7 @@ impl runner_client::RunnerClientConfig for Config {
     }
 
     fn token(&self) -> Option<&str> {
-        self.runner_url.as_ref().map(|u| u.as_str())
+        self.token.as_ref().map(|u| u.as_str())
     }
 }
 
