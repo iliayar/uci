@@ -14,6 +14,7 @@ pub struct ZoneBuilder {
     ip: Option<String>,
     nameservers: HashMap<String, String>,
     cnames: HashSet<String>,
+    extra: Option<String>,
 }
 
 impl ZoneBuilder {
@@ -46,6 +47,14 @@ impl ZoneBuilder {
             self.cnames.insert(name.clone());
         }
 
+        if let Some(oextra) = zone.extra.as_ref() {
+            if let Some(extra) = self.extra.as_mut() {
+                extra.push_str(oextra);
+            } else {
+                self.extra = Some(oextra.to_string());
+            }
+        }
+
         Ok(())
     }
 
@@ -54,6 +63,7 @@ impl ZoneBuilder {
             ip: self.ip,
             nameservers: self.nameservers,
             cnames: self.cnames,
+	    extra: self.extra,
         }
     }
 }
@@ -97,6 +107,7 @@ pub struct Zone {
     ip: Option<String>,
     nameservers: HashMap<String, String>,
     cnames: Vec<String>,
+    extra: Option<String>,
 }
 
 impl Bind {
@@ -131,6 +142,7 @@ mod raw {
         ip: Option<String>,
         nameservers: Option<HashMap<String, String>>,
         cnames: Option<Vec<String>>,
+        extra: Option<String>,
     }
 
     impl config::LoadRawSync for Bind {
@@ -151,6 +163,7 @@ mod raw {
                 ip: self.ip,
                 nameservers: self.nameservers.unwrap_or_default(),
                 cnames: self.cnames.unwrap_or_default(),
+                extra: self.extra,
             })
         }
     }

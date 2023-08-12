@@ -13,6 +13,7 @@ pub struct GenZone {
     pub ip: Option<String>,
     pub nameservers: HashMap<String, String>,
     pub cnames: HashSet<String>,
+    pub extra: Option<String>,
 }
 
 impl GenBind {
@@ -180,6 +181,7 @@ impl GenZone {
         for subdomain in self.cnames.iter() {
             records.push_str(&self.get_db_zone_cname(subdomain, zone)?);
         }
+        let extra = self.extra.unwrap_or("".to_string());
         Ok(format!(
             r#"
 $TTL    10800
@@ -191,9 +193,11 @@ $TTL    10800
                            3600 )       ; Negative Cache TTL
 ;
 {records}
+{extra}
 "#,
             zone = zone,
-            records = records
+            records = records,
+            extra = extra,
         ))
     }
 }
