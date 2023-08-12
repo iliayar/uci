@@ -181,7 +181,7 @@ impl GenZone {
         for subdomain in self.cnames.iter() {
             records.push_str(&self.get_db_zone_cname(subdomain, zone)?);
         }
-        let extra = self.extra.unwrap_or("".to_string());
+        let extra = self.extra.clone().unwrap_or_default();
         Ok(format!(
             r#"
 $TTL    10800
