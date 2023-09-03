@@ -7,6 +7,8 @@ members = [
     "uci_cli",
     "runner_lib",
     "runner_client",
+    "dynconf",
+    "dynconf/cli",
 ]
 
 exclude = [ "webgui" ]

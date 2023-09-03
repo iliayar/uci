@@ -1,0 +1,1 @@
+abo: ${${load(./values.yaml)}.ba}

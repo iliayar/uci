@@ -1,0 +1,3 @@
+a: gg
+b: ${${load(./values.yaml)}.v}
+c: ${"!23"}
