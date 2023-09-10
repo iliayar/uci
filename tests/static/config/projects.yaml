@@ -1,6 +1,6 @@
 projects:
   testci:
-    path: ${static_projects.config_dir}/projects/testci
+    config: ${load(./projects/testci/project.yaml)}
     repos:
       test:
         source: ssh://git@gitlab.com:iliayar/testci.git

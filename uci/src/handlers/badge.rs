@@ -48,7 +48,7 @@ async fn ghlike_badge(
     }: QueryParams,
 ) -> Result<impl warp::Reply, warp::Rejection> {
     if !call_context
-        .check_permissions(Some(&project_id), config::ActionType::Read)
+        .check_permissions(Some(&project_id), config::permissions::ActionType::Read)
         .await
     {
         return Err(warp::reject::custom(AuthRejection::TokenIsUnauthorized));

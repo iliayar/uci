@@ -1,15 +1,29 @@
 use std::path::PathBuf;
 
-use common::state::State;
+use crate::config;
 
-#[derive(Debug, Default)]
 pub struct ServiceConfig {
     pub data_dir: PathBuf,
     pub repos_path: PathBuf,
     pub data_path: PathBuf,
     pub internal_path: PathBuf,
-    pub secrets: super::Secrets,
-    pub tokens: super::Tokens,
+    pub secrets: config::secrets::Secrets,
+    pub tokens: config::permissions::Tokens,
+    pub projects_store: config::projects::ProjectsStore,
+}
+
+impl std::fmt::Debug for ServiceConfig {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ServiceConfig")
+            .field("data_dir", &self.data_dir)
+            .field("repos_path", &self.repos_path)
+            .field("data_path", &self.data_path)
+            .field("internal_path", &self.internal_path)
+            .field("secrets", &self.secrets)
+            .field("tokens", &self.tokens)
+            .field("projects_store", &"<dynamic object>")
+            .finish()
+    }
 }
 
 pub enum ActionEvent {
@@ -28,109 +42,136 @@ pub enum ActionEvent {
 }
 
 impl ServiceConfig {
-    pub async fn load<'a>(state: &State<'a>) -> Result<ServiceConfig, anyhow::Error> {
-        raw::load(state).await
-    }
-
     pub fn check_allowed<S: AsRef<str>>(
         &self,
         token: Option<S>,
-        action: super::ActionType,
+        action: config::permissions::ActionType,
     ) -> bool {
         self.tokens.check_allowed(token, action)
     }
 }
 
-impl From<&ServiceConfig> for common::vars::Value {
-    fn from(val: &ServiceConfig) -> Self {
-        let mut vars = common::vars::Value::default();
-        vars.assign("internal.path", (&val.internal_path).into())
-            .ok();
-        vars.assign("secrets", (&val.secrets).into()).ok();
-        vars
+pub use dyn_obj::DynServiceConfig;
+
+mod dyn_obj {
+    use std::path::PathBuf;
+
+    use crate::config;
+
+    use serde::{Deserialize, Serialize};
+
+    #[derive(Deserialize, Serialize)]
+    pub struct DynServiceConfig {
+        pub secrets: Option<config::secrets::DynSecrets>,
+        pub internal_path: PathBuf,
+        pub repos_path: PathBuf,
+        pub data_path: PathBuf,
+    }
+
+    impl From<&super::ServiceConfig> for DynServiceConfig {
+        fn from(config: &super::ServiceConfig) -> Self {
+            Self {
+                secrets: Some((&config.secrets).into()),
+                internal_path: config.internal_path.clone(),
+                repos_path: config.repos_path.clone(),
+                data_path: config.data_path.clone(),
+            }
+        }
     }
 }
 
-mod raw {
-    use std::path::PathBuf;
+pub mod raw {
+    use crate::config;
 
-    use common::state::State;
+    use dynconf::*;
     use serde::{Deserialize, Serialize};
 
-    use crate::config::load::LoadRawSync;
-    use crate::{config, utils};
-
-    const SERVICE_CONFIG: &str = "conf.yaml";
+    use anyhow::Result;
 
     const DEFAULT_REPOS_PATH: &str = "repos";
     const DEFAULT_DATA_PATH: &str = "data";
     const DEFAULT_INTERNAL_PATH: &str = "internal";
-    const DEFAULT_DATA_DIR: &str = "~/.uci";
+    const DEFAULT_DATA_DIR_EXPR: &str = "${~/.uci}";
 
     #[derive(Serialize, Deserialize)]
     #[serde(deny_unknown_fields)]
-    struct ServiceConfig {
-        data_dir: Option<String>,
-        secrets: Option<String>,
-        tokens: Option<config::permissions_raw::Tokens>,
+    pub struct ServiceConfig {
+        data_dir: Option<util::DynPath>,
+        secrets: Option<util::Dyn<config::secrets::raw::Secrets>>,
+        tokens: Option<util::Dyn<config::permissions::raw::Tokens>>,
+        projects_store: util::Dyn<ProjectsStore>,
+    }
+
+    #[derive(Serialize, Deserialize)]
+    #[serde(tag = "type", rename_all = "snake_case")]
+    enum ProjectsStore {
+        Static {
+            projects: util::Dyn<util::Lazy<config::static_projects::raw::Projects>>,
+        },
     }
 
     #[async_trait::async_trait]
-    impl config::LoadRaw for ServiceConfig {
-        type Output = super::ServiceConfig;
+    impl util::DynValue for ServiceConfig {
+        type Target = super::ServiceConfig;
 
-        async fn load_raw(self, state: &State) -> Result<Self::Output, anyhow::Error> {
-            let service_config: PathBuf = state.get_named("service_config").cloned()?;
-            let data_dir = utils::try_expand_home(
-                self.data_dir
-                    .unwrap_or_else(|| DEFAULT_DATA_DIR.to_string()),
-            );
+        async fn load(self, state: &mut State) -> Result<Self::Target> {
+            // ${~/.uci} -> <home>/.uci
+            let default_data_dir = eval_string(state, DEFAULT_DATA_DIR_EXPR).await?;
+            let data_dir = self
+                .data_dir
+                .load(state)
+                .await?
+                .unwrap_or_else(|| default_data_dir.into());
 
-            let mut res = super::ServiceConfig {
-                data_dir: data_dir.clone(),
-                data_path: data_dir.join(DEFAULT_DATA_PATH),
-                repos_path: data_dir.join(DEFAULT_REPOS_PATH),
-                internal_path: data_dir.join(DEFAULT_INTERNAL_PATH),
-                ..Default::default()
-            };
+            let internal_path = data_dir.join(DEFAULT_INTERNAL_PATH);
+            let repos_path = data_dir.join(DEFAULT_REPOS_PATH);
+            let data_path = data_dir.join(DEFAULT_DATA_PATH);
 
-            res.secrets = {
-                let mut state = state.clone();
-                state.set(&res);
+            state.mutate_global(config::utils::wrap_dyn_f(|mut dynconf| {
+                dynconf.config = Some(super::DynServiceConfig {
+                    secrets: None,
+                    internal_path: internal_path.clone(),
+                    repos_path: repos_path.clone(),
+                    data_path: data_path.clone(),
+                });
+                Ok(dynconf)
+            }))?;
 
-                if let Some(secrets) = self.secrets {
-                    let secrets_path = utils::eval_rel_path(&state, secrets, service_config)?;
-                    config::Secrets::load(secrets_path).await?
-                } else {
-                    config::Secrets::default()
-                }
-            };
+            let secrets = self.secrets.load(state).await?.unwrap_or_default();
 
-            res.tokens = {
-                let mut state = state.clone();
-                state.set(&res);
+            state.mutate_global(config::utils::wrap_dyn_f(|mut dynconf| {
+                dynconf.config.as_mut().unwrap().secrets = Some((&secrets).into());
+                Ok(dynconf)
+            }))?;
 
-                if let Some(tokens) = self.tokens {
-                    tokens.load_raw(&state)?
-                } else {
-                    config::Tokens::default()
-                }
-            };
+            let tokens = self.tokens.load(state).await?.unwrap_or_default();
+            let projects_store = self.projects_store.load(state).await?;
 
-            Ok(res)
+            Ok(super::ServiceConfig {
+                data_dir,
+                repos_path,
+                data_path,
+                internal_path,
+                secrets,
+                tokens,
+                projects_store,
+            })
         }
     }
 
-    pub async fn load<'a>(state: &State<'a>) -> Result<super::ServiceConfig, anyhow::Error> {
-        let service_config: PathBuf = state.get_named("service_config").cloned()?;
-        config::load::<ServiceConfig>(service_config.clone(), state)
-            .await
-            .map_err(|err| {
-                anyhow::anyhow!(
-                    "Failed to load service_config from {:?}: {}",
-                    service_config,
-                    err
-                )
-            })
+    #[async_trait::async_trait]
+    impl util::DynValue for ProjectsStore {
+        type Target = config::projects::ProjectsStore;
+
+        async fn load(self, state: &mut State) -> Result<Self::Target> {
+            match self {
+                ProjectsStore::Static { projects } => {
+                    let projects_store =
+                        config::static_projects::StaticProjects::new(projects.load(state).await?)
+                            .await?;
+                    config::projects::ProjectsStore::with_manager(projects_store).await
+                }
+            }
+        }
     }
 }

@@ -38,7 +38,7 @@ async fn list_repos_impl(
     project_id: &str,
 ) -> Result<models::ReposListResponse, anyhow::Error> {
     if !call_context
-        .check_permissions(Some(project_id), config::ActionType::Read)
+        .check_permissions(Some(project_id), config::permissions::ActionType::Read)
         .await
     {
         return Err(anyhow!("No permissions for viewing project"));

@@ -6,18 +6,8 @@ use common::state::State;
 #[derive(Debug, Default)]
 pub struct Services {
     services: HashMap<String, Service>,
-    pub networks: HashMap<String, Network>,
-    pub volumes: HashMap<String, Volume>,
-}
-
-#[derive(Debug)]
-pub struct Network {
-    pub global: bool,
-}
-
-#[derive(Debug)]
-pub struct Volume {
-    pub global: bool,
+    pub networks: HashMap<String, String>,
+    pub volumes: HashMap<String, String>,
 }
 
 #[derive(Debug)]
@@ -88,10 +78,6 @@ impl Services {
         });
     }
 
-    pub async fn load<'a>(state: &State<'a>) -> Result<Services, anyhow::Error> {
-        raw::load(state).await
-    }
-
     pub fn get(&self, service: &str) -> Option<&Service> {
         self.services.get(service)
     }
@@ -105,47 +91,6 @@ impl Services {
             services.push(service.describe(state).await?);
         }
         Ok(ServicesDescription { services })
-    }
-
-    pub fn get_network_name<S: AsRef<str>>(
-        &self,
-        project_id: S,
-        network: String,
-    ) -> Result<String, anyhow::Error> {
-        let global = self
-            .networks
-            .get(&network)
-            .ok_or_else(|| anyhow!("No such network {}", network))?
-            .global;
-        Ok(get_resource_name(project_id.as_ref(), network, global))
-    }
-
-    pub fn get_volume_name<S: AsRef<str>>(
-        &self,
-        project_id: S,
-        volume: String,
-    ) -> Result<String, anyhow::Error> {
-        if let Some(v) = self.volumes.get(&volume) {
-            Ok(get_resource_name(project_id.as_ref(), volume, v.global))
-        } else {
-            Ok(volume)
-        }
-    }
-
-    pub fn get_networks<S: AsRef<str>>(&self, project_id: S) -> Result<Vec<String>, anyhow::Error> {
-        let mut res = Vec::new();
-        for (network, _) in self.networks.iter() {
-            res.push(self.get_network_name(project_id.as_ref(), network.to_string())?);
-        }
-        Ok(res)
-    }
-
-    pub fn get_volumes<S: AsRef<str>>(&self, project_id: S) -> Result<Vec<String>, anyhow::Error> {
-        let mut res = Vec::new();
-        for (volume, _) in self.volumes.iter() {
-            res.push(self.get_volume_name(project_id.as_ref(), volume.to_string())?);
-        }
-        Ok(res)
     }
 }
 
@@ -297,19 +242,41 @@ impl Service {
     }
 }
 
-mod raw {
+pub use dyn_obj::DynServices;
+
+mod dyn_obj {
     use std::collections::HashMap;
 
-    use common::state::State;
     use serde::{Deserialize, Serialize};
 
-    use crate::{config, utils};
+    #[derive(Deserialize, Serialize)]
+    pub struct DynServices {
+        pub networks: HashMap<String, String>,
+        pub volumes: HashMap<String, String>,
+    }
 
-    use anyhow::anyhow;
+    impl From<&super::Services> for DynServices {
+        fn from(services: &super::Services) -> Self {
+            Self {
+                networks: services.networks.clone(),
+                volumes: services.volumes.clone(),
+            }
+        }
+    }
+}
 
-    #[derive(Serialize, Deserialize)]
+pub mod raw {
+    use crate::config;
+
+    use dynconf::*;
+    use serde::{Deserialize, Serialize};
+    use std::collections::HashMap;
+
+    use anyhow::{anyhow, Result};
+
+    #[derive(Serialize, Deserialize, Clone, Debug)]
     #[serde(deny_unknown_fields)]
-    struct Services {
+    pub struct Services {
         #[serde(default)]
         services: HashMap<String, Service>,
 
@@ -320,19 +287,15 @@ mod raw {
         volumes: HashMap<String, Volume>,
     }
 
-    #[derive(Serialize, Deserialize)]
+    #[derive(Serialize, Deserialize, Clone, Debug)]
     #[serde(deny_unknown_fields)]
     struct Service {
-        #[serde(default = "default_global")]
-        global: bool,
+        global: Option<bool>,
         build: Option<Build>,
         image: Option<String>,
 
-        #[serde(default)]
-        volumes: HashMap<String, String>,
-
-        #[serde(default)]
-        networks: Vec<String>,
+        volumes: Option<HashMap<String, String>>,
+        networks: Option<Vec<String>>,
 
         #[serde(default)]
         ports: Vec<String>,
@@ -340,112 +303,189 @@ mod raw {
         restart: Option<String>,
 
         #[serde(default)]
-        env: HashMap<String, String>,
+        env: HashMap<String, util::DynString>,
 
         hostname: Option<String>,
     }
 
-    #[derive(Serialize, Deserialize)]
+    #[derive(Serialize, Deserialize, Clone, Debug)]
     #[serde(deny_unknown_fields)]
     struct Build {
-        path: String,
+        path: util::DynPath,
         dockerfile: Option<String>,
     }
 
-    #[derive(Serialize, Deserialize)]
+    #[derive(Serialize, Deserialize, Clone, Debug)]
     #[serde(deny_unknown_fields)]
     struct Network {
-        #[serde(default = "default_global")]
-        global: bool,
+        global: Option<bool>,
     }
 
-    #[derive(Serialize, Deserialize)]
+    #[derive(Serialize, Deserialize, Clone, Debug)]
     #[serde(deny_unknown_fields)]
     struct Volume {
-        #[serde(default = "default_global")]
-        global: bool,
+        global: Option<bool>,
     }
 
-    fn default_global() -> bool {
-        false
-    }
+    #[async_trait::async_trait]
+    impl util::DynValue for Services {
+        type Target = super::Services;
 
-    impl config::LoadRawSync for Services {
-        type Output = super::Services;
+        async fn load(self, state: &mut State) -> Result<Self::Target> {
+            let networks = self.networks.load(state).await?;
+            let volumes = self.volumes.load(state).await?;
 
-        fn load_raw(self, state: &State) -> Result<Self::Output, anyhow::Error> {
-            let mut res = super::Services {
-                networks: self.networks.load_raw(state)?,
-                volumes: self.volumes.load_raw(state)?,
-                ..Default::default()
-            };
+            state.mutate_global(config::utils::wrap_dyn_f(|mut dynobj| {
+                dynobj.services = Some(super::DynServices {
+                    networks: networks.clone(),
+                    volumes: volumes.clone(),
+                });
+                Ok(dynobj)
+            }))?;
 
-            let services: Result<HashMap<_, _>, anyhow::Error> = {
-                let mut state = state.clone();
-                state.set(&res);
-                self.services
-                    .into_iter()
-                    .map(|(id, service)| {
-                        let mut state = state.clone();
-                        state.set_named("service_id", &id);
-                        let service = service.load_raw(&state)?;
-                        Ok((id, service))
-                    })
-                    .collect()
-            };
+            let services = self.services.load(state).await?;
 
-            res.services = services?;
-            Ok(res)
-        }
-    }
-
-    impl config::LoadRawSync for Network {
-        type Output = super::Network;
-
-        fn load_raw(self, state: &State) -> Result<Self::Output, anyhow::Error> {
-            Ok(super::Network {
-                global: self.global,
+            Ok(super::Services {
+                networks,
+                volumes,
+                services,
             })
         }
     }
 
-    impl config::LoadRawSync for Volume {
-        type Output = super::Volume;
+    #[async_trait::async_trait]
+    impl util::DynValue for Network {
+        type Target = String;
 
-        fn load_raw(self, state: &State) -> Result<Self::Output, anyhow::Error> {
-            Ok(super::Volume {
-                global: self.global,
-            })
+        async fn load(self, state: &mut State) -> Result<Self::Target> {
+            let dynobj = config::utils::get_dyn_object(state)?;
+            let id = dynobj._id.ok_or_else(|| anyhow!("No _id binding"))?;
+            let project_id = dynobj
+                .project
+                .ok_or_else(|| anyhow!("No project binding"))?
+                .id;
+
+            Ok(super::get_resource_name(
+                project_id,
+                id,
+                self.global.unwrap_or(false),
+            ))
         }
     }
 
-    impl config::LoadRawSync for Service {
-        type Output = super::Service;
+    #[async_trait::async_trait]
+    impl util::DynValue for Volume {
+        type Target = String;
 
-        fn load_raw(self, state: &State) -> Result<Self::Output, anyhow::Error> {
-            let service_id: &String = state.get_named("service_id")?;
+        async fn load(self, state: &mut State) -> Result<Self::Target> {
+            let dynobj = config::utils::get_dyn_object(state)?;
+            let id = dynobj._id.ok_or_else(|| anyhow!("No _id binding"))?;
+            let project_id = dynobj
+                .project
+                .ok_or_else(|| anyhow!("No project binding"))?
+                .id;
+
+            Ok(super::get_resource_name(
+                project_id,
+                id,
+                self.global.unwrap_or(false),
+            ))
+        }
+    }
+
+    #[async_trait::async_trait]
+    impl util::DynValue for Service {
+        type Target = super::Service;
+
+        async fn load(self, state: &mut State) -> Result<Self::Target> {
+            let dynobj = config::utils::get_dyn_object(state)?;
+            let service_id = dynobj._id.ok_or_else(|| anyhow!("No _id binding"))?;
+            let services = dynobj
+                .services
+                .ok_or_else(|| anyhow!("No services binding"))?;
+            let project_id = dynobj
+                .project
+                .ok_or_else(|| anyhow!("No project binding"))?
+                .id;
 
             let build = if let Some(build) = self.build {
-                Some(build.load_raw(state)?)
+                Some(build.load(state).await?)
             } else {
                 None
             };
 
-            let networks = config::utils::get_networks_names(state, self.networks)?;
-            let volumes = config::utils::get_volumes_names(state, self.volumes)?;
+            let networks: Result<Vec<String>> = self
+                .networks
+                .unwrap_or_default()
+                .into_iter()
+                .map(|name: String| {
+                    services
+                        .networks
+                        .get(&name)
+                        .ok_or_else(|| anyhow!("Unknown network: {}", name))
+                        .cloned()
+                })
+                .collect();
+            let volumes: Result<HashMap<String, String>> = self
+                .volumes
+                .unwrap_or_default()
+                .into_iter()
+                .map(|(key, name)| {
+                    let name = if let Some(name) = services.volumes.get(&name) {
+                        name.clone()
+                    } else {
+                        // name is path
+                        name
+                    };
+                    Ok((key, name))
+                })
+                .collect();
+
+            let global = self.global.unwrap_or(false);
+
+            let image = if let Some(image) = self.image {
+                // Will pull specified image
+                image
+            } else if global {
+                // Image name is service name
+                service_id.clone()
+            } else {
+                // Image name is scoped under project
+                format!("{}_{}", project_id, service_id)
+            };
+
+            let container = if global {
+                // Container name is service name
+                service_id.clone()
+            } else {
+                // Container name is scoped under project
+                format!("{}_{}", project_id, service_id)
+            };
 
             Ok(super::Service {
-                id: service_id.clone(),
-                image: get_image_name(state, self.image, self.global)?,
-                container: get_container_name(state, self.global)?,
+                id: service_id,
                 command: self.command,
                 ports: parse_port_mapping(self.ports)?,
                 restart: self.restart.unwrap_or_else(|| String::from("on_failure")),
-                env: config::utils::substitute_vars_dict(state, self.env)?,
+                env: self.env.load(state).await?,
                 hostname: self.hostname,
-                networks,
-                volumes,
+                networks: networks?,
+                volumes: volumes?,
+                container,
+                image,
                 build,
+            })
+        }
+    }
+
+    #[async_trait::async_trait]
+    impl util::DynValue for Build {
+        type Target = super::Build;
+
+        async fn load(self, state: &mut State) -> Result<Self::Target> {
+            Ok(super::Build {
+                path: self.path.load(state).await?,
+                dockerfile: self.dockerfile,
             })
         }
     }
@@ -487,66 +527,12 @@ mod raw {
             .collect();
         res
     }
-
-    fn get_image_name(
-        state: &State,
-        image: Option<String>,
-        global: bool,
-    ) -> Result<String, anyhow::Error> {
-        let service_id = state.get_named("service_id").cloned()?;
-        if let Some(image) = image {
-            // Will pull specified image
-            Ok(image)
-        } else if global {
-            // Image name is service name
-            Ok(service_id)
-        } else {
-            // Image name is scoped under project
-            let project_info: &config::ProjectInfo = state.get()?;
-            Ok(format!("{}_{}", project_info.id, service_id))
-        }
-    }
-
-    fn get_container_name(state: &State, global: bool) -> Result<String, anyhow::Error> {
-        let service_id = state.get_named("service_id").cloned()?;
-        if global {
-            // Container name is service name
-            Ok(service_id)
-        } else {
-            // Container name is scoped under project
-            let project_info: &config::ProjectInfo = state.get()?;
-            Ok(format!("{}_{}", project_info.id, service_id))
-        }
-    }
-
-    impl config::LoadRawSync for Build {
-        type Output = super::Build;
-
-        fn load_raw(self, state: &State) -> Result<Self::Output, anyhow::Error> {
-            let path = utils::try_expand_home(config::utils::substitute_vars(state, self.path)?);
-            Ok(super::Build {
-                path,
-                dockerfile: self.dockerfile,
-            })
-        }
-    }
-
-    pub async fn load<'a>(state: &State<'a>) -> Result<super::Services, anyhow::Error> {
-        let current_project: &config::CurrentProject = state.get()?;
-        let path = current_project.path.join(super::SERVICES_CONFIG);
-        if !path.exists() {
-            return Ok(Default::default());
-        }
-        config::load_sync::<Services>(path.clone(), state)
-            .await
-            .map_err(|err| anyhow::anyhow!("Failed to load services from {:?}: {}", path, err))
-    }
 }
 
-fn get_resource_name(project_id: &str, name: String, global: bool) -> String {
+fn get_resource_name(project_id: impl AsRef<str>, name: String, global: bool) -> String {
     if global {
         name
     } else {
-        format!("{}_{}", project_id, name)
+        format!("{}_{}", project_id.as_ref(), name)
     }
 }

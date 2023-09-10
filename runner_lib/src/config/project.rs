@@ -3,34 +3,31 @@ use std::{
     path::PathBuf,
 };
 
-use anyhow::anyhow;
+use anyhow::{anyhow, Result};
 use common::state::State;
 use log::*;
+
+use crate::config;
 
 #[derive(Debug)]
 pub struct Project {
     pub id: String,
-    pub actions: super::Actions,
-    pub pipelines: super::Pipelines,
-    pub services: super::Services,
-    pub bind: Vec<super::Bind>,
-    pub caddy: Vec<super::Caddy>,
-
-    // TODO: Allow common::vars::Value here
-    pub params: HashMap<String, String>,
+    pub actions: config::actions::Actions,
+    pub pipelines: config::pipelines::Pipelines,
+    pub services: config::services::Services,
+    pub bind: Vec<config::bind::Bind>,
+    pub caddy: Vec<config::caddy::Caddy>,
+    pub params: dynconf::Value,
 }
 
 pub struct CurrentProject {
     pub path: PathBuf,
 }
 
-const PROJECT_CONFIG: &str = "project.yaml";
-const PARAMS_CONFIG: &str = "params.yaml";
-
 pub struct EventActions {
     pub run_pipelines: HashSet<String>,
-    pub services: HashMap<String, super::ServiceAction>,
-    pub params: HashMap<String, common::vars::Value>,
+    pub services: HashMap<String, config::actions::ServiceAction>,
+    pub params: dynconf::Value,
 }
 
 impl EventActions {
@@ -40,7 +37,7 @@ impl EventActions {
 }
 
 impl Project {
-    pub fn merge(self, other: Project) -> Result<Project, anyhow::Error> {
+    pub fn merge(self, other: Project) -> Result<Project> {
         assert!(self.id == other.id);
         let id = self.id;
 
@@ -60,13 +57,7 @@ impl Project {
             .chain(other.bind.into_iter())
             .collect();
 
-        let mut params = HashMap::new();
-        for (id, value) in self.params.into_iter().chain(other.params.into_iter()) {
-            if params.contains_key(&id) {
-                return Err(anyhow!("Param {} duplicates", id));
-            }
-            params.insert(id, value);
-        }
+        let params = self.params.merge(other.params)?;
 
         Ok(Project {
             id,
@@ -79,82 +70,12 @@ impl Project {
         })
     }
 
-    pub async fn load<'a>(state: &State<'a>) -> Result<Project, anyhow::Error> {
-        let project_info: &super::ProjectInfo = state.get()?;
-        let project_id: String = project_info.id.clone();
-
-        let mut project: Option<Project> = None;
-
-        // NOTE: Maybe merge not a whole project, but parts
-        for project_root in project_info.path.iter() {
-            let mut state = state.clone();
-
-            let current_project = CurrentProject {
-                path: project_root.clone(),
-            };
-            state.set(&current_project);
-
-            let params = load_params(project_root.join(PARAMS_CONFIG), &state)
-                .await?
-                .unwrap_or_default();
-            state.set_named("project_params", &params);
-
-            let project_config = project_root.join(PROJECT_CONFIG);
-            state.set_named("project_config", &project_config);
-
-            let bind = super::Bind::load(&state)
-                .await
-                .map_err(|err| anyhow!("Failed to load bind config: {}", err))?
-                .into_iter()
-                .collect();
-            let caddy = super::Caddy::load(&state)
-                .await
-                .map_err(|err| anyhow!("Failed to load caddy config: {}", err))?
-                .into_iter()
-                .collect();
-
-            let services = super::Services::load(&state)
-                .await
-                .map_err(|err| anyhow!("Failed to load services: {}", err))?;
-
-            let mut state = state.clone();
-            state.set(&services);
-
-            let actions = super::Actions::load(&state)
-                .await
-                .map_err(|err| anyhow!("Failed to load actions: {}", err))?;
-
-            let pipelines = super::Pipelines::load(&state)
-                .await
-                .map_err(|err| anyhow!("Failed to load pipelines: {}", err))?;
-
-            let new_project = Project {
-                id: project_id.clone(),
-                params,
-                actions,
-                services,
-                pipelines,
-                bind,
-                caddy,
-            };
-
-            project = if let Some(project) = project.take() {
-                Some(project.merge(new_project)?)
-            } else {
-                Some(new_project)
-            };
-        }
-
-        Ok(project.ok_or_else(|| anyhow!("Must be at least one project"))?)
-    }
-
     pub async fn run_pipeline<'a>(
         &self,
         state: &State<'a>,
         pipeline_id: &str,
     ) -> Result<(), anyhow::Error> {
         let mut state = state.clone();
-        state.set_named("project_params", &self.params);
         state.set(&self.services);
 
         let pipeline = self.pipelines.get(&state, pipeline_id).await?;
@@ -167,7 +88,7 @@ impl Project {
     pub async fn run_service_actions<'a>(
         &self,
         state: &State<'a>,
-        actions: HashMap<String, super::ServiceAction>,
+        actions: HashMap<String, config::actions::ServiceAction>,
     ) -> Result<(), anyhow::Error> {
         if actions.is_empty() {
             return Ok(());
@@ -182,25 +103,27 @@ impl Project {
                 .ok_or_else(|| anyhow!("Now such service {} to run action on", service_id))?;
 
             let job = match action {
-                super::ServiceAction::Deploy => {
+                config::actions::ServiceAction::Deploy => {
                     service.get_restart_job(/* build */ true).ok_or_else(|| {
                         anyhow!("Cannot construct deploy config for service {}", service_id)
                     })?
                 }
-                super::ServiceAction::Start { build } => {
+                config::actions::ServiceAction::Start { build } => {
                     service.get_start_job(build).ok_or_else(|| {
                         anyhow!("Cannot construct start config for service {}", service_id)
                     })?
                 }
-                super::ServiceAction::Stop => service.get_stop_job().ok_or_else(|| {
-                    anyhow!("Cannot construct stop config for service {}", service_id)
-                })?,
-                super::ServiceAction::Restart { build } => {
+                config::actions::ServiceAction::Stop => {
+                    service.get_stop_job().ok_or_else(|| {
+                        anyhow!("Cannot construct stop config for service {}", service_id)
+                    })?
+                }
+                config::actions::ServiceAction::Restart { build } => {
                     service.get_restart_job(build).ok_or_else(|| {
                         anyhow!("Cannot construct restart config for service {}", service_id)
                     })?
                 }
-                super::ServiceAction::Logs { follow, tail } => {
+                config::actions::ServiceAction::Logs { follow, tail } => {
                     service.get_logs_job(follow, tail).ok_or_else(|| {
                         anyhow!("Cannot construct logs config for service {}", service_id)
                     })?
@@ -220,8 +143,8 @@ impl Project {
             stages: HashMap::from_iter([(worker_lib::executor::DEFEAULT_STAGE.to_string(), stage)]),
             id: "service-action".to_string(),
             links: Default::default(),
-            networks: self.services.get_networks(&self.id)?,
-            volumes: self.services.get_volumes(&self.id)?,
+            networks: self.services.networks.values().cloned().collect(),
+            volumes: self.services.volumes.values().cloned().collect(),
             integrations: Default::default(),
         };
 
@@ -237,12 +160,13 @@ impl Project {
     ) -> Result<(), anyhow::Error> {
         let pipeline_id = pipeline.id.clone();
 
+        let current_project = worker_lib::executor::CurrentProject(self.id.clone());
         let mut state = state.clone();
-        state.set_named("project", &self.id);
+        state.set(&current_project);
 
         info!("Running pipeline {}", pipeline_id);
 
-        let pinfo: &super::ProjectInfo = state.get()?;
+        let pinfo: &config::projects::ProjectInfo = state.get()?;
         let repos_list = worker_lib::executor::ReposList {
             project: self.id.clone(),
             repos: pinfo.repos.list_repos(),
@@ -260,16 +184,13 @@ impl Project {
     pub async fn handle_event<'a>(
         &self,
         state: &State<'a>,
-        event: &super::Event,
+        event: &config::actions::Event,
     ) -> Result<(), anyhow::Error> {
         let EventActions {
             run_pipelines,
             services,
             params,
         } = self.actions.get_matched_actions(event).await?;
-
-        let mut state = state.clone();
-        state.set_named("action_params", &params);
 
         let mut pipeline_tasks = Vec::new();
 
@@ -287,32 +208,88 @@ impl Project {
     }
 }
 
-pub async fn load_params<'a>(
-    params_file: PathBuf,
-    state: &State<'a>,
-) -> Result<Option<HashMap<String, String>>, anyhow::Error> {
-    if !params_file.exists() {
-        return Ok(None);
+pub struct ProjectParams(dynconf::Value);
+
+pub mod raw {
+    use crate::config;
+
+    use dynconf::*;
+    use serde::{Deserialize, Serialize};
+    use std::collections::HashMap;
+
+    use anyhow::{anyhow, Result};
+
+    #[derive(Deserialize, Serialize, Clone, Debug)]
+    #[serde(deny_unknown_fields)]
+    pub struct Project {
+        actions: Option<util::Dyn<config::actions::raw::Actions>>,
+        pipelines: Option<util::Dyn<config::pipelines::raw::Pipelines>>,
+        docker: Option<util::Dyn<config::services::raw::Services>>,
+        bind: Option<util::OneOrMany<util::Dyn<config::bind::raw::Bind>>>,
+        caddy: Option<util::OneOrMany<util::Dyn<config::caddy::raw::Caddy>>>,
+        params: Option<util::Dyn<HashMap<String, util::DynAny>>>,
     }
 
-    let env: String = state.get_named("env").cloned()?;
-    let content = tokio::fs::read_to_string(params_file).await?;
-    let params: HashMap<String, HashMap<String, String>> = serde_yaml::from_str(&content)?;
+    #[async_trait::async_trait]
+    impl util::DynValue for Project {
+        type Target = super::Project;
 
-    let default_params = params.get("__default__").cloned().unwrap_or_default();
-    let env_params = params.get(&env).cloned().unwrap_or_default();
+        async fn load(self, state: &mut State) -> Result<Self::Target> {
+            let dynobj = config::utils::get_dyn_object(state)?;
+            let env = dynobj.env;
+            let project_id = dynobj
+                .project
+                .ok_or_else(|| anyhow!("No project binding"))?
+                .id;
 
-    let mut result = HashMap::new();
+            let params_raw = self.params.load(state).await?.unwrap_or_default();
+            let params = params_raw
+                .get("__default__")
+                .cloned()
+                .unwrap_or_default()
+                .merge(params_raw.get(&env).cloned().unwrap_or_default())?;
 
-    for (key, value) in env_params.into_iter() {
-        result.insert(key, super::utils::substitute_vars(state, value)?);
-    }
+            state.mutate_global(config::utils::wrap_dyn_f(|mut dynobj| {
+                dynobj.params = dynobj.params.merge(params.clone())?;
+                Ok(dynobj)
+            }))?;
 
-    for (key, value) in default_params.into_iter() {
-        if let std::collections::hash_map::Entry::Vacant(e) = result.entry(key) {
-            e.insert(super::utils::substitute_vars(state, value)?);
+            let bind: Vec<config::bind::Bind> = self
+                .bind
+                .load(state)
+                .await?
+                .unwrap_or_default()
+                .into_iter()
+                .filter_map(|v| v)
+                .collect();
+            let caddy: Vec<config::caddy::Caddy> = self
+                .caddy
+                .load(state)
+                .await?
+                .unwrap_or_default()
+                .into_iter()
+                .filter_map(|v| v)
+                .collect();
+
+            let services = self.docker.load(state).await?.unwrap_or_default();
+
+            state.mutate_global(config::utils::wrap_dyn_f(|mut dynobj| {
+                dynobj.services = Some((&services).into());
+                Ok(dynobj)
+            }))?;
+
+            let actions = self.actions.load(state).await?.unwrap_or_default();
+            let pipelines = self.pipelines.load(state).await?.unwrap_or_default();
+
+            Ok(super::Project {
+                id: project_id.clone(),
+                bind,
+                caddy,
+                params,
+                actions,
+                services,
+                pipelines,
+            })
         }
     }
-
-    Ok(Some(result))
 }

@@ -1,8 +1,6 @@
 // FIXME: This file is very personal, maybe make it more generic
 use std::collections::HashMap;
 
-use common::state::State;
-
 #[derive(Default)]
 pub struct CaddyBuilder {
     hostnames: HashMap<String, String>,
@@ -33,77 +31,34 @@ pub struct Caddy {
     hostnames: HashMap<String, String>,
 }
 
-impl Caddy {
-    pub async fn load<'a>(state: &State<'a>) -> Result<Option<Caddy>, anyhow::Error> {
-        raw::load(state).await
-    }
-}
-
-mod raw {
-    use std::{collections::HashMap, path::PathBuf};
-
-    use common::state::State;
+pub mod raw {
+    use dynconf::*;
     use serde::{Deserialize, Serialize};
+    use std::collections::HashMap;
 
-    use anyhow::anyhow;
+    use anyhow::Result;
 
-    use crate::config::{self, Expr, LoadRawSync};
-
-    #[derive(Serialize, Deserialize)]
-    pub struct Config {
-        caddy: Option<Caddy>,
-    }
-
-    #[derive(Serialize, Deserialize)]
+    #[derive(Serialize, Deserialize, Clone, Debug)]
     #[serde(deny_unknown_fields)]
     pub struct Caddy {
-        enabled: Option<Expr<bool>>,
-        hostnames: HashMap<String, String>,
+        enabled: Option<util::Dyn<bool>>,
+        hostnames: HashMap<String, util::DynString>,
     }
 
-    impl config::LoadRawSync for Caddy {
-        type Output = super::Caddy;
+    #[async_trait::async_trait]
+    impl util::DynValue for Caddy {
+        type Target = Option<super::Caddy>;
 
-        fn load_raw(self, state: &State) -> Result<Self::Output, anyhow::Error> {
-            let hostnames: Result<HashMap<_, _>, anyhow::Error> = self
-                .hostnames
-                .into_iter()
-                .map(|(hostname, config)| {
-                    Ok((hostname, config::utils::substitute_vars(state, config)?))
-                })
-                .collect();
-            Ok(super::Caddy {
-                hostnames: hostnames?,
-            })
-        }
-    }
-
-    impl config::LoadRawSync for Config {
-        type Output = Config;
-
-        fn load_raw(self, state: &State) -> Result<Self::Output, anyhow::Error> {
-            Ok(self)
-        }
-    }
-
-    pub async fn load<'a>(state: &State<'a>) -> Result<Option<super::Caddy>, anyhow::Error> {
-        let path: PathBuf = state.get_named("project_config").cloned()?;
-        if path.exists() {
-            let config: Result<Config, anyhow::Error> =
-                config::load_sync::<Config>(path.clone(), state)
-                    .await
-                    .map_err(|err| anyhow!("Failed to load caddy from {:?}: {}", path, err));
-            if let Some(caddy) = config?.caddy {
-                if caddy.enabled.clone().load_raw(state)?.unwrap_or(true) {
-                    Ok(Some(caddy.load_raw(state)?))
-                } else {
-                    Ok(None)
-                }
-            } else {
-                Ok(None)
+        async fn load(self, state: &mut State) -> Result<Self::Target> {
+            if !self.enabled.load(state).await?.unwrap_or(true) {
+                return Ok(None);
             }
-        } else {
-            Ok(None)
+
+            let mut hostnames: HashMap<String, String> = HashMap::new();
+            for (hostname, config) in self.hostnames.into_iter() {
+                hostnames.insert(hostname, config.load(state).await?);
+            }
+            Ok(Some(super::Caddy { hostnames }))
         }
     }
 }

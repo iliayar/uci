@@ -1,4 +1,4 @@
-bind9:
+bind:
   enabled: false
   zones:
     'ilyay.space':
@@ -15,7 +15,7 @@ bind9:
       cnames:
         - 'some-service'
 caddy:
-  enabled: true
+  enabled: ${params.caddy_enabled}
   hostnames:
     'ilyay.space': |
       file_server
@@ -23,7 +23,7 @@ caddy:
   
     'conscpects.ilyay.space': |
       file_server
-      root * ${project.data.path}/caddy/conspects/out
+      root * ${project.data_path}/caddy/conspects/out
   
       route / {
         redir https://conspects.ilyay.space/README.html
@@ -39,4 +39,7 @@ caddy:
     'iliayar.ru': |
       redir https://ilyay.space{uri}
 
-  
+actions: ${${load(./actions.yaml)}.actions}
+docker: ${load(./services.yaml)}
+pipelines: ${${load(./pipelines.yaml)}.pipelines}
+params: ${load(./params.yaml)}

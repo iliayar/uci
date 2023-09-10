@@ -22,4 +22,4 @@ jobs:
           - test-global-net
 links:
   'src': ${project.repos.test.path}
-  'out': ${project.data.path}/some_result
+  'out': ${project.data_path}/some_result

@@ -1,11 +1,6 @@
 pipelines:
-  echo:
-    path: pipelines/echo_pipeline.yaml
-  test-needs:
-    path: pipelines/test_pipeline.yaml
-  stub:
-    path: pipelines/stub_pipeline.yaml
-  test_cancel:
-    path: pipelines/test_cancel.yaml
-  test_web:
-    path: pipelines/test_web.yaml
+  echo: ${load(./pipelines/echo_pipeline.yaml)}
+  test-needs: ${load(./pipelines/test_pipeline.yaml)}
+  stub: ${load(./pipelines/stub_pipeline.yaml)}
+  test_cancel: ${load(./pipelines/test_cancel.yaml)}
+  test_web: ${load(./pipelines/test_web.yaml)}

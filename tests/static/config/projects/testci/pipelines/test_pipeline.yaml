@@ -1,7 +1,8 @@
 jobs:
   j1:
     steps:
-      - script: |
+      - type: script
+        script: |
           pwd
           echo $TEST_ENV
         env:

@@ -38,7 +38,7 @@ async fn list_services_impl(
     project_id: &str,
 ) -> Result<models::ServicesListResponse, anyhow::Error> {
     if !call_context
-        .check_permissions(Some(project_id), config::ActionType::Read)
+        .check_permissions(Some(project_id), config::permissions::ActionType::Read)
         .await
     {
         return Err(anyhow!("No permissions for viewing project"));
@@ -54,17 +54,13 @@ async fn list_services_impl(
     for service in services_description.services.into_iter() {
         let status = match service.status {
             worker_lib::docker::ContainerStatus::Running => models::ServiceStatus::Running,
-            worker_lib::docker::ContainerStatus::NotRunning => {
-                models::ServiceStatus::NotRunning
-            }
-            worker_lib::docker::ContainerStatus::Starting => {
-                models::ServiceStatus::Starting
-            }
-            worker_lib::docker::ContainerStatus::Restarting => {
-                models::ServiceStatus::Restarting
-            }
+            worker_lib::docker::ContainerStatus::NotRunning => models::ServiceStatus::NotRunning,
+            worker_lib::docker::ContainerStatus::Starting => models::ServiceStatus::Starting,
+            worker_lib::docker::ContainerStatus::Restarting => models::ServiceStatus::Restarting,
             worker_lib::docker::ContainerStatus::Dead => models::ServiceStatus::Dead,
-            worker_lib::docker::ContainerStatus::Exited(code) => models::ServiceStatus::Exited(code),
+            worker_lib::docker::ContainerStatus::Exited(code) => {
+                models::ServiceStatus::Exited(code)
+            }
             worker_lib::docker::ContainerStatus::Unknown => models::ServiceStatus::Unknown,
         };
         services.push(models::Service {

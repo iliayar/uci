@@ -26,7 +26,7 @@ async fn upload(
     form: FormData,
 ) -> Result<impl warp::Reply, warp::Rejection> {
     if !call_context
-        .check_permissions(None, config::ActionType::Write)
+        .check_permissions(None, config::permissions::ActionType::Write)
         .await
     {
         return Err(warp::reject::custom(AuthRejection::TokenIsUnauthorized));

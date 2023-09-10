@@ -1,4 +1,5 @@
 use anyhow::{anyhow, Result};
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
 #[cfg(feature = "json")]
@@ -7,7 +8,8 @@ use serde_json;
 #[cfg(feature = "yaml")]
 use serde_yaml;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(untagged)]
 pub enum Value {
     String(String),
     Boolean(bool),
@@ -41,6 +43,12 @@ impl std::fmt::Display for ValueType {
                 ValueType::Null => "null",
             }
         )
+    }
+}
+
+impl Default for Value {
+    fn default() -> Self {
+        Value::Null
     }
 }
 
@@ -112,6 +120,31 @@ impl Value {
         }
     }
 
+    #[cfg(feature = "json")]
+    pub fn from_t<T>(t: T) -> Result<Value>
+    where
+        T: Serialize,
+    {
+        Self::from_json(serde_json::to_value(t)?)
+    }
+
+    #[cfg(feature = "json")]
+    pub fn to_t<T>(self) -> Result<T>
+    where
+        T: for<'a> Deserialize<'a>,
+    {
+        Ok(serde_json::from_value(self.to_json())?)
+    }
+
+    #[cfg(feature = "json")]
+    pub fn wrap_fun_t<T, R>(f: impl Fn(T) -> Result<R>) -> impl Fn(Value) -> Result<Value>
+    where
+        R: Serialize,
+        T: for<'a> Deserialize<'a>,
+    {
+        move |value: Value| -> Result<Value> { Value::from_t(f(value.to_t()?)?) }
+    }
+
     pub fn try_to_string(self) -> Result<String> {
         match self {
             Value::String(s) => Ok(s),
@@ -132,5 +165,73 @@ impl Value {
             Value::Dict(_) => ValueType::Dict,
             Value::Null => ValueType::Null,
         }
+    }
+
+    pub fn merge(self, other: Value) -> Result<Value> {
+        merge(self, other)
+    }
+}
+
+impl From<String> for Value {
+    fn from(s: String) -> Self {
+        Value::String(s)
+    }
+}
+
+impl From<i64> for Value {
+    fn from(i: i64) -> Self {
+        Value::Integer(i)
+    }
+}
+
+impl From<bool> for Value {
+    fn from(b: bool) -> Self {
+        Value::Boolean(b)
+    }
+}
+
+impl<T> From<Vec<T>> for Value
+where
+    T: Into<Value>,
+{
+    fn from(v: Vec<T>) -> Self {
+        Value::Array(v.into_iter().map(Into::into).collect())
+    }
+}
+
+impl<T> From<HashMap<String, T>> for Value
+where
+    T: Into<Value>,
+{
+    fn from(m: HashMap<String, T>) -> Self {
+        Value::Dict(m.into_iter().map(|(k, v)| (k, v.into())).collect())
+    }
+}
+
+pub fn merge(lhs: Value, rhs: Value) -> Result<Value> {
+    match (lhs, rhs) {
+        (Value::String(_), rhs @ Value::String(_)) => Ok(rhs),
+        (Value::Boolean(_), rhs @ Value::Boolean(_)) => Ok(rhs),
+        (Value::Integer(_), rhs @ Value::Integer(_)) => Ok(rhs),
+        (Value::Array(mut lhs), Value::Array(mut rhs)) => {
+            lhs.append(&mut rhs);
+            Ok(Value::Array(lhs))
+        }
+        (Value::Dict(mut lhs), Value::Dict(rhs)) => {
+            for (key, rhs_value) in rhs.into_iter() {
+                let lhs_value = lhs.remove(&key).unwrap_or(Value::Null);
+                lhs.insert(key, merge(lhs_value, rhs_value)?);
+            }
+            Ok(Value::Dict(lhs))
+        }
+
+        (Value::Null, rhs) => Ok(rhs),
+        (lhs, Value::Null) => Ok(lhs),
+
+        (lhs, rhs) => Err(anyhow!(
+            "Cannot merge {} with {}",
+            lhs.typename(),
+            rhs.typename()
+        )),
     }
 }

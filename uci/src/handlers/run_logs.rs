@@ -41,7 +41,7 @@ async fn run_logs_impl(
     query: models::RunsLogsRequestQuery,
 ) -> Result<models::ContinueReponse, anyhow::Error> {
     if !call_context
-        .check_permissions(Some(&query.project), config::ActionType::Read)
+        .check_permissions(Some(&query.project), config::permissions::ActionType::Read)
         .await
     {
         return Err(anyhow!("No permissions for viewing logs in project"));

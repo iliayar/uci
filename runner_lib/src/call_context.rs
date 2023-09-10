@@ -109,7 +109,7 @@ impl CallContext {
         &self,
         project: &str,
         services: Vec<String>,
-        action: config::ServiceAction,
+        action: config::actions::ServiceAction,
     ) -> Result<(), anyhow::Error> {
         self.with_state(|state| async move {
             self.context
@@ -123,7 +123,7 @@ impl CallContext {
         &self,
         project: &str,
         service: &str,
-        action: config::ServiceAction,
+        action: config::actions::ServiceAction,
     ) -> Result<(), anyhow::Error> {
         self.run_services_actions(project, vec![service.to_string()], action)
             .await
@@ -138,9 +138,9 @@ impl CallContext {
         update_only: bool,
     ) -> Result<(), anyhow::Error> {
         self.with_state(|state| async move {
+            let dry_run_binding = worker_lib::executor::DryRun(dry_run);
             let mut state = state.clone();
-            state.set_named("dry_run", &dry_run);
-            state.set_named("update_only", &update_only);
+            state.set(&dry_run_binding);
             self.context
                 .update_repo(&state, project_id, repo_id, artifact)
                 .await
@@ -149,15 +149,19 @@ impl CallContext {
     }
 
     pub async fn reload_config(&self) -> Result<(), anyhow::Error> {
-        self.context.reload_config().await
+        self.with_state(|state| async move { self.context.reload_config(&state).await })
+            .await
     }
 
-    pub async fn list_projects(&self) -> Result<Vec<config::ProjectInfo>, anyhow::Error> {
+    pub async fn list_projects(&self) -> Result<Vec<config::projects::ProjectInfo>, anyhow::Error> {
         self.with_state(|state| async move { self.context.list_projects(&state).await })
             .await
     }
 
-    pub async fn get_project(&self, project_id: &str) -> Result<config::Project, anyhow::Error> {
+    pub async fn get_project(
+        &self,
+        project_id: &str,
+    ) -> Result<config::project::Project, anyhow::Error> {
         self.with_state(|state| async move { self.context.get_project(&state, project_id).await })
             .await
     }
@@ -165,7 +169,7 @@ impl CallContext {
     pub async fn get_project_info(
         &self,
         project_id: &str,
-    ) -> Result<config::ProjectInfo, anyhow::Error> {
+    ) -> Result<config::projects::ProjectInfo, anyhow::Error> {
         self.with_state(
             |state| async move { self.context.get_project_info(&state, project_id).await },
         )
@@ -179,8 +183,9 @@ impl CallContext {
         dry_run: bool,
     ) -> Result<(), anyhow::Error> {
         self.with_state(|state| async move {
+            let dry_run_binding = worker_lib::executor::DryRun(dry_run);
             let mut state = state.clone();
-            state.set_named("dry_run", &dry_run);
+            state.set(&dry_run_binding);
             self.context
                 .call_trigger(&state, project_id, trigger_id)
                 .await
@@ -191,7 +196,7 @@ impl CallContext {
     pub async fn check_permissions(
         &self,
         project_id: Option<&str>,
-        action: config::ActionType,
+        action: config::permissions::ActionType,
     ) -> bool {
         self.with_state(|state| async move {
             if !self.check_permisions {

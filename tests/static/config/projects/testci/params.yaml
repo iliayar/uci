@@ -10,4 +10,4 @@ dev:
   caddy_enabled: false
 prod:
   param2: booba
-  param3: ${secrets.token1}
+  param3: ${config.secrets.token1}

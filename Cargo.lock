@@ -582,6 +582,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "async-trait",
+ "futures",
  "nom",
  "serde",
  "serde_json",
@@ -1997,6 +1998,7 @@ dependencies = [
  "anyhow",
  "async-trait",
  "common",
+ "dynconf",
  "futures",
  "log 0.4.19",
  "logger",

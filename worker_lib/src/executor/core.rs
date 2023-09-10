@@ -165,7 +165,7 @@ impl<'a> Logger<'a> {
     where
         'b: 'a,
     {
-        let job_id: String = state.get_named("job").cloned()?;
+        let job_id: String = state.get::<CurrentJob>().cloned()?.0;
         let run_context: &RunContext = state.get()?;
         let pipeline_run: &PipelineRun = state.get()?;
         let log_file = if write_log {
@@ -623,7 +623,7 @@ impl Executor {
         pipeline: Pipeline,
     ) -> Result<(), anyhow::Error> {
         let run_context: &RunContext = state.get()?;
-        let project: String = state.get_named("project").cloned()?;
+        let project: String = state.get::<CurrentProject>().cloned()?.0;
 
         let integrations = Integrations::from_map(pipeline.integrations.clone())?;
 
@@ -896,10 +896,11 @@ impl Executor {
     ) -> Result<String, anyhow::Error> {
         let run_context: &RunContext = state.get()?;
         let integrations: &Integrations = state.get()?;
-        let dry_run: bool = state.get_named("dry_run").cloned().unwrap_or(false);
+        let dry_run: bool = state.get::<DryRun>().cloned().map(|v| v.0).unwrap_or(false);
 
+        let current_job = CurrentJob(id.clone());
         let mut state = state.clone();
-        state.set_named("job", &id);
+        state.set(&current_job);
 
         info!("Runnig job {}", id);
         let pipeline_run: &PipelineRun = state.get()?;
@@ -1005,6 +1006,15 @@ impl Executor {
         Ok(())
     }
 }
+
+#[derive(Clone)]
+pub struct CurrentJob(pub String);
+
+#[derive(Clone)]
+pub struct CurrentProject(pub String);
+
+#[derive(Clone)]
+pub struct DryRun(pub bool);
 
 mod cycles {
     use std::collections::{HashMap, HashSet};

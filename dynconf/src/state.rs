@@ -74,6 +74,20 @@ impl<'a> State<'a> {
         }
     }
 
+    pub fn mutate_global(&mut self, f: impl FnOnce(Value) -> Result<Value>) -> Result<()> {
+        let global = if let Some(value) = self.content.global.take() {
+            value
+        } else if let Some(parent) = self.parent {
+            parent.get_global().cloned().unwrap_or(Value::Null)
+        } else {
+            Value::Null
+        };
+
+        self.content.global = Some(f(global)?);
+
+        Ok(())
+    }
+
     pub fn set_current_dir(&mut self, current_dir: PathBuf) {
         self.content.set_current_dir(current_dir);
     }

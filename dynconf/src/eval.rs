@@ -1,9 +1,6 @@
 use super::parser;
 use crate::prelude::*;
-use std::{
-    borrow::BorrowMut,
-    path::{Path, PathBuf},
-};
+use std::path::PathBuf;
 
 #[async_trait::async_trait]
 pub trait Evaluate {
@@ -12,7 +9,7 @@ pub trait Evaluate {
 
 #[async_trait::async_trait]
 impl<'a> Evaluate for parser::LValue<'a> {
-    async fn eval(self, state: &mut State) -> Result<Value> {
+    async fn eval(self, _state: &mut State) -> Result<Value> {
         match self {
             parser::LValue::String(s) => Ok(Value::String(snailquote::unescape(s)?.to_string())),
             parser::LValue::QuoteString(s) => Ok(Value::String(s.to_string())),
@@ -80,6 +77,11 @@ impl<'a> Evaluate for parser::LExpression<'a> {
                         .get_current_dir()
                         .ok_or_else(|| anyhow!("Current directory is not set"))?
                         .join(segments.into_iter().collect::<PathBuf>()),
+                    parser::LFsPathType::FromHome => PathBuf::from(
+                        std::env::var("HOME")
+                            .map_err(|err| anyhow!("Cannot expand path from home: {}", err))?,
+                    )
+                    .join(segments.into_iter().collect::<PathBuf>()),
                 };
 
                 Ok(Value::String(path.to_string_lossy().to_string()))

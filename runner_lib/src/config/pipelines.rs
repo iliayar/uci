@@ -1,16 +1,11 @@
-use std::{collections::HashMap, path::PathBuf};
+use std::collections::HashMap;
 
-use anyhow::anyhow;
+use anyhow::{anyhow, Result};
 use common::state::State;
 
 #[derive(Debug, Default)]
 pub struct Pipelines {
-    pipelines: HashMap<String, PipelineLocation>,
-}
-
-#[derive(Debug)]
-struct PipelineLocation {
-    path: PathBuf,
+    pipelines: HashMap<String, common::Pipeline>,
 }
 
 pub struct PipelinesDescription {
@@ -22,7 +17,7 @@ pub struct PipelineDescription {
 }
 
 impl Pipelines {
-    pub fn merge(self, other: Pipelines) -> Result<Pipelines, anyhow::Error> {
+    pub fn merge(self, other: Pipelines) -> Result<Pipelines> {
         let mut pipelines = HashMap::new();
 
         for (id, pipeline) in self
@@ -39,27 +34,15 @@ impl Pipelines {
         Ok(Pipelines { pipelines })
     }
 
-    pub async fn load<'a>(state: &State<'a>) -> Result<Pipelines, anyhow::Error> {
-        raw::load(state)
-            .await
-            .map_err(|err| anyhow!("Failed to pipelines: {}", err))
-    }
-
     pub async fn get<'a>(
         &self,
         state: &State<'a>,
         pipeline: impl AsRef<str>,
-    ) -> Result<common::Pipeline, anyhow::Error> {
-        let location = self
-            .pipelines
+    ) -> Result<common::Pipeline> {
+        self.pipelines
             .get(pipeline.as_ref())
-            .ok_or_else(|| anyhow!("No such pipeline: {}", pipeline.as_ref()))?;
-
-        let pipeline_id = pipeline.as_ref().to_string();
-        let mut state = state.clone();
-        state.set_named("pipeline_id", &pipeline_id);
-
-        raw::load_pipeline(&state, pipeline, &location.path).await
+            .cloned()
+            .ok_or_else(|| anyhow!("No such pipeline: {}", pipeline.as_ref()))
     }
 
     pub async fn list_pipelines(&self) -> PipelinesDescription {
@@ -73,59 +56,42 @@ impl Pipelines {
     }
 }
 
-pub const PIPELINES_CONFIG: &str = "pipelines.yaml";
+pub mod raw {
+    use crate::config;
 
-mod raw {
-    use std::{collections::HashMap, path::PathBuf};
-
-    use common::state::State;
+    use dynconf::*;
     use serde::{Deserialize, Serialize};
+    use std::collections::HashMap;
 
-    use crate::{
-        config::{self, Expr},
-        utils,
-    };
+    use anyhow::{anyhow, Result};
 
-    use anyhow::anyhow;
-
-    #[derive(Deserialize, Serialize)]
-    #[serde(deny_unknown_fields)]
-    struct Pipelines {
-        pipelines: HashMap<String, PipelineLocation>,
+    #[derive(Deserialize, Serialize, Clone, Debug)]
+    #[serde(transparent)]
+    pub struct Pipelines {
+        pipelines: HashMap<String, util::Dyn<Pipeline>>,
     }
 
-    #[derive(Deserialize, Serialize)]
-    #[serde(deny_unknown_fields)]
-    struct PipelineLocation {
-        path: String,
-    }
-
-    #[derive(Deserialize, Serialize)]
+    #[derive(Deserialize, Serialize, Clone, Debug)]
     #[serde(deny_unknown_fields)]
     struct Pipeline {
         jobs: HashMap<String, Job>,
-        links: Option<HashMap<String, String>>,
+        links: Option<HashMap<String, util::DynString>>,
         stages: Option<HashMap<String, Stage>>,
-        integrations: Option<HashMap<String, serde_json::Value>>,
+        integrations: Option<HashMap<String, util::DynAny>>,
     }
 
-    #[derive(Deserialize, Serialize)]
+    #[derive(Deserialize, Serialize, Clone, Debug)]
     #[serde(deny_unknown_fields)]
     struct JobCommon {
         needs: Option<Vec<String>>,
         stage: Option<String>,
-        enabled: Option<Expr<bool>>,
+        // TODO: Make it lazy
+        enabled: Option<util::Dyn<bool>>,
     }
 
-    #[derive(Deserialize, Serialize)]
+    #[derive(Deserialize, Serialize, Clone, Debug)]
     #[serde(untagged)]
     enum Job {
-        JobWithSteps {
-            #[serde(flatten)]
-            common: JobCommon,
-
-            steps: Vec<Step>,
-        },
         JobWithSingleStep {
             #[serde(flatten)]
             common: JobCommon,
@@ -133,9 +99,15 @@ mod raw {
             #[serde(flatten)]
             step: Step,
         },
+        JobWithSteps {
+            #[serde(flatten)]
+            common: JobCommon,
+
+            steps: Vec<Step>,
+        },
     }
 
-    #[derive(Deserialize, Serialize)]
+    #[derive(Deserialize, Serialize, Clone, Debug)]
     #[serde(deny_unknown_fields)]
     #[serde(tag = "type")]
     enum Step {
@@ -145,32 +117,32 @@ mod raw {
             interpreter: Option<Vec<String>>,
             image: Option<String>,
             networks: Option<Vec<String>>,
-            volumes: Option<HashMap<String, String>>,
-            env: Option<HashMap<String, String>>,
+            volumes: Option<HashMap<String, util::DynString>>,
+            env: Option<HashMap<String, util::DynString>>,
         },
         #[serde(rename = "build")]
         BuildImage {
-            path: config::AbsPath,
+            path: util::DynPath,
             image: String,
             dockerfile: Option<String>,
         },
     }
 
-    #[derive(Deserialize, Serialize)]
+    #[derive(Deserialize, Serialize, Clone, Debug)]
     #[serde(deny_unknown_fields)]
     struct Stage {
-        on_overlap: StageOverlapPolicy,
+        on_overlap: Option<StageOverlapPolicy>,
         repos: Option<StageRepos>,
     }
 
-    #[derive(Deserialize, Serialize)]
+    #[derive(Deserialize, Serialize, Clone, Debug)]
     #[serde(deny_unknown_fields, untagged)]
     enum StageRepos {
         Exact(HashMap<String, RepoLockStrategy>),
         All(RepoLockStrategy),
     }
 
-    #[derive(Deserialize, Serialize)]
+    #[derive(Deserialize, Serialize, Clone, Debug)]
     #[serde(deny_unknown_fields)]
     enum StageOverlapPolicy {
         #[serde(rename = "ignore")]
@@ -186,7 +158,7 @@ mod raw {
         Wait,
     }
 
-    #[derive(Deserialize, Serialize)]
+    #[derive(Deserialize, Serialize, Clone, Debug)]
     #[serde(deny_unknown_fields)]
     enum RepoLockStrategy {
         #[serde(rename = "lock")]
@@ -196,30 +168,22 @@ mod raw {
         Unlock,
     }
 
-    impl config::LoadRawSync for PipelineLocation {
-        type Output = super::PipelineLocation;
+    #[async_trait::async_trait]
+    impl util::DynValue for Pipelines {
+        type Target = super::Pipelines;
 
-        fn load_raw(self, state: &State) -> Result<Self::Output, anyhow::Error> {
-            let current_project: &config::CurrentProject = state.get()?;
-            let path = utils::eval_rel_path(state, self.path, current_project.path.clone())?;
-            Ok(super::PipelineLocation { path })
-        }
-    }
-
-    impl config::LoadRawSync for Pipelines {
-        type Output = super::Pipelines;
-
-        fn load_raw(self, state: &State) -> Result<Self::Output, anyhow::Error> {
+        async fn load(self, state: &mut State) -> Result<Self::Target> {
             Ok(super::Pipelines {
-                pipelines: self.pipelines.load_raw(state)?,
+                pipelines: self.pipelines.load(state).await?,
             })
         }
     }
 
-    impl config::LoadRawSync for RepoLockStrategy {
-        type Output = common::RepoLockStrategy;
+    #[async_trait::async_trait]
+    impl util::DynValue for RepoLockStrategy {
+        type Target = common::RepoLockStrategy;
 
-        fn load_raw(self, state: &State) -> Result<Self::Output, anyhow::Error> {
+        async fn load(self, state: &mut State) -> Result<Self::Target> {
             Ok(match self {
                 RepoLockStrategy::Lock => common::RepoLockStrategy::Lock,
                 RepoLockStrategy::Unlock => common::RepoLockStrategy::Unlock,
@@ -227,21 +191,23 @@ mod raw {
         }
     }
 
-    impl config::LoadRawSync for StageRepos {
-        type Output = common::StageRepos;
+    #[async_trait::async_trait]
+    impl util::DynValue for StageRepos {
+        type Target = common::StageRepos;
 
-        fn load_raw(self, state: &State) -> Result<Self::Output, anyhow::Error> {
+        async fn load(self, state: &mut State) -> Result<Self::Target> {
             Ok(match self {
-                StageRepos::Exact(repos) => common::StageRepos::Exact(repos.load_raw(state)?),
-                StageRepos::All(strat) => common::StageRepos::All(strat.load_raw(state)?),
+                StageRepos::Exact(repos) => common::StageRepos::Exact(repos.load(state).await?),
+                StageRepos::All(strat) => common::StageRepos::All(strat.load(state).await?),
             })
         }
     }
 
-    impl config::LoadRawSync for StageOverlapPolicy {
-        type Output = common::OverlapStrategy;
+    #[async_trait::async_trait]
+    impl util::DynValue for StageOverlapPolicy {
+        type Target = common::OverlapStrategy;
 
-        fn load_raw(self, state: &State) -> Result<Self::Output, anyhow::Error> {
+        async fn load(self, state: &mut State) -> Result<Self::Target> {
             Ok(match self {
                 StageOverlapPolicy::Ignore => common::OverlapStrategy::Ignore,
                 StageOverlapPolicy::Displace => common::OverlapStrategy::Displace,
@@ -251,26 +217,31 @@ mod raw {
         }
     }
 
-    impl config::LoadRawSync for Stage {
-        type Output = common::Stage;
+    #[async_trait::async_trait]
+    impl util::DynValue for Stage {
+        type Target = common::Stage;
 
-        fn load_raw(self, state: &State) -> Result<Self::Output, anyhow::Error> {
+        async fn load(self, state: &mut State) -> Result<Self::Target> {
             Ok(common::Stage {
                 overlap_strategy: self
                     .on_overlap
-                    .load_raw(state)
+                    .load(state)
+                    .await?
                     .unwrap_or(common::OverlapStrategy::Wait),
-                repos: self.repos.load_raw(state)?,
+                repos: self.repos.load(state).await?,
             })
         }
     }
 
-    impl config::LoadRawSync for Pipeline {
-        type Output = common::Pipeline;
+    #[async_trait::async_trait]
+    impl util::DynValue for Pipeline {
+        type Target = common::Pipeline;
 
-        fn load_raw(self, state: &State) -> Result<Self::Output, anyhow::Error> {
-            let links = config::utils::substitute_vars_dict(state, self.links.unwrap_or_default())?;
-            let id: String = state.get_named("_id").cloned()?;
+        async fn load(self, state: &mut State) -> Result<Self::Target> {
+            let dynobj = config::utils::get_dyn_object(state)?;
+            let id: String = dynobj._id.ok_or_else(|| anyhow!("No _id binding"))?;
+
+            let links = self.links.load(state).await?.unwrap_or_default();
 
             let default_stage = || {
                 (
@@ -283,7 +254,7 @@ mod raw {
             };
 
             let stages: HashMap<String, common::Stage> =
-                if let Some(stages) = self.stages.load_raw(state)? {
+                if let Some(stages) = self.stages.load(state).await? {
                     if stages.is_empty() {
                         HashMap::from_iter([default_stage()])
                     } else {
@@ -293,46 +264,55 @@ mod raw {
                     HashMap::from_iter([default_stage()])
                 };
 
-            let integrations = self.integrations.unwrap_or_default();
-            let integrations: Result<HashMap<String, serde_json::Value>, anyhow::Error> =
-                integrations
-                    .into_iter()
-                    .map(|(k, v)| Ok((k, config::utils::substitute_vars_json(state, v)?)))
-                    .collect();
+            let integrations = self
+                .integrations
+                .load(state)
+                .await?
+                .unwrap_or_default()
+                .into_iter()
+                .map(|(k, v)| (k, v.to_json()))
+                .collect();
 
             Ok(common::Pipeline {
                 links,
                 id,
                 stages,
-                jobs: self.jobs.load_raw(state)?,
+                integrations,
+                jobs: self.jobs.load(state).await?,
                 networks: Default::default(),
                 volumes: Default::default(),
-                integrations: integrations?,
             })
         }
     }
 
-    impl config::LoadRawSync for Job {
-        type Output = common::Job;
+    #[async_trait::async_trait]
+    impl util::DynValue for Job {
+        type Target = common::Job;
 
-        fn load_raw(self, state: &State) -> Result<Self::Output, anyhow::Error> {
+        async fn load(self, state: &mut State) -> Result<Self::Target> {
             let (common, steps) = match self {
                 Job::JobWithSteps { common, steps } => (common, steps),
                 Job::JobWithSingleStep { common, step } => (common, vec![step]),
             };
             Ok(common::Job {
                 needs: common.needs.unwrap_or_default(),
-                steps: steps.load_raw(state)?,
+                steps: steps.load(state).await?,
                 stage: common.stage,
-                enabled: common.enabled.load_raw(state)?.unwrap_or(true),
+                enabled: common.enabled.load(state).await?.unwrap_or(true),
             })
         }
     }
 
-    impl config::LoadRawSync for Step {
-        type Output = common::Step;
+    #[async_trait::async_trait]
+    impl util::DynValue for Step {
+        type Target = common::Step;
 
-        fn load_raw(self, state: &State) -> Result<Self::Output, anyhow::Error> {
+        async fn load(self, state: &mut State) -> Result<Self::Target> {
+            let dynobj = config::utils::get_dyn_object(state)?;
+            let services = dynobj
+                .services
+                .ok_or_else(|| anyhow!("No services binding"))?;
+
             match self {
                 Step::Script {
                     networks,
@@ -343,18 +323,36 @@ mod raw {
                     env,
                     ..
                 } => {
-                    let networks =
-                        config::utils::get_networks_names(state, networks.unwrap_or_default())?;
-                    let volumes =
-                        config::utils::get_volumes_names(state, volumes.unwrap_or_default())?;
+                    let networks: Result<Vec<String>> = networks
+                        .unwrap_or_default()
+                        .into_iter()
+                        .map(|name: String| {
+                            services
+                                .networks
+                                .get(&name)
+                                .ok_or_else(|| anyhow!("Unknown network: {}", name))
+                                .cloned()
+                        })
+                        .collect();
+
+                    let mut volumes_res: HashMap<String, String> = HashMap::new();
+                    for (mount_path, name) in volumes.load(state).await?.unwrap_or_default().into_iter() {
+                        let name = if let Some(name) = services.volumes.get(&name) {
+                            name.clone()
+                        } else {
+                            // name is path
+                            name
+                        };
+			volumes_res.insert(name, mount_path);
+                    }
 
                     let config = common::RunShellConfig {
                         docker_image: image,
-                        env: config::utils::substitute_vars_dict(state, env.unwrap_or_default())?,
+                        env: env.load(state).await?.unwrap_or_default(),
+                        volumes: volumes_res,
+                        networks: networks?,
                         script,
                         interpreter,
-                        volumes,
-                        networks,
                     };
                     Ok(common::Step::RunShell(config))
                 }
@@ -367,7 +365,7 @@ mod raw {
                         tag: None,
                         source: Some(common::BuildImageConfigSource {
                             path: common::BuildImageConfigSourcePath::Directory(
-                                path.load_raw(state)?.to_string_lossy().to_string(),
+                                path.load(state).await?.to_string_lossy().to_string(),
                             ),
                             dockerfile,
                         }),
@@ -378,29 +376,5 @@ mod raw {
                 }
             }
         }
-    }
-
-    pub async fn load_pipeline<'a>(
-        state: &State<'a>,
-        id: impl AsRef<str>,
-        path: &PathBuf,
-    ) -> Result<common::Pipeline, anyhow::Error> {
-        let mut state = state.clone();
-        let id = id.as_ref().to_string();
-        state.set_named("_id", &id);
-        config::load_sync::<Pipeline>(path.clone(), &state)
-            .await
-            .map_err(|err| anyhow!("Failed to load pipeline from {:?}: {}", path, err))
-    }
-
-    pub async fn load<'a>(state: &State<'a>) -> Result<super::Pipelines, anyhow::Error> {
-        let current_project: &config::CurrentProject = state.get()?;
-        let path = current_project.path.join(super::PIPELINES_CONFIG);
-        if !path.exists() {
-            return Ok(Default::default());
-        }
-        config::load_sync::<Pipelines>(path.clone(), state)
-            .await
-            .map_err(|err| anyhow!("Failed to load pipelines from {:?}: {}", path, err))
     }
 }

@@ -11,8 +11,7 @@ use log::*;
 
 pub struct Context {
     pub config_source: ConfigsSource,
-    config: Mutex<Arc<config::ServiceConfig>>,
-    pub projects_store: config::ProjectsStore,
+    config: Mutex<Arc<config::service_config::ServiceConfig>>,
 }
 
 pub enum ConfigsSource {
@@ -53,41 +52,30 @@ impl ConfigsSource {
 }
 
 impl Context {
-    pub async fn new(
-        projects_store: config::ProjectsStore,
+    pub async fn new<'a>(
+        state: &State<'a>,
         config_source: ConfigsSource,
     ) -> Result<Context, anyhow::Error> {
-        let config = load_config_impl(&config_source).await?;
+        let config = load_config_impl(state, &config_source).await?;
+
+        let mut state = state.clone();
+        let run_context = common::run_context::RunContext::new();
+        state.set(&run_context);
+	state.set(&config);
+        config.projects_store.reload_internal_project(&state).await?;
+
         Ok(Context {
             config: Mutex::new(Arc::new(config)),
             config_source,
-            projects_store,
         })
     }
 
-    pub async fn init<'a>(&self, state: &State<'a>) -> Result<(), anyhow::Error> {
-        self.init_projects(state).await?;
-        Ok(())
-    }
-
-    pub async fn config(&self) -> Arc<config::ServiceConfig> {
+    pub async fn config(&self) -> Arc<config::service_config::ServiceConfig> {
         return self.config.lock().await.clone();
     }
 
-    pub async fn reload_config(&self) -> Result<(), anyhow::Error> {
-        *self.config.lock().await = Arc::new(load_config_impl(&self.config_source).await?);
-        Ok(())
-    }
-
-    pub async fn init_projects<'a>(&self, state: &State<'a>) -> Result<(), anyhow::Error> {
-        let mut state = state.clone();
-        let config = self.config.lock().await.clone();
-        state.set(config.as_ref());
-
-        let run_context = common::run_context::RunContext::new();
-        state.set(&run_context);
-
-        self.projects_store.init(&state).await?;
+    pub async fn reload_config<'a>(&self, state: &State<'a>) -> Result<(), anyhow::Error> {
+        *self.config.lock().await = Arc::new(load_config_impl(state, &self.config_source).await?);
         Ok(())
     }
 
@@ -103,7 +91,8 @@ impl Context {
         let mut state = state.clone();
         let config = self.config.lock().await.clone();
         state.set(config.as_ref());
-        self.projects_store
+        config
+            .projects_store
             .update_repo(&state, project_id, repo_id, artifact)
             .await?;
         Ok(())
@@ -114,12 +103,13 @@ impl Context {
         state: &State<'a>,
         project_id: &str,
         services: Vec<String>,
-        action: config::ServiceAction,
+        action: config::actions::ServiceAction,
     ) -> Result<(), anyhow::Error> {
         let mut state = state.clone();
         let config = self.config.lock().await.clone();
         state.set(config.as_ref());
-        self.projects_store
+        config
+            .projects_store
             .run_services_actions(&state, project_id, services, action)
             .await?;
         Ok(())
@@ -130,7 +120,7 @@ impl Context {
         state: &State<'a>,
         project_id: &str,
         service_id: &str,
-        action: config::ServiceAction,
+        action: config::actions::ServiceAction,
     ) -> Result<(), anyhow::Error> {
         self.run_services_actions(state, project_id, vec![service_id.to_string()], action)
             .await
@@ -145,7 +135,8 @@ impl Context {
         let mut state = state.clone();
         let config = self.config.lock().await.clone();
         state.set(config.as_ref());
-        self.projects_store
+        config
+            .projects_store
             .call_trigger(&state, project_id, trigger_id)
             .await?;
         Ok(())
@@ -154,22 +145,23 @@ impl Context {
     pub async fn list_projects<'a>(
         &self,
         state: &State<'a>,
-    ) -> Result<Vec<config::ProjectInfo>, anyhow::Error> {
+    ) -> Result<Vec<config::projects::ProjectInfo>, anyhow::Error> {
         let mut state = state.clone();
         let config = self.config.lock().await.clone();
         state.set(config.as_ref());
-        self.projects_store.list_projects(&state).await
+        config.projects_store.list_projects(&state).await
     }
 
     pub async fn get_project_info<'a>(
         &self,
         state: &State<'a>,
         project_id: &str,
-    ) -> Result<config::ProjectInfo, anyhow::Error> {
+    ) -> Result<config::projects::ProjectInfo, anyhow::Error> {
         let mut state = state.clone();
         let config = self.config.lock().await.clone();
         state.set(config.as_ref());
-        self.projects_store
+        config
+            .projects_store
             .get_project_info(&state, project_id)
             .await
     }
@@ -178,11 +170,11 @@ impl Context {
         &self,
         state: &State<'a>,
         project_id: &str,
-    ) -> Result<config::Project, anyhow::Error> {
+    ) -> Result<config::project::Project, anyhow::Error> {
         let mut state = state.clone();
         let config = self.config.lock().await.clone();
         state.set(config.as_ref());
-        let project_info = self
+        let project_info = config
             .projects_store
             .get_project_info(&state, project_id)
             .await?;
@@ -190,16 +182,19 @@ impl Context {
     }
 }
 
-async fn load_config_impl(
+async fn load_config_impl<'a>(
+    state: &State<'a>,
     config_source: &ConfigsSource,
-) -> Result<config::ServiceConfig, anyhow::Error> {
+) -> Result<config::service_config::ServiceConfig, anyhow::Error> {
     let config_path = config_source.get_config_path().await?;
 
-    let mut context = State::default();
-    context.set_named("service_config", &config_path);
+    let mut dyn_state = config::utils::make_dyn_state(state)?;
+    let config = dynconf::util::load::<config::service_config::raw::ServiceConfig>(
+        &mut dyn_state,
+        config_path,
+    )
+    .await?;
 
-    let config = config::ServiceConfig::load(&context).await?;
-
-    info!("Loaded config: {:#?}", config);
+    debug!("Loaded config: {:#?}", config);
     Ok(config)
 }

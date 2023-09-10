@@ -40,11 +40,11 @@ services:
   #   restart: always
 
 volumes:
-  test-vol:
-  global-test-vol:
-    global: true
+  test-vol: {}
+  global-test-vol: {}
+    # global: true
 
 networks:
-  test-net:
+  test-net: {}
   test-global-net:
     global: true

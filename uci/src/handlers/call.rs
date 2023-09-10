@@ -27,7 +27,7 @@ async fn call(
     }: models::CallRequest,
 ) -> Result<impl warp::Reply, warp::Rejection> {
     if !call_context
-        .check_permissions(Some(&project_id), config::ActionType::Execute)
+        .check_permissions(Some(&project_id), config::permissions::ActionType::Execute)
         .await
     {
         return Err(warp::reject::custom(AuthRejection::TokenIsUnauthorized));

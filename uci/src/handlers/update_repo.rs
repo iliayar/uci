@@ -113,7 +113,7 @@ async fn update_repo(
     }: models::UpdateRepoBody,
 ) -> Result<impl warp::Reply, warp::Rejection> {
     if !call_context
-        .check_permissions(Some(&project_id), config::ActionType::Write)
+        .check_permissions(Some(&project_id), config::permissions::ActionType::Write)
         .await
     {
         return Err(warp::reject::custom(AuthRejection::TokenIsUnauthorized));

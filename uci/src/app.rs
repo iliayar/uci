@@ -44,10 +44,6 @@ struct Config {
     #[command(flatten)]
     source: ConfigSource,
 
-    /// Path to projects file
-    #[arg(long, requires = "config")]
-    projects: Option<PathBuf>,
-
     /// Url to clone repo from
     #[arg(short, long, requires = "config_repo")]
     url: Option<String>,
@@ -72,7 +68,6 @@ struct ConfigSource {
 pub struct App {
     port: u16,
     configs_source: ConfigsSource,
-    projects: Option<PathBuf>,
     env: String,
 }
 
@@ -87,29 +82,21 @@ impl App {
             pretty_env_logger::init_timed();
         }
 
-        let (configs_source, projects): (ConfigsSource, Option<PathBuf>) =
-            if let Some(config) = args.config.source.config {
-                (ConfigsSource::Explicit { config }, args.config.projects)
-            } else if let Some(path) = args.config.source.config_repo {
-                let projects_path = path.join(&args.config.prefix).join("projects.yaml");
-                let projects = args.config.projects.unwrap_or(projects_path);
-
-                (
-                    ConfigsSource::Repo {
-                        url: args.config.url,
-                        prefix: args.config.prefix,
-                        path,
-                    },
-                    Some(projects),
-                )
-            } else {
-                unreachable!()
-            };
+        let configs_source: ConfigsSource = if let Some(config) = args.config.source.config {
+            ConfigsSource::Explicit { config }
+        } else if let Some(path) = args.config.source.config_repo {
+            ConfigsSource::Repo {
+                url: args.config.url,
+                prefix: args.config.prefix,
+                path,
+            }
+        } else {
+            unreachable!()
+        };
 
         Ok(App {
             port: args.port,
             env: args.env,
-            projects,
             configs_source,
         })
     }
@@ -129,21 +116,13 @@ impl App {
         let docker = worker_lib::docker::Docker::init()?;
         let maybe_executor = worker_lib::executor::Executor::new().await?;
 
-        state.set_named("worker", &());
         state.set_owned(docker);
         state.set_owned(maybe_executor);
 
-        state.set_named_owned("env", self.env);
+        let env = config::utils::Env(self.env);
+        state.set_owned(env);
 
-        let context = if let Some(projects) = self.projects {
-            let manager = config::StaticProjects::new(projects).await?;
-            let projects_store = config::ProjectsStore::with_manager(manager).await?;
-            context::Context::new(projects_store, self.configs_source).await?
-        } else {
-            unimplemented!()
-        };
-
-        context.init(&state).await?;
+        let context = context::Context::new(&state, self.configs_source).await?;
 
         let deps = Deps {
             context: Arc::new(context),

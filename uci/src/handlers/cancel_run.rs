@@ -42,7 +42,7 @@ async fn run_cancel_impl(
     }: models::RunsCancelRequestBody,
 ) -> Result<models::EmptyResponse, anyhow::Error> {
     if !call_context
-        .check_permissions(Some(&project), config::ActionType::Execute)
+        .check_permissions(Some(&project), config::permissions::ActionType::Execute)
         .await
     {
         return Err(anyhow!("No permissions for canceling run in project"));

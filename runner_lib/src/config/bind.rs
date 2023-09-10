@@ -2,7 +2,6 @@
 use std::collections::{HashMap, HashSet};
 
 use anyhow::anyhow;
-use common::state::State;
 
 #[derive(Default)]
 pub struct BindBuilder {
@@ -63,7 +62,7 @@ impl ZoneBuilder {
             ip: self.ip,
             nameservers: self.nameservers,
             cnames: self.cnames,
-	    extra: self.extra,
+            extra: self.extra,
         }
     }
 }
@@ -110,33 +109,21 @@ pub struct Zone {
     extra: Option<String>,
 }
 
-impl Bind {
-    pub async fn load<'a>(state: &State<'a>) -> Result<Option<Bind>, anyhow::Error> {
-        raw::load(state).await
-    }
-}
-
-mod raw {
-    use std::{collections::HashMap, path::PathBuf};
-
-    use common::state::State;
+pub mod raw {
+    use dynconf::*;
     use serde::{Deserialize, Serialize};
+    use std::collections::HashMap;
 
-    use crate::config::{self, LoadRawSync};
+    use anyhow::Result;
 
-    #[derive(Serialize, Deserialize)]
-    pub struct Config {
-        bind9: Option<Bind>,
-    }
-
-    #[derive(Serialize, Deserialize)]
+    #[derive(Serialize, Deserialize, Clone, Debug)]
     #[serde(deny_unknown_fields)]
     pub struct Bind {
-        enabled: Option<bool>,
+        enabled: Option<util::Dyn<bool>>,
         zones: HashMap<String, Zone>,
     }
 
-    #[derive(Serialize, Deserialize)]
+    #[derive(Serialize, Deserialize, Clone, Debug)]
     #[serde(deny_unknown_fields)]
     pub struct Zone {
         ip: Option<String>,
@@ -145,56 +132,32 @@ mod raw {
         extra: Option<String>,
     }
 
-    impl config::LoadRawSync for Bind {
-        type Output = super::Bind;
+    #[async_trait::async_trait]
+    impl util::DynValue for Bind {
+        type Target = Option<super::Bind>;
 
-        fn load_raw(self, state: &State) -> Result<Self::Output, anyhow::Error> {
-            Ok(super::Bind {
-                zones: self.zones.load_raw(state)?,
-            })
+        async fn load(self, state: &mut State) -> Result<Self::Target> {
+            if !self.enabled.load(state).await?.unwrap_or(true) {
+                return Ok(None);
+            }
+
+            Ok(Some(super::Bind {
+                zones: self.zones.load(state).await?,
+            }))
         }
     }
 
-    impl config::LoadRawSync for Zone {
-        type Output = super::Zone;
+    #[async_trait::async_trait]
+    impl util::DynValue for Zone {
+        type Target = super::Zone;
 
-        fn load_raw(self, state: &State) -> Result<Self::Output, anyhow::Error> {
+        async fn load(self, state: &mut State) -> Result<Self::Target> {
             Ok(super::Zone {
                 ip: self.ip,
                 nameservers: self.nameservers.unwrap_or_default(),
                 cnames: self.cnames.unwrap_or_default(),
                 extra: self.extra,
             })
-        }
-    }
-
-    impl config::LoadRawSync for Config {
-        type Output = Config;
-
-        fn load_raw(self, state: &State) -> Result<Self::Output, anyhow::Error> {
-            Ok(self)
-        }
-    }
-
-    pub async fn load<'a>(state: &State<'a>) -> Result<Option<super::Bind>, anyhow::Error> {
-        let path: PathBuf = state.get_named("project_config").cloned()?;
-
-        if path.exists() {
-            let config: Result<Config, anyhow::Error> =
-                config::load_sync::<Config>(path.clone(), state)
-                    .await
-                    .map_err(|err| anyhow::anyhow!("Failed to load bind from {:?}: {}", path, err));
-            if let Some(bind9) = config?.bind9 {
-                if bind9.enabled.unwrap_or(true) {
-                    Ok(Some(bind9.load_raw(state)?))
-                } else {
-                    Ok(None)
-                }
-            } else {
-                Ok(None)
-            }
-        } else {
-            Ok(None)
         }
     }
 }

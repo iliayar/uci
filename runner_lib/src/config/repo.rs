@@ -3,9 +3,11 @@ use std::{collections::HashMap, path::PathBuf};
 use crate::git;
 use common::run_context::RunContext;
 
-use anyhow::anyhow;
+use anyhow::{anyhow, Result};
 use common::state::State;
 use log::*;
+
+use crate::config;
 
 #[derive(Debug, Clone, Default)]
 pub struct Repos {
@@ -45,7 +47,7 @@ impl Diff {
 }
 
 impl Repo {
-    async fn clone_if_missing<'a>(&self, state: &State<'a>) -> Result<(), anyhow::Error> {
+    async fn clone_if_missing<'a>(&self, state: &State<'a>) -> Result<()> {
         match self {
             Repo::Regular {
                 id,
@@ -80,17 +82,14 @@ impl Repo {
         Ok(())
     }
 
-    async fn update<'a>(
-        &self,
-        state: &State<'a>,
-        artifact: Option<PathBuf>,
-    ) -> Result<Diff, anyhow::Error> {
+    async fn update<'a>(&self, state: &State<'a>, artifact: Option<PathBuf>) -> Result<Diff> {
         let executor: &worker_lib::executor::Executor = state.get()?;
-        let project_info: &super::ProjectInfo = state.get()?;
+        let project_info: &config::projects::ProjectInfo = state.get()?;
 
         let dry_run = state
-            .get_named::<bool, _>("dry_run")
+            .get::<worker_lib::executor::DryRun>()
             .cloned()
+            .map(|v| v.0)
             .unwrap_or(false);
 
         match self {
@@ -154,42 +153,13 @@ impl Repo {
     }
 }
 
-impl From<&Repo> for common::vars::Value {
-    fn from(val: &Repo) -> Self {
-        let mut vars = common::vars::Value::default();
-        match val {
-            Repo::Regular {
-                id,
-                source,
-                branch,
-                path,
-                commit,
-                ..
-            } => {
-                vars.assign("path", path.to_string_lossy().to_string().into())
-                    .ok();
-                vars.assign("branch", branch.into()).ok();
-                vars.assign("source", source.into()).ok();
-                if let Some(commit) = commit {
-                    vars.assign("rev", commit.into()).ok();
-                }
-            }
-            Repo::Manual { id, path, .. } => {
-                vars.assign("path", path.to_string_lossy().to_string().into())
-                    .ok();
-            }
-        };
-        vars
-    }
-}
-
 impl Repos {
     pub async fn update_repo<'a>(
         &self,
         state: &State<'a>,
         repo_id: &str,
         artifact: Option<PathBuf>,
-    ) -> Result<Diff, anyhow::Error> {
+    ) -> Result<Diff> {
         let run_context: &RunContext = state.get()?;
         run_context
             .send(models::UpdateRepoMessage::PullingRepo)
@@ -233,13 +203,11 @@ impl Repos {
         }
     }
 
-    pub async fn clone_missing_repos<'a>(&self, state: &State<'a>) -> Result<(), anyhow::Error> {
+    pub async fn clone_missing_repos<'a>(&self, state: &State<'a>) -> Result<()> {
         let run_context: &RunContext = state.get()?;
         let mut git_tasks = Vec::new();
 
-        run_context
-            .send(models::CloneMissingRepos::Begin)
-            .await;
+        run_context.send(models::CloneMissingRepos::Begin).await;
 
         for (id, repo) in self.repos.iter() {
             info!("Cloning repo {}", id);
@@ -248,9 +216,7 @@ impl Repos {
 
         futures::future::try_join_all(git_tasks).await?;
 
-        run_context
-            .send(models::CloneMissingRepos::Finish)
-            .await;
+        run_context.send(models::CloneMissingRepos::Finish).await;
 
         Ok(())
     }
@@ -260,73 +226,114 @@ impl Repos {
     }
 }
 
-impl From<&Repos> for common::vars::Value {
-    fn from(value: &Repos) -> Self {
-        let mut vars: HashMap<String, common::vars::Value> = HashMap::new();
-        for (id, repo) in value.repos.iter() {
-            vars.insert(id.to_string(), repo.into());
+pub use dyn_obj::DynRepos;
+
+mod dyn_obj {
+    use std::{collections::HashMap, path::PathBuf};
+
+    use serde::{Deserialize, Serialize};
+
+    #[derive(Deserialize, Serialize)]
+    #[serde(transparent)]
+    pub struct DynRepos {
+        pub repos: HashMap<String, DynRepo>,
+    }
+
+    #[derive(Deserialize, Serialize)]
+    pub struct DynRepo {
+        pub path: PathBuf,
+        pub branch: Option<String>,
+        pub source: Option<String>,
+        pub rev: Option<String>,
+    }
+
+    impl From<&super::Repo> for DynRepo {
+        fn from(repo: &super::Repo) -> Self {
+            match repo {
+                super::Repo::Regular {
+                    path,
+                    source,
+                    branch,
+                    commit,
+                    ..
+                } => DynRepo {
+                    path: path.clone(),
+                    source: Some(source.clone()),
+                    branch: Some(branch.clone()),
+                    rev: commit.clone(),
+                },
+                super::Repo::Manual { path, .. } => DynRepo {
+                    path: path.clone(),
+                    branch: None,
+                    source: None,
+                    rev: None,
+                },
+            }
         }
-        vars.into()
+    }
+
+    impl From<&super::Repos> for DynRepos {
+        fn from(repos: &super::Repos) -> Self {
+            DynRepos {
+                repos: repos
+                    .repos
+                    .iter()
+                    .map(|(k, v)| (k.clone(), v.into()))
+                    .collect(),
+            }
+        }
     }
 }
 
-pub mod repos_raw {
-    pub use super::raw::Repo;
-}
+pub mod raw {
+    use crate::config;
 
-mod raw {
+    use dynconf::*;
+    use serde::{Deserialize, Serialize};
     use std::collections::HashMap;
 
-    use common::state::State;
-    use serde::{Deserialize, Serialize};
+    use anyhow::{anyhow, Result};
 
-    use crate::{config, utils};
-    use anyhow::anyhow;
-
-    const REPO_CONFIG: &str = "repos.yaml";
-
-    #[derive(Deserialize, Serialize)]
+    #[derive(Deserialize, Serialize, Clone)]
     #[serde(deny_unknown_fields)]
-    pub struct Repo {
+    struct Repo {
         source: Option<String>,
         branch: Option<String>,
         manual: Option<bool>,
-        path: Option<String>,
+        path: Option<util::DynPath>,
     }
 
-    #[derive(Deserialize, Serialize)]
-    #[serde(deny_unknown_fields)]
-    struct Repos {
+    #[derive(Deserialize, Serialize, Clone)]
+    #[serde(transparent)]
+    pub struct Repos {
         repos: HashMap<String, Repo>,
     }
 
     #[async_trait::async_trait]
-    impl config::LoadRaw for Repos {
-        type Output = super::Repos;
+    impl util::DynValue for Repo {
+        type Target = super::Repo;
 
-        async fn load_raw(self, state: &State) -> Result<Self::Output, anyhow::Error> {
-            Ok(super::Repos {
-                repos: self.repos.load_raw(state).await?,
-            })
-        }
-    }
+        async fn load(self, state: &mut State) -> Result<Self::Target> {
+            let dynobj = config::utils::get_dyn_object(state)?;
+            let repo_id = dynobj._id.ok_or_else(|| anyhow!("No _id binding"))?;
 
-    #[async_trait::async_trait]
-    impl config::LoadRaw for Repo {
-        type Output = super::Repo;
-
-        async fn load_raw(self, state: &State) -> Result<Self::Output, anyhow::Error> {
-            let repo_id: String = state.get_named("_id").cloned()?;
-            let project_info: &config::ProjectInfo = state.get()?;
-            let service_config: &config::ServiceConfig = state.get()?;
-            let default_path = service_config
+            let repo_dir = format!(
+                "{}_{}",
+                dynobj
+                    .project
+                    .ok_or_else(|| anyhow!("No project binding"))?
+                    .id,
+                repo_id,
+            );
+            let default_path = dynobj
+                .config
+                .ok_or_else(|| anyhow!("No service config binding"))?
                 .repos_path
-                .join(format!("{}_{}", project_info.id, repo_id));
-            let path = if let Some(path) = self.path {
-                utils::eval_abs_path(state, path)?
-            } else {
-                default_path
-            };
+                .join(repo_dir)
+                .to_string_lossy()
+                .to_string();
+
+            let path = self.path.load(state).await?.unwrap_or(default_path.into());
 
             let commit = crate::git::current_commit(path.clone()).await.ok();
 
@@ -343,6 +350,17 @@ mod raw {
             } else {
                 Ok(super::Repo::Manual { id: repo_id, path })
             }
+        }
+    }
+
+    #[async_trait::async_trait]
+    impl util::DynValue for Repos {
+        type Target = super::Repos;
+
+        async fn load(self, state: &mut State) -> Result<Self::Target> {
+            Ok(super::Repos {
+                repos: self.repos.load(state).await?,
+            })
         }
     }
 }

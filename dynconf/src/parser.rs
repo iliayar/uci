@@ -37,6 +37,7 @@ pub enum LFsPathSegment<'a> {
 pub enum LFsPathType {
     Absolute,
     Relative,
+    FromHome,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
@@ -147,6 +148,7 @@ fn efs_path(input: Input) -> IResult<Input, LExpression> {
     let path_type = alt((
         value(LFsPathType::Absolute, tag("/")),
         value(LFsPathType::Relative, tag("./")),
+        value(LFsPathType::FromHome, tag("~/")),
     ));
 
     context(
@@ -386,6 +388,13 @@ mod tests {
             Ok((
                 "",
                 LExpression::FsPath(vec![LFsPathSegment::String("b"),], LFsPathType::Absolute)
+            ))
+        );
+        assert_eq!(
+            efs_path("~/.config"),
+            Ok((
+                "",
+                LExpression::FsPath(vec![LFsPathSegment::String(".config"),], LFsPathType::FromHome)
             ))
         );
         assert_eq!(

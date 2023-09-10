@@ -1,6 +1,10 @@
-data_dir: ~/.uci
-secrets: ./secrets.yaml
+data_dir: ${~/.uci}
+secrets: ${load(./secrets.yaml)}
 tokens:
   - token: ${config.secrets.admin-token}
     permissions: ['read', 'write']
   - permissions: ['read']
+projects_store:
+  type: static
+  projects: ${${load(./projects.yaml)}.projects}
+

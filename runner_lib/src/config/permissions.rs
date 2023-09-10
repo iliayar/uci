@@ -55,33 +55,24 @@ impl Permissions {
     }
 }
 
-pub mod permissions_raw {
-    pub use super::raw::Tokens;
-}
-
-mod raw {
+pub mod raw {
+    use dynconf::*;
+    use serde::{Deserialize, Serialize};
     use std::collections::HashMap;
 
-    use common::state::State;
-    use serde::{Deserialize, Serialize};
-
-    use crate::config;
-
+    use anyhow::Result;
     use log::*;
 
-    pub type Tokens = Vec<Token>;
-
-    #[derive(Serialize, Deserialize)]
+    #[derive(Serialize, Deserialize, Clone)]
     #[serde(deny_unknown_fields)]
     pub struct Token {
-        token: Option<String>,
-        #[serde(default)]
-        permissions: Vec<Permissions>,
+        token: Option<util::DynString>,
+        permissions: Option<Permissions>,
     }
 
-    #[derive(Serialize, Deserialize)]
+    #[derive(Serialize, Deserialize, Clone)]
     #[serde(deny_unknown_fields)]
-    pub enum Permissions {
+    pub enum Permission {
         #[serde(rename = "write")]
         Write,
 
@@ -92,21 +83,34 @@ mod raw {
         Execute,
     }
 
-    impl config::LoadRawSync for Vec<Permissions> {
-        type Output = super::Permissions;
+    #[derive(Serialize, Deserialize, Clone)]
+    #[serde(transparent)]
+    pub struct Permissions {
+        permissions: Vec<Permission>,
+    }
 
-        fn load_raw(self, state: &State) -> Result<Self::Output, anyhow::Error> {
+    #[derive(Serialize, Deserialize, Clone)]
+    #[serde(transparent)]
+    pub struct Tokens {
+        tokens: Vec<Token>,
+    }
+
+    #[async_trait::async_trait]
+    impl util::DynValue for Permissions {
+        type Target = super::Permissions;
+
+        async fn load(self, state: &mut State) -> Result<Self::Target> {
             let mut result = super::Permissions::default();
 
-            for perm in self.into_iter() {
+            for perm in self.permissions.into_iter() {
                 match perm {
-                    Permissions::Write => {
+                    Permission::Write => {
                         result.write = true;
                     }
-                    Permissions::Read => {
+                    Permission::Read => {
                         result.read = true;
                     }
-                    Permissions::Execute => {
+                    Permission::Execute => {
                         result.execute = true;
                     }
                 }
@@ -116,23 +120,26 @@ mod raw {
         }
     }
 
-    impl config::LoadRawSync for Vec<Token> {
-        type Output = super::Tokens;
+    #[async_trait::async_trait]
+    impl util::DynValue for Tokens {
+        type Target = super::Tokens;
 
-        fn load_raw(self, state: &State) -> Result<Self::Output, anyhow::Error> {
+        async fn load(self, state: &mut State) -> Result<Self::Target> {
             let mut anon: Option<super::Permissions> = None;
             let mut tokens = HashMap::new();
 
-            for perm in self.into_iter() {
+            for perm in self.tokens.into_iter() {
                 if let Some(token) = perm.token {
-                    let token = config::utils::substitute_vars(state, token)?;
-                    tokens.insert(token, perm.permissions.load_raw(state)?);
+                    tokens.insert(
+                        token.load(state).await?,
+                        perm.permissions.load(state).await?.unwrap_or_default(),
+                    );
                 } else {
                     if anon.is_some() {
                         warn!("Anonymous permissions mentioned more than one time, skiping it");
                         continue;
                     }
-                    anon = Some(perm.permissions.load_raw(state)?);
+                    anon = Some(perm.permissions.load(state).await?.unwrap_or_default());
                 }
             }
 

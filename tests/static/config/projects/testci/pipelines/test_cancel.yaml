@@ -2,10 +2,10 @@ jobs:
   j1:
     type: build
     image: test-image
-    path: ${project.repos.test-manual.path}/
+    path: ${project.repos.test-manual.path}
   j2:
-    needs: ['j1']
     type: script
+    needs: ['j1']
     image: test-image
     interpreter: ['/bin/sh', '-c']
     script: |

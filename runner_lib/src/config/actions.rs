@@ -1,7 +1,7 @@
+use crate::config;
 use std::collections::{HashMap, HashSet};
 
 use anyhow::anyhow;
-use common::state::State;
 use log::*;
 
 #[derive(Debug, Default)]
@@ -35,7 +35,7 @@ pub struct Trigger {
     on: TriggerType,
     run_pipelines: Option<Vec<String>>,
     services: Option<HashMap<String, ServiceAction>>,
-    params: HashMap<String, common::vars::Value>,
+    params: dynconf::Value,
 }
 
 #[derive(Debug)]
@@ -59,7 +59,7 @@ pub enum Event {
     },
     RepoUpdate {
         repo_id: String,
-        diffs: super::Diff,
+        diffs: config::repo::Diff,
     },
 }
 
@@ -70,8 +70,6 @@ pub struct ActionsDescription {
 pub struct ActionDescription {
     pub name: String,
 }
-
-pub const ACTIONS_CONFIG: &str = "actions.yaml";
 
 impl Actions {
     pub fn merge(self, other: Actions) -> Result<Actions, anyhow::Error> {
@@ -86,10 +84,6 @@ impl Actions {
         }
 
         Ok(Actions { actions })
-    }
-
-    pub async fn load<'a>(state: &State<'a>) -> Result<Actions, anyhow::Error> {
-        raw::load(state).await
     }
 
     pub async fn list_actions<'a>(&self) -> ActionsDescription {
@@ -107,26 +101,25 @@ impl Actions {
     pub async fn get_matched_actions(
         &self,
         event: &Event,
-    ) -> Result<super::EventActions, anyhow::Error> {
+    ) -> Result<config::project::EventActions, anyhow::Error> {
         let run_pipelines: HashSet<String> = self
             .get_actions(event, &|trigger| trigger.run_pipelines.clone())
             .await?
             .into_iter()
             .flat_map(|v| v.into_iter())
             .collect();
-        let services: HashMap<String, super::ServiceAction> = self
+        let services: HashMap<String, ServiceAction> = self
             .get_actions(event, &|case| case.services.clone())
             .await?
             .into_iter()
             .flat_map(|m| m.into_iter())
             .collect();
-        let params: HashMap<String, common::vars::Value> = self
+        let params: dynconf::Value = self
             .get_actions(event, &|case| Some(case.params.clone()))
             .await?
             .into_iter()
-            .flat_map(|m| m.into_iter())
-            .collect();
-        Ok(super::EventActions {
+            .try_fold(dynconf::Value::Null, dynconf::Value::merge)?;
+        Ok(config::project::EventActions {
             run_pipelines,
             services,
             params,
@@ -136,7 +129,7 @@ impl Actions {
     pub async fn get_actions<T>(
         &self,
         event: &Event,
-        f: &impl Fn(&super::Trigger) -> Option<T>,
+        f: &impl Fn(&Trigger) -> Option<T>,
     ) -> Result<Vec<T>, anyhow::Error> {
         let mut actions = Vec::new();
         for (action_id, triggers) in self.actions.iter() {
@@ -181,7 +174,7 @@ impl TriggerType {
                     }
 
                     match diffs {
-                        super::Diff::Changes {
+                        config::repo::Diff::Changes {
                             changes,
                             commit_message,
                         } => {
@@ -194,28 +187,28 @@ impl TriggerType {
                             let mut matched = false;
 
                             for diff in changes.iter() {
-				let mut current_matches = false;
+                                let mut current_matches = false;
 
                                 for pattern in patterns.iter() {
                                     if pattern.is_match(diff) {
                                         current_matches = true;
-					break;
+                                        break;
                                     }
                                 }
 
                                 for pattern in exclude_patterns.iter() {
                                     if pattern.is_match(diff) {
                                         current_matches = false;
-					break;
+                                        break;
                                     }
                                 }
 
-				matched |= current_matches;
+                                matched |= current_matches;
                             }
 
                             matched
                         }
-                        super::Diff::Whole => true,
+                        config::repo::Diff::Whole => true,
                     }
                 }
                 _ => false,
@@ -224,23 +217,22 @@ impl TriggerType {
     }
 }
 
-mod raw {
-    use std::collections::HashMap;
-
-    use common::state::State;
-    use serde::{Deserialize, Serialize};
-
+pub mod raw {
     use crate::config;
 
-    use anyhow::anyhow;
+    use dynconf::*;
+    use serde::{Deserialize, Serialize};
+    use std::collections::HashMap;
 
-    #[derive(Deserialize, Serialize)]
-    #[serde(deny_unknown_fields)]
-    struct Actions {
+    use anyhow::{anyhow, Result};
+
+    #[derive(Deserialize, Serialize, Clone, Debug)]
+    #[serde(transparent)]
+    pub struct Actions {
         actions: HashMap<String, Vec<Trigger>>,
     }
 
-    #[derive(Deserialize, Serialize)]
+    #[derive(Deserialize, Serialize, Clone, Debug)]
     #[serde(deny_unknown_fields)]
     enum TriggerType {
         #[serde(rename = "call")]
@@ -250,14 +242,14 @@ mod raw {
         FileChanged,
     }
 
-    #[derive(Deserialize, Serialize)]
+    #[derive(Deserialize, Serialize, Clone, Debug)]
     #[serde(deny_unknown_fields)]
     enum ServiceAction {
         #[serde(rename = "deploy")]
         Deploy,
     }
 
-    #[derive(Deserialize, Serialize)]
+    #[derive(Deserialize, Serialize, Clone, Debug)]
     #[serde(deny_unknown_fields)]
     struct Trigger {
         #[serde(rename = "on")]
@@ -268,26 +260,31 @@ mod raw {
         changes: Option<Vec<String>>,
         exclude_changes: Option<Vec<String>>,
         exclude_commits: Option<Vec<String>>,
-        params: Option<HashMap<String, common::vars::Value>>,
+        params: Option<util::DynAny>,
     }
 
-    impl config::LoadRawSync for Actions {
-        type Output = super::Actions;
+    #[async_trait::async_trait]
+    impl util::DynValue for Actions {
+        type Target = super::Actions;
 
-        fn load_raw(self, state: &State) -> Result<Self::Output, anyhow::Error> {
+        async fn load(self, state: &mut State) -> Result<Self::Target> {
             Ok(super::Actions {
-                actions: self.actions.load_raw(state)?,
+                actions: self.actions.load(state).await?,
             })
         }
     }
 
-    impl config::LoadRawSync for Trigger {
-        type Output = super::Trigger;
+    #[async_trait::async_trait]
+    impl util::DynValue for Trigger {
+        type Target = super::Trigger;
 
-        fn load_raw(self, state: &State) -> Result<Self::Output, anyhow::Error> {
-            let project_info: &config::ProjectInfo = state.get()?;
-            let project_id = project_info.id.clone();
-            let trigger_id: String = state.get_named("_id").cloned()?;
+        async fn load(self, state: &mut State) -> Result<Self::Target> {
+            let dynobj = config::utils::get_dyn_object(state)?;
+            let project_id = dynobj
+                .project
+                .ok_or_else(|| anyhow!("No project binding"))?
+                .id;
+            let trigger_id = dynobj._id.ok_or_else(|| anyhow!("No _id binding"))?;
 
             let on = match self.on {
                 TriggerType::Call => super::TriggerType::Call {
@@ -327,31 +324,21 @@ mod raw {
 
             Ok(super::Trigger {
                 run_pipelines: self.run_pipelines,
-                services: self.services.load_raw(state)?,
-                params: self.params.unwrap_or_default(),
+                services: self.services.load(state).await?,
+                params: self.params.load(state).await?.unwrap_or_default(),
                 on,
             })
         }
     }
 
-    impl config::LoadRawSync for ServiceAction {
-        type Output = super::ServiceAction;
+    #[async_trait::async_trait]
+    impl util::DynValue for ServiceAction {
+        type Target = super::ServiceAction;
 
-        fn load_raw(self, state: &State) -> Result<Self::Output, anyhow::Error> {
+        async fn load(self, state: &mut State) -> Result<Self::Target> {
             Ok(match self {
                 ServiceAction::Deploy => super::ServiceAction::Deploy,
             })
         }
-    }
-
-    pub async fn load<'a>(state: &State<'a>) -> Result<super::Actions, anyhow::Error> {
-        let current_project: &config::CurrentProject = state.get()?;
-        let path = current_project.path.join(super::ACTIONS_CONFIG);
-        if !path.exists() {
-            return Ok(Default::default());
-        }
-        config::load_sync::<Actions>(path.clone(), state)
-            .await
-            .map_err(|err| anyhow!("Failed to load actions from {:?}: {}", path, err))
     }
 }

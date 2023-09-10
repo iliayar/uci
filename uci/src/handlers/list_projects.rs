@@ -35,7 +35,7 @@ async fn list_projects_impl(
     let mut projects = Vec::new();
     for project in call_context.list_projects().await? {
         if call_context
-            .check_permissions(Some(&project.id), config::ActionType::Read)
+            .check_permissions(Some(&project.id), config::permissions::ActionType::Read)
             .await
         {
             projects.push(models::Project { id: project.id });

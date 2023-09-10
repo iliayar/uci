@@ -55,7 +55,7 @@ async fn list_runs_impl(
 
     for project in projects.into_iter() {
         if !call_context
-            .check_permissions(Some(&project), config::ActionType::Read)
+            .check_permissions(Some(&project), config::permissions::ActionType::Read)
             .await
         {
             continue;

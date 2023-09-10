@@ -1,27 +1,26 @@
 use std::collections::HashMap;
 
-use std::path::PathBuf;
-
+use anyhow::Result;
 use common::state::State;
+use dynconf::DynValue;
 use log::*;
 
+use crate::config;
+
 pub const INTERNAL_DATA_DIR: &str = "internal";
-pub const BIND9_DATA_DIR: &str = "bind9";
-pub const CADDY_DATA_DIR: &str = "caddy";
-pub const INTERNAL_PROJECT_DATA_DIR: &str = "internal_project";
 
 #[derive(Clone)]
 pub struct StaticProjects {
-    pub projects_config: PathBuf,
+    pub projects_lazy: dynconf::util::LoadedLazy<raw::Projects>,
 }
 
 #[async_trait::async_trait]
-impl super::ProjectsManager for StaticProjects {
+impl config::projects::ProjectsManager for StaticProjects {
     async fn get_project_info<'a>(
         &mut self,
         state: &State<'a>,
         project_id: &str,
-    ) -> Result<super::ProjectInfo, anyhow::Error> {
+    ) -> Result<config::projects::ProjectInfo> {
         if let Some(project) = self.load_projects_info(state).await?.remove(project_id) {
             Ok(project)
         } else {
@@ -32,7 +31,7 @@ impl super::ProjectsManager for StaticProjects {
     async fn list_projects<'a>(
         &mut self,
         state: &State<'a>,
-    ) -> Result<Vec<super::ProjectInfo>, anyhow::Error> {
+    ) -> Result<Vec<config::projects::ProjectInfo>> {
         Ok(self
             .load_projects_info(state)
             .await?
@@ -42,152 +41,116 @@ impl super::ProjectsManager for StaticProjects {
     }
 }
 
-impl From<&StaticProjects> for common::vars::Value {
-    fn from(val: &StaticProjects) -> Self {
-        let mut vars = common::vars::Value::default();
-
-        vars.assign(
-            "config",
-            val.projects_config.to_string_lossy().to_string().into(),
-        )
-        .ok();
-
-        vars.assign(
-            "config_dir",
-            val.projects_config
-                .parent()
-                .unwrap()
-                .to_string_lossy()
-                .to_string()
-                .into(),
-        )
-        .ok();
-
-        vars
-    }
-}
-
 impl StaticProjects {
-    pub async fn new(projects_config: PathBuf) -> Result<StaticProjects, anyhow::Error> {
-        Ok(Self { projects_config })
+    pub async fn new(
+        projects_lazy: dynconf::util::LoadedLazy<raw::Projects>,
+    ) -> Result<StaticProjects, anyhow::Error> {
+        Ok(Self { projects_lazy })
     }
 
     pub async fn load_projects_info<'a>(
         &self,
         state: &State<'a>,
-    ) -> Result<HashMap<String, super::ProjectInfo>, anyhow::Error> {
-        let mut state = state.clone();
-        state.set(self);
-        let res = raw::load(&state).await?;
+    ) -> Result<HashMap<String, config::projects::ProjectInfo>> {
+        let mut dyn_state = config::utils::make_dyn_state(state)?;
+        let res = self.projects_lazy.clone().load(&mut dyn_state).await?;
         debug!("Loaded static projects: {:#?}", res);
         Ok(res)
     }
 }
 
-mod raw {
-    use std::{collections::HashMap, path::PathBuf};
-
+pub mod raw {
     use crate::config;
 
-    use common::state::State;
-    use config::LoadRawSync;
+    use dynconf::*;
     use serde::{Deserialize, Serialize};
+    use std::collections::HashMap;
 
-    use anyhow::anyhow;
+    use anyhow::{anyhow, Result};
 
-    #[derive(Deserialize, Serialize)]
-    #[serde(deny_unknown_fields)]
-    struct Projects {
-        projects: HashMap<String, Project>,
+    #[derive(Deserialize, Serialize, Clone)]
+    #[serde(transparent)]
+    pub struct Projects {
+        projects: HashMap<String, util::Dyn<Project>>,
     }
 
-    #[derive(Deserialize, Serialize)]
+    #[derive(Deserialize, Serialize, Clone)]
     #[serde(deny_unknown_fields)]
     struct Project {
-        enabled: Option<bool>,
-        path: config::OneOrMany<config::AbsPath>,
-        #[serde(default)]
-        repos: HashMap<String, config::repos_raw::Repo>,
-        secrets: Option<config::OneOrMany<config::File<config::secrets::raw::Secrets>>>,
-        tokens: Option<config::permissions_raw::Tokens>,
+        enabled: Option<util::Dyn<bool>>,
+        config: util::OneOrMany<util::Dyn<util::Lazy<config::project::raw::Project>>>,
+        repos: Option<util::Dyn<config::repo::raw::Repos>>,
+        secrets: Option<util::OneOrMany<util::Dyn<config::secrets::raw::Secrets>>>,
+        tokens: Option<util::Dyn<config::permissions::raw::Tokens>>,
     }
 
     #[async_trait::async_trait]
-    impl config::LoadRaw for Projects {
-        type Output = super::HashMap<String, config::ProjectInfo>;
+    impl util::DynValue for Project {
+        type Target = config::projects::ProjectInfo;
 
-        async fn load_raw(self, state: &State) -> Result<Self::Output, anyhow::Error> {
-            self.projects.load_raw(state).await
-        }
-    }
+        async fn load(self, state: &mut State) -> Result<Self::Target> {
+            let dynobj = config::utils::get_dyn_object(state)?;
+            let data_path = dynobj
+                .config
+                .ok_or_else(|| anyhow!("No config binding"))?
+                .data_path;
+            let project_id = dynobj._id.ok_or_else(|| anyhow!("No _id binding"))?;
 
-    #[async_trait::async_trait]
-    impl config::LoadRaw for Project {
-        type Output = config::ProjectInfo;
+            state.mutate_global(config::utils::wrap_dyn_f(|mut dynobj| {
+                dynobj.project = Some(config::projects::DynProjectInfo {
+                    id: project_id.clone(),
+                    data_path: data_path.clone(),
+                    secrets: None,
+                    repos: None,
+                });
+                Ok(dynobj)
+            }))?;
 
-        async fn load_raw(self, state: &State) -> Result<Self::Output, anyhow::Error> {
-            let service_config: &config::ServiceConfig = state.get()?;
-            let project_id: String = state.get_named("_id").cloned()?;
+            let repos = self.repos.load(state).await?.unwrap_or_default();
 
-            let mut res = config::ProjectInfo {
-                data_path: service_config.data_path.join(&project_id),
+            state.mutate_global(config::utils::wrap_dyn_f(|mut dynobj| {
+                dynobj.project.as_mut().unwrap().repos = Some((&repos).into());
+                Ok(dynobj)
+            }))?;
+
+            let projects = self.config.load(state).await?;
+
+            let secrets: config::secrets::Secrets = self
+                .secrets
+                .load(state)
+                .await?
+                .unwrap_or_default()
+                .into_iter()
+                .try_fold(
+                    config::secrets::Secrets::default(),
+                    config::secrets::Secrets::merge,
+                )?;
+
+            state.mutate_global(config::utils::wrap_dyn_f(|mut dynobj| {
+                dynobj.project.as_mut().unwrap().secrets = Some((&secrets).into());
+                Ok(dynobj)
+            }))?;
+
+            let tokens = self.tokens.load(state).await?.unwrap_or_default();
+
+            Ok(config::projects::ProjectInfo {
                 id: project_id,
-                enabled: true,
-                ..Default::default()
-            };
-
-            res.repos = {
-                let mut state = state.clone();
-                state.set(&res);
-                config::Repos {
-                    repos: self
-                        .repos
-                        .load_raw(&state)
-                        .await
-                        .map_err(|err| anyhow!("Failed to load repos config: {}", err))?,
-                }
-            };
-
-            res.path = {
-                let mut state = state.clone();
-                state.set(&res);
-                self.path.load_raw(&state)?
-            };
-
-            res.secrets = {
-                let mut state = state.clone();
-                state.set(&res);
-                let secrets: Vec<config::Secrets> = self
-                    .secrets
-                    .load_raw(&state)
-                    .await
-                    .map_err(|err| anyhow!("Failed to load secrets: {}", err))?
-                    .unwrap_or_default();
-
-                secrets
-                    .into_iter()
-                    .try_fold(config::Secrets::default(), config::Secrets::merge)?
-            };
-
-            res.tokens = {
-                let mut state = state.clone();
-                state.set(&res);
-                self.tokens.load_raw(&state)?.unwrap_or_default()
-            };
-
-            Ok(res)
+                enabled: self.enabled.load(state).await?.unwrap_or(true),
+                projects,
+                repos,
+                tokens,
+                secrets,
+                data_path,
+            })
         }
     }
 
-    pub async fn load<'a>(
-        state: &State<'a>,
-    ) -> Result<HashMap<String, config::ProjectInfo>, anyhow::Error> {
-        let static_projects: &config::StaticProjects = state.get()?;
-        let path: PathBuf = static_projects.projects_config.clone();
-        config::load::<Projects>(path.clone(), state)
-            .await
-            .map_err(|err| {
-                anyhow::anyhow!("Failed to load projects config from {:?}: {}", path, err)
-            })
+    #[async_trait::async_trait]
+    impl util::DynValue for Projects {
+        type Target = HashMap<String, config::projects::ProjectInfo>;
+
+        async fn load(self, state: &mut State) -> Result<Self::Target> {
+            self.projects.load(state).await
+        }
     }
 }

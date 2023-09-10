@@ -27,17 +27,17 @@ async fn service_command(
     }: models::ServiceCommandRequest,
 ) -> Result<impl warp::Reply, warp::Rejection> {
     if !call_context
-        .check_permissions(Some(&project_id), config::ActionType::Execute)
+        .check_permissions(Some(&project_id), config::permissions::ActionType::Execute)
         .await
     {
         return Err(warp::reject::custom(AuthRejection::TokenIsUnauthorized));
     }
 
     let service_action = match command {
-        models::ServiceCommand::Stop => config::ServiceAction::Stop,
-        models::ServiceCommand::Start { build } => config::ServiceAction::Start { build },
+        models::ServiceCommand::Stop => config::actions::ServiceAction::Stop,
+        models::ServiceCommand::Start { build } => config::actions::ServiceAction::Start { build },
         models::ServiceCommand::Restart { build } => {
-            config::ServiceAction::Restart { build }
+            config::actions::ServiceAction::Restart { build }
         }
     };
 

@@ -190,11 +190,10 @@ impl GitHubIntegration {
             self.repo, self.rev
         );
 
-        let project: String = state.get_named("project").cloned()?;
+        let project: String = state.get::<crate::executor::CurrentProject>().cloned()?.0;
         let pipeline_run: &crate::executor::PipelineRun = state.get()?;
 
-
-	let name = format!("{}/{}", pipeline_run.pipeline_id, job.as_ref());
+        let name = format!("{}/{}", pipeline_run.pipeline_id, job.as_ref());
 
         let target_url = self
             .ui_url

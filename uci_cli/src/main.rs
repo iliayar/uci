@@ -15,7 +15,7 @@ use termion::{color, style};
 
 use log::*;
 
-#[tokio::main(flavor = "current_thread")]
+#[tokio::main]
 async fn main() {
     let args = cli::Cli::parse();
 
