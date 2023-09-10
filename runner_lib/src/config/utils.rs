@@ -24,6 +24,16 @@ pub fn wrap_dyn_f(f: impl Fn(DynObject) -> Result<DynObject>) -> impl Fn(Value) 
 }
 
 pub fn make_dyn_state(state: &State) -> Result<dynconf::State<'static>> {
+    let mut params = Value::Null;
+
+    if let Ok(config::project::ProjectParams(ps)) = state.get() {
+        params = params.merge(ps.clone())?;
+    }
+
+    if let Ok(config::project::ActionParams(ps)) = state.get() {
+        params = params.merge(ps.clone())?;
+    }
+
     let dynobj = DynObject {
         _id: None,
         config: state
@@ -38,8 +48,8 @@ pub fn make_dyn_state(state: &State) -> Result<dynconf::State<'static>> {
             .get::<config::services::Services>()
             .map(Into::into)
             .ok(),
-        params: Value::Null,
         env: state.get::<Env>()?.0.clone(),
+        params,
     };
 
     let mut state = dynconf::State::initialize();

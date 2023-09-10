@@ -3,9 +3,12 @@ use std::collections::HashMap;
 use anyhow::{anyhow, Result};
 use common::state::State;
 
+use crate::config;
+use dynconf::DynValue;
+
 #[derive(Debug, Default)]
 pub struct Pipelines {
-    pipelines: HashMap<String, common::Pipeline>,
+    pipelines: HashMap<String, dynconf::util::LoadedLazy<raw::Pipeline>>,
 }
 
 pub struct PipelinesDescription {
@@ -39,10 +42,14 @@ impl Pipelines {
         state: &State<'a>,
         pipeline: impl AsRef<str>,
     ) -> Result<common::Pipeline> {
+        let mut dyn_state = config::utils::make_dyn_state(state)?;
+
         self.pipelines
             .get(pipeline.as_ref())
             .cloned()
-            .ok_or_else(|| anyhow!("No such pipeline: {}", pipeline.as_ref()))
+            .ok_or_else(|| anyhow!("No such pipeline: {}", pipeline.as_ref()))?
+            .load(&mut dyn_state)
+            .await
     }
 
     pub async fn list_pipelines(&self) -> PipelinesDescription {
@@ -68,12 +75,12 @@ pub mod raw {
     #[derive(Deserialize, Serialize, Clone, Debug)]
     #[serde(transparent)]
     pub struct Pipelines {
-        pipelines: HashMap<String, util::Dyn<Pipeline>>,
+        pipelines: HashMap<String, util::Dyn<util::Lazy<Pipeline>>>,
     }
 
     #[derive(Deserialize, Serialize, Clone, Debug)]
     #[serde(deny_unknown_fields)]
-    struct Pipeline {
+    pub struct Pipeline {
         jobs: HashMap<String, Job>,
         links: Option<HashMap<String, util::DynString>>,
         stages: Option<HashMap<String, Stage>>,
@@ -336,14 +343,16 @@ pub mod raw {
                         .collect();
 
                     let mut volumes_res: HashMap<String, String> = HashMap::new();
-                    for (mount_path, name) in volumes.load(state).await?.unwrap_or_default().into_iter() {
+                    for (mount_path, name) in
+                        volumes.load(state).await?.unwrap_or_default().into_iter()
+                    {
                         let name = if let Some(name) = services.volumes.get(&name) {
                             name.clone()
                         } else {
                             // name is path
                             name
                         };
-			volumes_res.insert(name, mount_path);
+                        volumes_res.insert(name, mount_path);
                     }
 
                     let config = common::RunShellConfig {
