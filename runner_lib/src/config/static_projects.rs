@@ -90,11 +90,12 @@ pub mod raw {
 
         async fn load(self, state: &mut State) -> Result<Self::Target> {
             let dynobj = config::utils::get_dyn_object(state)?;
+            let project_id = dynobj._id.ok_or_else(|| anyhow!("No _id binding"))?;
             let data_path = dynobj
                 .config
                 .ok_or_else(|| anyhow!("No config binding"))?
-                .data_path;
-            let project_id = dynobj._id.ok_or_else(|| anyhow!("No _id binding"))?;
+                .data_path
+                .join(&project_id);
 
             state.mutate_global(config::utils::wrap_dyn_f(|mut dynobj| {
                 dynobj.project = Some(config::projects::DynProjectInfo {
