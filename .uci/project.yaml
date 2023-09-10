@@ -13,7 +13,7 @@ caddy:
       }
 
       handle * {
-          root * ${project.data.path}/webgui
+          root * ${project.data_path}/webgui
           try_files {path} /index.html
           file_server
       }
