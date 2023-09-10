@@ -42,7 +42,11 @@ impl Pipelines {
         state: &State<'a>,
         pipeline: impl AsRef<str>,
     ) -> Result<common::Pipeline> {
-        let mut dyn_state = config::utils::make_dyn_state(state)?;
+	let pipeline_id = config::utils::Id(pipeline.as_ref().to_string());
+	let mut state = state.clone();
+	state.set(&pipeline_id);
+	
+        let mut dyn_state = config::utils::make_dyn_state(&state)?;
 
         self.pipelines
             .get(pipeline.as_ref())

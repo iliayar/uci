@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 use crate::config;
 
 pub struct Env(pub String);
+pub struct Id(pub String);
 
 #[derive(Deserialize, Serialize)]
 pub struct DynObject {
@@ -35,7 +36,7 @@ pub fn make_dyn_state(state: &State) -> Result<dynconf::State<'static>> {
     }
 
     let dynobj = DynObject {
-        _id: None,
+        _id: state.get::<Id>().map(|v| v.0.clone()).ok(),
         config: state
             .get::<config::service_config::ServiceConfig>()
             .map(Into::into)
