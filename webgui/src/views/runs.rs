@@ -91,7 +91,7 @@ pub fn Runs(cx: Scope) -> impl IntoView {
     provide_context(cx, set_show_runs);
 
     view! {cx,
-     <div class="flex flex-col space-y-2">
+     <div class="flex flex-col space-y-2 h-full">
        {move || if show_runs().0 { runs() } else { view!{cx, }.into_view(cx) }}
        <Outlet />
      </div>

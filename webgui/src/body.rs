@@ -173,7 +173,7 @@ pub fn BodyWithProject(cx: Scope) -> impl IntoView {
     });
 
     view! {cx,
-      <div class="grow flex flex-row w-full text-fg-light dark:text-fg-dark bg-bg-light dark:bg-bg-dark">
+      <div class="grow flex flex-row w-full text-fg-light dark:text-fg-dark bg-bg-light dark:bg-bg-dark overflow-y-hidden">
         <MainNavigation/>
         <div class="p-4 w-full"><Outlet/></div>
       </div>

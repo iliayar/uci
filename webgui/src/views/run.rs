@@ -170,7 +170,7 @@ pub fn Run(cx: Scope) -> impl IntoView {
     create_effect(cx, move |_| watch_logs.dispatch(()));
 
     view! {cx,
-      <div class="flex flex-col">
+      <div class="flex flex-col overflow-y-hidden">
         <div>
           <label>"Run: "</label><code class="font-bold">{run}</code>
         </div>
@@ -178,7 +178,7 @@ pub fn Run(cx: Scope) -> impl IntoView {
           <label>"Pipeline: "</label><code class="font-bold">{pipeline}</code>
         </div>
         <hr/>
-    <div class="flex flex-col m-2 p-1 grow h-full bg-white-1-light dark:bg-white-1-dark">
+    <div class="flex flex-col m-2 p-1 grow h-full bg-white-1-light dark:bg-white-1-dark overflow-y-auto">
        <For
          each=logs
          key=|log| log.0
