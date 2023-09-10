@@ -1,4 +1,5 @@
-bind9:
+bind:
+  enabled: false
   zones:
     'ilyay.space':
       cnames:
@@ -16,3 +17,13 @@ caddy:
           try_files {path} /index.html
           file_server
       }
+
+docker:
+  volumes:
+    webgui-target-cache: {}
+
+pipelines:
+  deploy: ${load(./deploy_pipeline.yaml)}
+  deploy_web_gui: ${load(./deploy_web_gui_pipeline.yaml)}
+
+actions: ${${load(./actions.yaml)}.actions}

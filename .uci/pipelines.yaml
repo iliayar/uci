@@ -1,5 +1,0 @@
-pipelines:
-  deploy:
-    path: deploy_pipeline.yaml
-  deploy_web_gui:
-    path: deploy_web_gui_pipeline.yaml

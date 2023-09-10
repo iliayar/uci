@@ -7,7 +7,7 @@ jobs:
   _make-dist-dir:
     type: script
     env:
-      DATA_DIR: ${project.data.path}/webgui
+      DATA_DIR: ${project.data_path}/webgui
       DIST_DIR: ${project.repos.uci.path}/webgui/dist
     script: |
       set -e
@@ -23,7 +23,7 @@ jobs:
     image: uci-web-gui-build
     volumes:
       '/build': ${project.repos.uci.path}
-      '/dist': ${project.data.path}/webgui
+      '/dist': ${project.data_path}/webgui
       '/target': webgui-target-cache
     env:
       UCI_BASE_URL: 'https://uci.ilyay.space/api'
