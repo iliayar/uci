@@ -65,11 +65,11 @@ pipelines:
   caddy_reload_pipeline:
     jobs:
       run_script:
-        steps:
-          - type: script
-            script: |
-              cd caddy
-              caddy reload
+        do:
+          type: script
+          script: |
+            cd caddy
+            caddy reload
     links:
       'caddy': ${{config.internal_path}}/caddy
 
