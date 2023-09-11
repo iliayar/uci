@@ -338,8 +338,8 @@ impl DynValue for bool {
 #[derive(Deserialize, Serialize, Debug, PartialEq, Eq, Clone)]
 #[serde(untagged)]
 pub enum OneOrMany<T> {
-    One(T),
     Many(Vec<T>),
+    One(T),
 }
 
 #[async_trait::async_trait]
