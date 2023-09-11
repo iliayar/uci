@@ -42,10 +42,10 @@ impl Pipelines {
         state: &State<'a>,
         pipeline: impl AsRef<str>,
     ) -> Result<common::Pipeline> {
-	let pipeline_id = config::utils::Id(pipeline.as_ref().to_string());
-	let mut state = state.clone();
-	state.set(&pipeline_id);
-	
+        let pipeline_id = config::utils::Id(pipeline.as_ref().to_string());
+        let mut state = state.clone();
+        state.set(&pipeline_id);
+
         let mut dyn_state = config::utils::make_dyn_state(&state)?;
 
         self.pipelines
@@ -101,21 +101,13 @@ pub mod raw {
     }
 
     #[derive(Deserialize, Serialize, Clone, Debug)]
-    #[serde(untagged)]
-    enum Job {
-        JobWithSingleStep {
-            #[serde(flatten)]
-            common: JobCommon,
-
-            #[serde(flatten)]
-            step: Step,
-        },
-        JobWithSteps {
-            #[serde(flatten)]
-            common: JobCommon,
-
-            steps: Vec<Step>,
-        },
+    struct Job {
+        needs: Option<Vec<String>>,
+        stage: Option<String>,
+        // TODO: Make it lazy
+        enabled: Option<util::Dyn<bool>>,
+	#[serde(rename = "do")]
+        do_steps: util::OneOrMany<Step>,
     }
 
     #[derive(Deserialize, Serialize, Clone, Debug)]
@@ -301,15 +293,11 @@ pub mod raw {
         type Target = common::Job;
 
         async fn load(self, state: &mut State) -> Result<Self::Target> {
-            let (common, steps) = match self {
-                Job::JobWithSteps { common, steps } => (common, steps),
-                Job::JobWithSingleStep { common, step } => (common, vec![step]),
-            };
             Ok(common::Job {
-                needs: common.needs.unwrap_or_default(),
-                steps: steps.load(state).await?,
-                stage: common.stage,
-                enabled: common.enabled.load(state).await?.unwrap_or(true),
+                needs: self.needs.unwrap_or_default(),
+                steps: self.do_steps.load(state).await?,
+                stage: self.stage,
+                enabled: self.enabled.load(state).await?.unwrap_or(true),
             })
         }
     }

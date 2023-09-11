@@ -2136,6 +2136,7 @@ dependencies = [
  "runner_client",
  "serde",
  "serde_json",
+ "wasm-bindgen",
  "web-sys",
  "ws_stream_wasm",
 ]

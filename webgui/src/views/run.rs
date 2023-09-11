@@ -28,6 +28,7 @@ fn format_color((r, g, b): (u8, u8, u8)) -> String {
 #[component]
 pub fn LogLine(
     cx: Scope,
+    logs_ref: NodeRef<html::Div>,
     params: (models::LogType, String, DateTime<Utc>, String, String),
 ) -> impl IntoView {
     let (t, text, ts, _pipeline, job) = params;
@@ -53,7 +54,15 @@ pub fn LogLine(
         }
     };
 
-    view! {cx, <div>{ts} {job} {text}</div>}
+    let log_ref: NodeRef<html::Div> = create_node_ref(cx);
+
+    log_ref.on_load(cx, move |_| {
+        if let Some(div_el) = logs_ref.get() {
+            div_el.scroll_to_with_x_and_y(0., div_el.scroll_height() as f64);
+        }
+    });
+
+    view! {cx, <div node_ref=log_ref>{ts} {job} {text}</div>}
 }
 
 #[component]
@@ -169,6 +178,8 @@ pub fn Run(cx: Scope) -> impl IntoView {
 
     create_effect(cx, move |_| watch_logs.dispatch(()));
 
+    let logs_ref: NodeRef<html::Div> = create_node_ref(cx);
+
     view! {cx,
       <div class="flex flex-col overflow-y-hidden">
         <div>
@@ -178,11 +189,11 @@ pub fn Run(cx: Scope) -> impl IntoView {
           <label>"Pipeline: "</label><code class="font-bold">{pipeline}</code>
         </div>
         <hr/>
-    <div class="flex flex-col m-2 p-1 grow h-full bg-white-1-light dark:bg-white-1-dark overflow-y-auto">
+    <div class="flex flex-col m-2 p-1 grow h-full bg-white-1-light dark:bg-white-1-dark overflow-y-auto" node_ref=logs_ref>
        <For
          each=logs
          key=|log| log.0
-         view=|cx, log| view!{cx, <LogLine params=log.1 />}
+         view=move |cx, log| view!{cx, <LogLine logs_ref=logs_ref params=log.1 />}
        />
     </div>
       </div>

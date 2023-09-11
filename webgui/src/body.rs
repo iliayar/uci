@@ -41,8 +41,9 @@ pub fn Header(
     set_dark_mode: WriteSignal<bool>,
     set_token: WriteSignal<Option<String>>,
     header_project: ReadSignal<HeaderProject>,
+    project_selection: ReadSignal<bool>,
+    set_project_selection: WriteSignal<bool>,
 ) -> impl IntoView {
-    let (project_selection, set_project_selection) = create_signal(cx, false);
     let toggle_project_selection = move |_| {
         set_project_selection(!project_selection());
     };
@@ -72,7 +73,7 @@ pub fn Header(
             class="relative"
           >
             <button
-              class="hover:bg-button-focus-light hover:dark:bg-button-focus-dark bg-bg-light dark:bg-bg-dark"
+              class="hover:bg-button-focus-light hover:dark:bg-button-focus-dark bg-bg-light dark:bg-bg-dark project-list-btn"
               on:click=toggle_project_selection
             >
               {project_selection_text} " "
@@ -80,7 +81,7 @@ pub fn Header(
             </button>
             <Show when=project_selection fallback={|_| view!{cx,}}>
               <div
-                class="absolute min-w-full w-fit bg-bg-light dark:bg-bg-dark p-1 text-center border-b-2 border-x-2 border-border-light dark:border-border-dark"
+                class="absolute min-w-full w-fit bg-bg-light dark:bg-bg-dark p-1 text-center border-b-2 border-x-2 border-border-light dark:border-border-dark projects-list"
               >
                 <Projects />
               </div>
@@ -110,6 +111,7 @@ pub fn Body(cx: Scope) -> impl IntoView {
     let runner_url: RunnerUrl = expect_context(cx);
 
     let (dark_mode, set_dark_mode) = create_signal(cx, get_dark_mode_init());
+    let (project_selection, set_project_selection) = create_signal(cx, false);
 
     let init_token =
         gloo_storage::LocalStorage::get::<Option<String>>("uci_token").unwrap_or_else(|_| None);
@@ -132,13 +134,28 @@ pub fn Body(cx: Scope) -> impl IntoView {
     let (header_project, set_header_project) = create_signal(cx, HeaderProject(None));
     provide_context(cx, set_header_project);
 
+    let on_body_click = move |ev: web_sys::MouseEvent| {
+        if let Some(target) = ev.target() {
+            let obj: wasm_bindgen::JsValue = target.clone().into();
+            let el: web_sys::HtmlElement = obj.into();
+
+            if let Ok(None) = el.closest(".projects-list") {
+                if let Ok(None) = el.closest(".project-list-btn") {
+                    set_project_selection(false);
+                }
+            }
+        }
+    };
+
     view! {cx,
-      <div class="h-screen flex flex-col" class:dark=dark_mode>
+      <div class="h-screen flex flex-col" class:dark=dark_mode on:click=on_body_click>
       <Header
         dark_mode=dark_mode
         set_dark_mode=set_dark_mode
         set_token=set_token
         header_project=header_project
+        project_selection=project_selection
+    set_project_selection=set_project_selection
       />
         <Outlet />
       </div>
