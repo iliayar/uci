@@ -137,7 +137,7 @@ async fn test_deserialize() {
                 c: "BOOBA".to_string(),
                 d: ConfDR {
                     b: util::LoadedLazy {
-                        value: serde_json::Value::String("${${load(./nested/b.yaml)}}".to_string()),
+                        value: serde_yaml::Value::String("${${load(./nested/b.yaml)}}".to_string()),
                         current_dir: Some("./test_data/deserialize/other_nested".into()),
                         _phantom: std::marker::PhantomData::default(),
                     }
