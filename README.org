@@ -34,11 +34,13 @@ Assume configs repository structure
 #+end_src
 #+begin_src yaml
   # uci.yaml
-  data_dir: ~/.uci
-  secrets: ~/.uci-secrets.yaml
+  data_dir: ${~/.uci}
+  secrets: ${load(~/.uci-secrets.yaml)}
   tokens:
     - token: ${config.secrets.admin-token}
       permissions: [ 'read', 'write' ]
+  projects:
+    'some-project': ${load(./path/to/project.yaml)}
 #+end_src
 #+begin_src yaml
   # ~/.uci-secrets.yaml
@@ -65,40 +67,36 @@ With client config at host's =.uci/config.yaml=:
 - Handling update of uci in itself [[https://github.com/iliayar/uci/tree/master/.uci][Link]]
 - Static generation of Html from Org [[https://github.com/iliayar/iliayar/tree/master/.uci][Link]], [[https://github.com/iliayar/ITMO/tree/master/.uci][Link]]
 
-And corresponding =projects.yaml= for the second example:
+Corresponding =project.yaml= for the second example:
 #+begin_src yaml
-  projects:
-    # Other projects ...
+config:
+  - ${load(/${project.repos.main.path}/.uci/project.yaml)}
+  - ${load(/${project.repos.conspects.path}/.uci/project.yaml)}
+repos:
+  main:
+    source: git@github.com:iliayar/iliayar.git
+    branch: master
 
-    personal-site:
-      path:
-        - ${project.repos.main.path}/.uci
-        - ${project.repos.conspects.path}/.uci
-      repos:
-        main:
-          source: git@github.com:iliayar/iliayar.git
-          branch: master
+  conspects:
+    source: git@github.com:iliayar/itmo.git
+    branch: master
 
-        conspects:
-          source: git@github.com:iliayar/itmo.git
-          branch: master
+tokens:
+  - token: ${config.secrets.admin-token}
+    permissions:
+      - read
+      - write
+      - execute
 
-      tokens:
-        - token: ${config.secrets.admin-token}
-          permissions:
-            - read
-            - write
-            - execute
+  - token: ${config.secrets.webhook-secret}
+    permissions:
+      - write
 
-        - token: ${config.secrets.webhook-secret}
-          permissions:
-            - write
+  - # anonymous
+    permissions:
+      - read
 
-        - # anonymous
-          permissions:
-            - read
-
-      secrets: ~/.uci-secrets/personal-site.yaml
+secrets: ${load(~/.uci-secrets/personal-site.yaml)}
 #+end_src
 
 

@@ -1,4 +1,4 @@
-* TODO [4/7] Minor stuff
+* TODO [5/7] Minor stuff
 - [-] [2/3] Paramteres from request and from action \\
   - [X] Load pipelines lazy
   - [ ] Support parameters when call action, update repo, etc...
@@ -14,7 +14,7 @@
     - [X] GitLab
     - [X] GitHub
 - [X] Dry run
-- [ ] Impove expressions language (JMES like?)
+- [X] Impove expressions language (JMES like?)
 - [X] Support cancelation in tasks
 - [ ] Nix integration!
 - [X] [2/2] Project configs in multiple repos
@@ -22,3 +22,6 @@
         Project can be splitted in mutliple repos
   - [X] Merging configs
 * TODO Web UI
+- [ ] More information on run
+  - [ ] Visualize pipeline
+- [ ] Repos tab
