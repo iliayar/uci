@@ -29,8 +29,8 @@ jobs:
         '/dist': ${project.data_path}/webgui
         '/target': webgui-target-cache
       env:
-        UCI_BASE_URL: 'https://uci.ilyay.space/api'
-        UCI_WS_BASE_URL: 'wss://uci.ilyay.space/api'
+        UCI_BASE_URL: 'https://uci.iliay.ar/api'
+        UCI_WS_BASE_URL: 'wss://uci.iliay.ar/api'
         CARGO_TARGET_DIR: '/target'
       script: |
         set -e
@@ -45,6 +45,6 @@ integrations:
     token: ${project.secrets.github_token}
     repo: 'iliayar/uci'
     rev: ${project.repos.uci.rev}
-    ui_url: 'https://uci.ilyay.space'
+    ui_url: 'https://uci.iliay.ar'
     jobs_to_report:
       - build
