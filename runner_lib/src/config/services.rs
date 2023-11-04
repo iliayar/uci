@@ -436,7 +436,7 @@ pub mod raw {
                     // name is path
                     name
                 };
-                volumes.insert(key, name);
+                volumes.insert(name, key);
             }
 
             let global = self.global.unwrap_or(false);
