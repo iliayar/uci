@@ -294,7 +294,7 @@ pub mod raw {
         build: Option<Build>,
         image: Option<String>,
 
-        volumes: Option<HashMap<String, String>>,
+        volumes: Option<HashMap<String, util::DynString>>,
         networks: Option<Vec<String>>,
 
         #[serde(default)]
@@ -426,20 +426,18 @@ pub mod raw {
                         .cloned()
                 })
                 .collect();
-            let volumes: Result<HashMap<String, String>> = self
-                .volumes
-                .unwrap_or_default()
-                .into_iter()
-                .map(|(key, name)| {
-                    let name = if let Some(name) = services.volumes.get(&name) {
-                        name.clone()
-                    } else {
-                        // name is path
-                        name
-                    };
-                    Ok((key, name))
-                })
-                .collect();
+
+            let mut volumes: HashMap<String, String> = Default::default();
+            for (key, name) in self.volumes.unwrap_or_default().into_iter() {
+                let name = name.load(state).await?;
+                let name = if let Some(name) = services.volumes.get(&name) {
+                    name.clone()
+                } else {
+                    // name is path
+                    name
+                };
+                volumes.insert(key, name);
+            }
 
             let global = self.global.unwrap_or(false);
 
@@ -470,7 +468,7 @@ pub mod raw {
                 env: self.env.load(state).await?,
                 hostname: self.hostname,
                 networks: networks?,
-                volumes: volumes?,
+                volumes,
                 container,
                 image,
                 build,
