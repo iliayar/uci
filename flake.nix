@@ -29,7 +29,7 @@
               rust-analyzer
               rustfmt
 
-              pkgconfig
+              pkg-config
               openssl
 
               caddy

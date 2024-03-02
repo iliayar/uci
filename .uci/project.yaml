@@ -33,5 +33,6 @@ docker:
 pipelines:
   deploy: ${load(./deploy_pipeline.yaml)}
   deploy_web_gui: ${load(./deploy_web_gui_pipeline.yaml)}
+  nix_build: ${load(./nix_build.yaml)}
 
 actions: ${${load(./actions.yaml)}.actions}

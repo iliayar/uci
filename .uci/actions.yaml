@@ -9,6 +9,7 @@ actions:
     - on: call
       run_pipelines:
         - deploy
+        - nix_build
       params:
         do_restart: false
     - on: changed
@@ -23,6 +24,7 @@ actions:
         - '^Cargo.lock.*'
       run_pipelines:
         - deploy
+        - nix_build
       params:
         do_restart: false
 

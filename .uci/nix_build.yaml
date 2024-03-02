@@ -1,0 +1,37 @@
+jobs:
+  nix-build-ucid:
+    do:
+      type: script
+      script: |
+        set -e
+  
+        cd uci
+        nix build .#ucid --json | jq -r '.[].outputs | to_entries[].value' | cachix push uci
+  nix-build-uci:
+    do:
+      type: script
+      script: |
+        set -e
+  
+        cd uci
+        nix build .#uci --json | jq -r '.[].outputs | to_entries[].value' | cachix push uci
+links:
+  'uci': ${project.repos.uci.path}
+
+integrations:
+  # gitlab:
+  #   token: ${project.secrets.gitlab_token}
+  #   project_id: '42995967'
+  #   rev: ${project.repos.uci.rev}
+
+  github:
+    token: ${project.secrets.github_token}
+    repo: 'iliayar/uci'
+    rev: ${project.repos.uci.rev}
+    ui_url: 'https://uci.iliay.ar'
+
+  # telegram:
+  #   token: ${project.secrets.tg_token}
+  #   chat_id: ${project.secrets.tg_chat_id}
+  #   pipeline_id: ${pipeline.id}
+  #   topic_id: ${project.secrets.tg_topic_id}
