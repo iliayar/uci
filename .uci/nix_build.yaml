@@ -11,6 +11,7 @@ jobs:
   nix-build-uci:
     do:
       type: script
+      needs: ['nix-build-ucid']
       script: |
         set -e
         . /etc/profile.d/nix.sh
