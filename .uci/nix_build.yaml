@@ -4,6 +4,7 @@ jobs:
       type: script
       script: |
         set -e
+        . /etc/profile.d/nix.sh
   
         cd uci
         nix build .#ucid --json | jq -r '.[].outputs | to_entries[].value' | cachix push uci
@@ -12,6 +13,7 @@ jobs:
       type: script
       script: |
         set -e
+        . /etc/profile.d/nix.sh
   
         cd uci
         nix build .#uci --json | jq -r '.[].outputs | to_entries[].value' | cachix push uci
