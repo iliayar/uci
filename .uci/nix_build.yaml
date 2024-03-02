@@ -9,9 +9,9 @@ jobs:
         cd uci
         nix build .#ucid --json | jq -r '.[].outputs | to_entries[].value' | cachix push uci
   nix-build-uci:
+    needs: ['nix-build-ucid']
     do:
       type: script
-      needs: ['nix-build-ucid']
       script: |
         set -e
         . /etc/profile.d/nix.sh
