@@ -135,14 +135,7 @@ pub async fn current_commit(path: PathBuf) -> Result<String, GitError> {
 }
 
 async fn git_out(path: PathBuf, args: &[String]) -> Result<Vec<String>, GitError> {
-    debug!(
-        "{}: Executing git command: git {}",
-        path.display(),
-        args.join(" ")
-    );
-
-    let mut command = git_base(path)?;
-    command.args(args);
+    let mut command = git_cmd(path, args)?;
     let out = command.output().await?;
     Ok(String::from_utf8_lossy(&out.stdout)
         .to_string()
@@ -163,13 +156,22 @@ async fn git(path: PathBuf, args: &[String]) -> Result<(), GitError> {
 }
 
 async fn git_status(path: PathBuf, args: &[String]) -> Result<ExitStatus, GitError> {
-    let mut command = git_base(path)?;
-    command.args(args);
-    debug!("Executing git command: git {}", args.join(" "));
-
+    let command = git_cmd(path, args)?;
     let status = run_command_with_output(command).await?;
 
     Ok(status)
+}
+
+fn git_cmd(path: PathBuf, args: &[String]) -> Result<Command, GitError> {
+    debug!(
+        "{}: Executing git command: git {}",
+        path.display(),
+        args.join(" ")
+    );
+
+    let mut command = git_base(path)?;
+    command.args(args);
+    Ok(command)
 }
 
 fn git_base(path: PathBuf) -> Result<Command, GitError> {
