@@ -195,12 +195,10 @@ impl ProjectsStore {
             }
 
             let mut dyn_state = config::utils::make_dyn_state(state)?;
-            let project =
-                dynconf::util::load::<dynconf::util::Lazy<config::project::raw::Project>>(
-                    &mut dyn_state,
-                    project_config,
-                )
-                .await?;
+            let project = dynconf::util::load::<
+                dynconf::util::Lazy<dynconf::util::Dyn<config::project::raw::Project>>,
+            >(&mut dyn_state, project_config)
+            .await?;
 
             return Ok(Some(ProjectInfo {
                 tokens,
