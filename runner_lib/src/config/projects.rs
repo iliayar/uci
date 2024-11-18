@@ -195,10 +195,12 @@ impl ProjectsStore {
             }
 
             let mut dyn_state = config::utils::make_dyn_state(state)?;
-            let project = dynconf::util::load::<
-                dynconf::util::Lazy<config::project::raw::Project>,
-            >(&mut dyn_state, project_config)
-            .await?;
+            let project =
+                dynconf::util::load::<dynconf::util::Lazy<config::project::raw::Project>>(
+                    &mut dyn_state,
+                    project_config,
+                )
+                .await?;
 
             return Ok(Some(ProjectInfo {
                 tokens,
@@ -298,7 +300,7 @@ pub struct UpdateOnly(bool);
 pub struct ProjectInfo {
     pub id: String,
     pub enabled: bool,
-    pub projects: Vec<dynconf::util::LoadedLazy<super::project::raw::Project>>,
+    pub projects: Vec<dynconf::util::LoadedLazy<dynconf::util::Dyn<super::project::raw::Project>>>,
     pub repos: config::repo::Repos,
     pub tokens: config::permissions::Tokens,
     pub secrets: config::secrets::Secrets,

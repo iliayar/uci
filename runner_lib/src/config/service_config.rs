@@ -127,6 +127,10 @@ pub mod raw {
             let repos_path = data_dir.join(DEFAULT_REPOS_PATH);
             let data_path = data_dir.join(DEFAULT_DATA_PATH);
 
+            std::fs::create_dir_all(&internal_path)?;
+            std::fs::create_dir_all(&repos_path)?;
+            std::fs::create_dir_all(&data_path)?;
+
             state.mutate_global(config::utils::wrap_dyn_f(|mut dynconf| {
                 dynconf.config = Some(super::DynServiceConfig {
                     secrets: None,

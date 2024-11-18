@@ -78,7 +78,7 @@ pub mod raw {
     #[serde(deny_unknown_fields)]
     struct Project {
         enabled: Option<util::Dyn<bool>>,
-        config: util::OneOrMany<util::Dyn<util::Lazy<config::project::raw::Project>>>,
+        config: util::OneOrMany<util::Lazy<util::Dyn<config::project::raw::Project>>>,
         repos: Option<util::Dyn<config::repo::raw::Repos>>,
         secrets: Option<util::OneOrMany<util::Dyn<config::secrets::raw::Secrets>>>,
         tokens: Option<util::Dyn<config::permissions::raw::Tokens>>,

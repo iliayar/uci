@@ -135,10 +135,14 @@ pub async fn current_commit(path: PathBuf) -> Result<String, GitError> {
 }
 
 async fn git_out(path: PathBuf, args: &[String]) -> Result<Vec<String>, GitError> {
+    debug!(
+        "{}: Executing git command: git {}",
+        path.display(),
+        args.join(" ")
+    );
+
     let mut command = git_base(path)?;
     command.args(args);
-    debug!("Executing git command: git {}", args.join(" "));
-
     let out = command.output().await?;
     Ok(String::from_utf8_lossy(&out.stdout)
         .to_string()

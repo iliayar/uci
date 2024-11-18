@@ -61,8 +61,11 @@ impl Context {
         let mut state = state.clone();
         let run_context = common::run_context::RunContext::new();
         state.set(&run_context);
-	state.set(&config);
-        config.projects_store.reload_internal_project(&state).await?;
+        state.set(&config);
+        config
+            .projects_store
+            .reload_internal_project(&state)
+            .await?;
 
         Ok(Context {
             config: Mutex::new(Arc::new(config)),
