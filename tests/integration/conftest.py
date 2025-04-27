@@ -221,13 +221,217 @@ class ProjectClient:
         return None
 
 
-class BackendContainer:
+class BackendBase:
+    """Base class for backend implementations"""
+    
     def __init__(self, config_dir):
         self.config_dir = config_dir
         self.api_url = None
-        self.container_id = None
+        self.api_host = None
         self._projects_cache = {}
         self._pipeline_cache = {}
+    
+    def call_api(self, endpoint, method="get", data=None, params=None):
+        """Make a raw API call to the backend"""
+        url = f"{self.api_url}{endpoint}"
+        response = getattr(requests, method.lower())(url, json=data, params=params)
+        return response
+    
+    def reload_config(self):
+        """Trigger config reload in the backend"""
+        response = self.call_api("/reload", method="post")
+        response.raise_for_status()
+        # Clear all caches after reloading
+        self._projects_cache = {}
+        self._pipeline_cache = {}
+        return response.json()
+        
+    def stop(self):
+        """Stop the backend - to be implemented by subclasses"""
+        raise NotImplementedError("Subclasses must implement stop method")
+        
+    def _wait_for_startup(self, timeout=10, interval=0.5):
+        """Wait for the backend to start up"""
+        start_time = time.time()
+        while time.time() - start_time < timeout:
+            try:
+                response = self.call_api("/ping")
+                if response.status_code == 200:
+                    return
+            except requests.RequestException as e:
+                print(f"Waiting for backend to start: {e}")
+            time.sleep(interval)
+        
+        raise TimeoutError(f"Backend service did not start within the expected timeout. API URL: {self.api_url}")
+    
+    def list_projects(self):
+        """List all projects in the backend"""
+        response = self.call_api("/projects/list")
+        response.raise_for_status()
+        
+        # Get projects data from response
+        projects_data = response.json()["projects"]
+        
+        # Update projects cache with ProjectClient instances
+        for project_data in projects_data:
+            project_id = project_data["id"]
+            if project_id not in self._projects_cache:
+                # Create a new ProjectClient instance and store the data in it
+                client = ProjectClient(self, project_id)
+                client._metadata = project_data  # Store metadata in the client
+                self._projects_cache[project_id] = client
+            else:
+                # Update existing client's metadata
+                self._projects_cache[project_id]._metadata = project_data
+            
+        return projects_data
+    
+    def get_project(self, project_id):
+        """Get a project's metadata by ID"""
+        if project_id not in self._projects_cache:
+            # Ensure the project exists by refreshing the list
+            self.list_projects()
+            if project_id not in self._projects_cache:
+                return None
+        
+        # Return the metadata stored in the ProjectClient
+        return getattr(self._projects_cache[project_id], '_metadata', None)
+    
+    def project(self, project_id):
+        """Get a client for a specific project"""
+        if project_id not in self._projects_cache:
+            # Ensure the project exists by refreshing the list
+            self.list_projects()
+            if project_id not in self._projects_cache:
+                raise ValueError(f"Project '{project_id}' not found")
+        
+        # Return the cached ProjectClient
+        return self._projects_cache[project_id]
+    
+    def __getattr__(self, name):
+        """Allow accessing projects as attributes, e.g., backend.project_name"""
+        # Convert attribute name to project ID format (replace underscores with hyphens)
+        project_id = name.replace("_", "-")
+        
+        try:
+            return self.project(project_id)
+        except ValueError:
+            # Try the original name if the converted name didn't work
+            if project_id != name:
+                try:
+                    return self.project(name)
+                except ValueError:
+                    pass
+            
+            raise AttributeError(f"'{self.__class__.__name__}' has no attribute '{name}'")
+
+
+def find_free_port():
+    """Find a free port on localhost"""
+    import socket
+    from contextlib import closing
+    
+    with closing(socket.socket(socket.AF_INET, socket.SOCK_STREAM)) as s:
+        s.bind(('', 0))
+        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        return s.getsockname()[1]
+
+
+class BackendProcess(BackendBase):
+    """Process-based backend implementation using local binary"""
+    
+    def __init__(self, config_dir):
+        super().__init__(config_dir)
+        self.process = None
+        self.binary_path = None
+        self.port = None
+        self.find_binary()
+    
+    def find_binary(self):
+        """Find the UCI daemon binary in the target directory"""
+        project_root = pathlib.Path(__file__).parents[2]  # Root of the project
+        possible_paths = [
+            project_root / "target" / "debug" / "ucid",
+            project_root / "target" / "release" / "ucid",
+        ]
+        
+        for path in possible_paths:
+            if path.exists() and os.access(path, os.X_OK):
+                self.binary_path = path
+                return
+        
+        raise FileNotFoundError("Could not find ucid binary in target directory. Please build it with 'cargo build'")
+    
+    def _cleanup(self):
+        """Clean up the process resources and display output"""
+        if self.process:
+            try:
+                # Try to terminate gracefully first
+                if self.process.poll() is None:  # Only terminate if still running
+                    self.process.terminate()
+                    try:
+                        self.process.wait(timeout=5)
+                    except subprocess.TimeoutExpired:
+                        # If it doesn't exit in 5 seconds, force kill it
+                        self.process.kill()
+                        self.process.wait()
+            except ProcessLookupError:
+                # Process is already gone
+                pass
+            
+            # Capture and display output
+            stdout, stderr = self.process.communicate()
+            print(f"Process output:\nSTDOUT:\n{stdout}\nSTDERR:\n{stderr}")
+            
+            self.process = None
+    
+    def start(self):
+        """Start the backend process"""
+        # Find a free port
+        self.port = find_free_port()
+        
+        # Set up the environment
+        env = os.environ.copy()
+        
+        # Start the process with correct command line arguments
+        config_path = os.path.join(self.config_dir, "config.yaml")
+        cmd = [
+            str(self.binary_path),
+            "--port", str(self.port),
+            "--config", config_path,
+        ]
+        
+        self.process = subprocess.Popen(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            env=env,
+            text=True
+        )
+        
+        # Set up the API URL
+        self.api_host = f"localhost:{self.port}"
+        self.api_url = f"http://{self.api_host}"
+        
+        # Wait for the process to start
+        try:
+            self._wait_for_startup()
+        except TimeoutError:
+            # Process didn't start properly, clean up before raising the exception
+            self._cleanup()
+            raise
+    
+    def stop(self):
+        """Stop the backend process"""
+        self._cleanup()
+
+
+class BackendContainer(BackendBase):
+    """Docker-based backend implementation"""
+    
+    def __init__(self, config_dir):
+        super().__init__(config_dir)
+        self.container_id = None
 
     def start(self):
         """Start the backend container"""
@@ -256,7 +460,7 @@ class BackendContainer:
         if self.container_id:
             logs_cmd = ["docker", "logs", self.container_id]
             logs = subprocess.run(logs_cmd, capture_output=True, text=True)
-            print(f"Container logs:\n{logs.stdout}\n{logs.stderr}")
+            print(f"Process output:\nSTDOUT:\n{logs.stdout}\nSTDERR:\n{logs.stderr}")
 
             subprocess.run(["docker", "rm", self.container_id], capture_output=True)
     
@@ -282,27 +486,12 @@ class BackendContainer:
         subprocess.run(["docker", "kill", self.container_id], check=True, capture_output=True)
         self._cleanup()
 
-    def reload_config(self):
-        """Trigger config reload in the backend"""
-        response = requests.post(f"{self.api_url}/reload")
-        response.raise_for_status()
-        # Clear all caches after reloading
-        self._projects_cache = {}
-        self._pipeline_cache = {}
-        return response.json()
-
-    def call_api(self, endpoint, method="get", data=None, params=None):
-        """Make a raw API call to the backend"""
-        url = f"{self.api_url}{endpoint}"
-        response = getattr(requests, method.lower())(url, json=data, params=params)
-        return response
-
     def _wait_for_startup(self, timeout=10, interval=0.5):
         """Wait for the backend to start up"""
         start_time = time.time()
         while time.time() - start_time < timeout:
             try:
-                response = requests.get(f"{self.api_url}/ping")
+                response = self.call_api("/ping")
                 if response.status_code == 200:
                     return
             except requests.RequestException as e:
@@ -376,20 +565,6 @@ class BackendContainer:
             raise AttributeError(f"'BackendContainer' has no attribute '{name}'")
 
 
-@pytest.fixture(scope="session")
-def docker_image():
-    """Build the Docker image for testing"""
-    # Build the image with a specific tag for testing, silently
-    subprocess.run(
-        ["docker", "build", "-q", "-t", "uci-backend:test", "-f", "docker/backend/Dockerfile", "."],
-        cwd=str(pathlib.Path(__file__).parents[2]),  # Root of the project
-        check=True,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL
-    )
-    yield "uci-backend:test"
-
-
 @pytest.fixture
 def config_dir(request):
     """Create a temporary directory for config files with content from the config mark"""
@@ -418,12 +593,31 @@ def config_dir(request):
 
 
 @pytest.fixture
-def backend(docker_image, config_dir):
-    """Fixture providing a running backend container configured from the config mark"""
-    # Create the backend instance
-    backend = BackendContainer(config_dir)
+def backend(request, config_dir):
+    """Fixture providing a running backend instance configured from the config mark
     
-    # Start the container
+    By default, this fixture uses the BackendProcess implementation which runs the 
+    local binary from the target directory. If a test is marked with @pytest.mark.docker,
+    it will use the Docker-based implementation instead.
+    """
+    # Check if the test is marked to use Docker
+    docker_marker = request.node.get_closest_marker("docker")
+    
+    if docker_marker:
+        # Make sure the Docker image is built
+        subprocess.run(
+            ["docker", "build", "-q", "-t", "uci-backend:test", "-f", "docker/backend/Dockerfile", "."],
+            cwd=str(pathlib.Path(__file__).parents[2]),  # Root of the project
+            check=True,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL
+        )
+        backend = BackendContainer(config_dir)
+    else:
+        # Use the local binary implementation by default
+        backend = BackendProcess(config_dir)
+    
+    # Start the backend
     backend.start()
     
     yield backend

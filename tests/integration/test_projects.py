@@ -1,5 +1,5 @@
 import pytest
-from models import Pipeline, Action, Job, Step
+from models import Pipeline, Action, Job, Script
 
 
 def test_empty_projects_list(backend):
@@ -45,13 +45,7 @@ def test_project_configuration(backend):
         "test-pipeline": Pipeline(
             jobs={
                 "echo-job": Job(
-                    do="run",
-                    steps=[
-                        Step(
-                            name="echo",
-                            run="echo 'Hello, World!'"
-                        )
-                    ]
+                    do=[Script("echo 'Hello, World!'")]
                 )
             }
         )
