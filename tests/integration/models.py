@@ -2,14 +2,40 @@ import dataclasses
 import typing as tp
 
 @dataclasses.dataclass
+class Step:
+    """A step in a job"""
+    name: str
+    run: str
+    env: tp.Optional[tp.Dict[str, str]] = None
+    shell: tp.Optional[str] = None
+    working_dir: tp.Optional[str] = None
+    continue_on_error: bool = False
+    timeout: tp.Optional[int] = None
+
+@dataclasses.dataclass
+class Job:
+    """A job in a pipeline"""
+    do: str = "run"  # "run" or "deploy"
+    steps: tp.List[tp.Union[Step, tp.Dict[str, tp.Any]]] = dataclasses.field(default_factory=list)
+    environment: tp.Optional[tp.Dict[str, str]] = None
+    needs: tp.Optional[tp.List[str]] = None
+    working_dir: tp.Optional[str] = None
+    stage: tp.Optional[str] = None
+    timeout: tp.Optional[int] = None
+    retry: tp.Optional[int] = None
+    docker: tp.Optional[tp.Dict[str, tp.Any]] = None
+
+@dataclasses.dataclass
 class Pipeline:
-    jobs: tp.Dict[str, tp.Dict[str, tp.Any]] = dataclasses.field(default_factory=dict)
+    """A pipeline definition"""
+    jobs: tp.Dict[str, tp.Union[Job, tp.Dict[str, tp.Any]]] = dataclasses.field(default_factory=dict)
     links: tp.Optional[tp.Dict[str, tp.List[str]]] = None
     stages: tp.Optional[tp.List[str]] = None
     integrations: tp.Optional[tp.List[tp.Dict[str, tp.Any]]] = None
 
 @dataclasses.dataclass
 class Action:
+    """An action definition"""
     on: tp.Optional[str] = None
     run_pipelines: tp.Optional[tp.List[str]] = None
     services: tp.Optional[tp.List[str]] = None

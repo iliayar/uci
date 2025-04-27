@@ -10,11 +10,215 @@ import pathlib
 
 import models
 
+class ProjectClient:
+    """Client for interacting with a specific project in the backend"""
+    
+    def __init__(self, backend_client, project_id):
+        self.backend = backend_client
+        self.id = project_id
+        
+    def list_pipelines(self):
+        """List all pipelines in the project"""
+        response = self.backend.call_api(
+            "/projects/pipelines/list", 
+            params={"project_id": self.id}
+        )
+        response.raise_for_status()
+        return response.json()["pipelines"]
+    
+    def get_pipeline(self, pipeline_id):
+        """Get a specific pipeline by ID"""
+        pipelines = self.list_pipelines()
+        for pipeline in pipelines:
+            if pipeline["id"] == pipeline_id:
+                return pipeline
+        return None
+        
+    def list_actions(self):
+        """List all actions in the project"""
+        response = self.backend.call_api(
+            "/projects/actions/list", 
+            params={"project_id": self.id}
+        )
+        response.raise_for_status()
+        return response.json()["actions"]
+    
+    def get_action(self, action_id):
+        """Get a specific action by ID"""
+        actions = self.list_actions()
+        for action in actions:
+            if action["id"] == action_id:
+                return action
+        return None
+    
+    def call_action(self, action_id, dry_run=False, params=None):
+        """Call an action in this project
+        
+        Args:
+            action_id: ID of the action to call
+            dry_run: If True, simulate the action without actually running it
+            params: Optional parameters to pass to the action
+        
+        Returns:
+            Response data containing run_id
+        """
+        data = {
+            "project_id": self.id,
+            "trigger_id": action_id,
+            "dry_run": dry_run
+        }
+        
+        if params:
+            data["params"] = params
+            
+        response = self.backend.call_api(
+            "/call",
+            method="post",
+            data=data
+        )
+        response.raise_for_status()
+        return response.json()
+    
+    def get_run(self, pipeline_id, run_id):
+        """Get details of a specific run"""
+        runs = self.list_runs(pipeline_id)
+        for run in runs:
+            if run["run_id"] == run_id:
+                return run
+        return None
+    
+    def list_runs(self, pipeline_id=None):
+        """List all runs for this project, optionally filtered by pipeline"""
+        params = {"project_id": self.id}
+        if pipeline_id:
+            params["pipeline_id"] = pipeline_id
+            
+        response = self.backend.call_api("/runs/list", params=params)
+        response.raise_for_status()
+        return response.json()["runs"]
+    
+    def get_run_logs(self, pipeline_id, run_id):
+        """Get logs for a specific run
+        
+        This method connects to the WebSocket endpoint to retrieve the full logs
+        for a run. It handles the initial API call to get the WebSocket connection 
+        ID and then collects all the logs from the WebSocket stream.
+        
+        Args:
+            pipeline_id: ID of the pipeline
+            run_id: ID of the run
+            
+        Returns:
+            List of log entries from the run
+        """
+        import websocket
+        import json
+        import threading
+        from queue import Queue
+        
+        # First get the WebSocket ID
+        response = self.backend.call_api(
+            "/runs/logs", 
+            params={
+                "project": self.id,
+                "pipeline": pipeline_id,
+                "run": run_id
+            }
+        )
+        response.raise_for_status()
+        ws_id = response.json().get("run_id")
+        
+        if not ws_id:
+            return []
+        
+        # Connect to the WebSocket to get the logs stream
+        logs = []
+        received_all = threading.Event()
+        message_queue = Queue()
+        
+        def on_message(ws, message):
+            try:
+                data = json.loads(message)
+                if data.get("type") == "log":
+                    logs.append(data)
+                elif data.get("type") == "done":
+                    received_all.set()
+            except json.JSONDecodeError:
+                # Handle invalid JSON if needed
+                pass
+                
+        def on_error(ws, error):
+            message_queue.put(f"WebSocket error: {error}")
+            received_all.set()
+            
+        def on_close(ws, close_status_code, close_msg):
+            received_all.set()
+            
+        # Create WebSocket connection
+        ws_url = f"ws://{self.backend.api_url.split('://')[1]}/ws/{ws_id}"
+        ws = websocket.WebSocketApp(
+            ws_url,
+            on_message=on_message,
+            on_error=on_error,
+            on_close=on_close
+        )
+        
+        # Start WebSocket in a separate thread
+        wst = threading.Thread(target=ws.run_forever)
+        wst.daemon = True
+        wst.start()
+        
+        # Wait for logs to be received or timeout
+        received_all.wait(timeout=30)  # 30 second timeout
+        ws.close()
+        
+        # Process any errors
+        if not message_queue.empty():
+            error_message = message_queue.get()
+            raise RuntimeError(f"Error getting logs: {error_message}")
+        
+        return logs
+        
+    def wait_for_run(self, run_id, timeout=30, interval=0.5):
+        """Wait for a run to appear in the runs list
+        
+        In test environments, there might be a delay before a run is visible.
+        This method polls until the run appears or the timeout is reached.
+        
+        Args:
+            run_id: The ID of the run to wait for
+            timeout: Maximum seconds to wait
+            interval: Polling interval in seconds
+            
+        Returns:
+            Run data if found, None if timed out
+        """
+        import time
+        start_time = time.time()
+        while time.time() - start_time < timeout:
+            # List all runs in the project
+            all_runs = []
+            for pipeline in self.list_pipelines():
+                pipeline_runs = self.list_runs(pipeline["id"])
+                all_runs.extend(pipeline_runs)
+            
+            # Check if our run is in the list
+            for run in all_runs:
+                if run["run_id"] == run_id:
+                    return run
+            
+            time.sleep(interval)
+        
+        return None
+
+
 class BackendContainer:
     def __init__(self, config_dir):
         self.config_dir = config_dir
         self.api_url = None
         self.container_id = None
+        self._projects_cache = {}
+        self._pipeline_cache = {}
 
     def start(self):
         """Start the backend container"""
@@ -70,10 +274,13 @@ class BackendContainer:
         """Trigger config reload in the backend"""
         response = requests.post(f"{self.api_url}/reload")
         response.raise_for_status()
+        # Clear all caches after reloading
+        self._projects_cache = {}
+        self._pipeline_cache = {}
         return response.json()
 
     def call_api(self, endpoint, method="get", data=None, params=None):
-        """Make an API call to the backend"""
+        """Make a raw API call to the backend"""
         url = f"{self.api_url}{endpoint}"
         response = getattr(requests, method.lower())(url, json=data, params=params)
         return response
@@ -91,6 +298,70 @@ class BackendContainer:
             time.sleep(interval)
         
         raise TimeoutError(f"Backend service did not start within the expected timeout. API URL: {self.api_url}")
+    
+    # High-level API methods
+    
+    def list_projects(self):
+        """List all projects in the backend"""
+        response = self.call_api("/projects/list")
+        response.raise_for_status()
+        
+        # Get projects data from response
+        projects_data = response.json()["projects"]
+        
+        # Update projects cache with ProjectClient instances
+        for project_data in projects_data:
+            project_id = project_data["id"]
+            if project_id not in self._projects_cache:
+                # Create a new ProjectClient instance and store the data in it
+                client = ProjectClient(self, project_id)
+                client._metadata = project_data  # Store metadata in the client
+                self._projects_cache[project_id] = client
+            else:
+                # Update existing client's metadata
+                self._projects_cache[project_id]._metadata = project_data
+            
+        return projects_data
+    
+    def get_project(self, project_id):
+        """Get a project's metadata by ID"""
+        if project_id not in self._projects_cache:
+            # Ensure the project exists by refreshing the list
+            self.list_projects()
+            if project_id not in self._projects_cache:
+                return None
+        
+        # Return the metadata stored in the ProjectClient
+        return getattr(self._projects_cache[project_id], '_metadata', None)
+    
+    def project(self, project_id):
+        """Get a client for a specific project"""
+        if project_id not in self._projects_cache:
+            # Ensure the project exists by refreshing the list
+            self.list_projects()
+            if project_id not in self._projects_cache:
+                raise ValueError(f"Project '{project_id}' not found")
+        
+        # Return the cached ProjectClient
+        return self._projects_cache[project_id]
+    
+    
+    def __getattr__(self, name):
+        """Allow accessing projects as attributes, e.g., backend.project_name"""
+        # Convert attribute name to project ID format (replace underscores with hyphens)
+        project_id = name.replace("_", "-")
+        
+        try:
+            return self.project(project_id)
+        except ValueError:
+            # Try the original name if the converted name didn't work
+            if project_id != name:
+                try:
+                    return self.project(name)
+                except ValueError:
+                    pass
+            
+            raise AttributeError(f"'BackendContainer' has no attribute '{name}'")
 
 
 @pytest.fixture(scope="session")
