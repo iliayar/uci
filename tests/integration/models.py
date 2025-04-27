@@ -1,29 +1,19 @@
 import dataclasses
 import typing as tp
+from datetime import datetime
 
 @dataclasses.dataclass
-class Step:
+class Script:
     """A step in a job"""
-    name: str
-    run: str
-    env: tp.Optional[tp.Dict[str, str]] = None
-    shell: tp.Optional[str] = None
-    working_dir: tp.Optional[str] = None
-    continue_on_error: bool = False
-    timeout: tp.Optional[int] = None
+    script: str
+    type: str = "script"
 
 @dataclasses.dataclass
 class Job:
     """A job in a pipeline"""
-    do: str = "run"  # "run" or "deploy"
-    steps: tp.List[tp.Union[Step, tp.Dict[str, tp.Any]]] = dataclasses.field(default_factory=list)
-    environment: tp.Optional[tp.Dict[str, str]] = None
+    do: tp.List[Script] = dataclasses.field(default_factory=list)
     needs: tp.Optional[tp.List[str]] = None
-    working_dir: tp.Optional[str] = None
     stage: tp.Optional[str] = None
-    timeout: tp.Optional[int] = None
-    retry: tp.Optional[int] = None
-    docker: tp.Optional[tp.Dict[str, tp.Any]] = None
 
 @dataclasses.dataclass
 class Pipeline:
@@ -58,6 +48,57 @@ class Project:
 @dataclasses.dataclass
 class Config:
     projects: tp.List[Project] = dataclasses.field(default_factory=list)
+
+@dataclasses.dataclass
+class WebSocketMessage:
+    """Base class for WebSocket messages"""
+    type: str
+
+@dataclasses.dataclass
+class LogMessage(WebSocketMessage):
+    """Log message from a run"""
+    pipeline: str
+    job_id: str
+    text: str
+    timestamp: int
+    message_type: str = "log"
+    
+    @classmethod
+    def from_dict(cls, data):
+        if isinstance(data, dict) and "Log" in data:
+            log_data = data["Log"]
+            return cls(
+                type="log",
+                pipeline=log_data.get("pipeline", ""),
+                job_id=log_data.get("job_id", ""),
+                text=log_data.get("text", ""),
+                timestamp=log_data.get("timestamp", 0)
+            )
+        return None
+
+@dataclasses.dataclass
+class StatusMessage(WebSocketMessage):
+    """Status update message from a run"""
+    status: tp.Dict[str, tp.Any]
+    
+    @classmethod
+    def from_dict(cls, data):
+        if isinstance(data, dict) and "Status" in data:
+            return cls(
+                type="status",
+                status=data["Status"]
+            )
+        return None
+
+@dataclasses.dataclass
+class DoneMessage(WebSocketMessage):
+    """Message indicating the WebSocket stream is done"""
+    
+    @classmethod
+    def from_dict(cls, data):
+        if isinstance(data, dict) and "Done" in data:
+            return cls(type="done")
+        return None
 
 def generate_yaml_config(config_obj: Config) -> tp.Dict[str, tp.Any]:
     """Generate YAML configuration dictionary from Config object"""

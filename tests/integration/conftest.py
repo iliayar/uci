@@ -82,6 +82,7 @@ class ProjectClient:
     def get_run(self, pipeline_id, run_id):
         """Get details of a specific run"""
         runs = self.list_runs(pipeline_id)
+        print(runs)
         for run in runs:
             if run["run_id"] == run_id:
                 return run
@@ -97,7 +98,7 @@ class ProjectClient:
         response.raise_for_status()
         return response.json()["runs"]
     
-    def get_run_logs(self, pipeline_id, run_id):
+    def get_run_logs(self, pipeline_id, run, timeout=2):
         """Get logs for a specific run
         
         This method connects to the WebSocket endpoint to retrieve the full logs
@@ -106,15 +107,17 @@ class ProjectClient:
         
         Args:
             pipeline_id: ID of the pipeline
-            run_id: ID of the run
+            run: ID of the run
+            timeout: Maximum time to wait for logs in seconds
             
         Returns:
-            List of log entries from the run
+            List of LogMessage, StatusMessage, and DoneMessage objects
         """
         import websocket
         import json
         import threading
-        from queue import Queue
+        import time
+        from models import LogMessage, StatusMessage, DoneMessage
         
         # First get the WebSocket ID
         response = self.backend.call_api(
@@ -122,42 +125,61 @@ class ProjectClient:
             params={
                 "project": self.id,
                 "pipeline": pipeline_id,
-                "run": run_id
+                "run": run,
             }
         )
         response.raise_for_status()
-        ws_id = response.json().get("run_id")
         
-        if not ws_id:
-            return []
+        # Try multiple possible field names
+        run_id = response.json()["run_id"]
         
         # Connect to the WebSocket to get the logs stream
-        logs = []
+        messages = []
         received_all = threading.Event()
-        message_queue = Queue()
         
         def on_message(ws, message):
-            try:
-                data = json.loads(message)
-                if data.get("type") == "log":
-                    logs.append(data)
-                elif data.get("type") == "done":
-                    received_all.set()
-            except json.JSONDecodeError:
-                # Handle invalid JSON if needed
-                pass
+            data = json.loads(message)
+            print(f"WebSocket message: {data}")
+            
+            # Try to parse based on the message structure
+            log_msg = LogMessage.from_dict(data)
+            if log_msg:
+                messages.append(log_msg)
+                return
+                
+            status_msg = StatusMessage.from_dict(data)
+            if status_msg:
+                messages.append(status_msg)
+                return
+                
+            done_msg = DoneMessage.from_dict(data)
+            if done_msg:
+                messages.append(done_msg)
+                received_all.set()
+                return
+                
+            # If we reach here, we couldn't handle the message
+            # raise RuntimeError(f"Unrecognized message format: {data}")
+            pass
                 
         def on_error(ws, error):
-            message_queue.put(f"WebSocket error: {error}")
-            received_all.set()
+            pass
             
         def on_close(ws, close_status_code, close_msg):
+            if not received_all.is_set():
+                # raise RuntimeError("WebSocket closed unexpectedly")
+                pass
             received_all.set()
-            
-        # Create WebSocket connection
-        ws_url = f"ws://{self.backend.api_url.split('://')[1]}/ws/{ws_id}"
+        
+        def on_open(ws):
+            pass
+        
+        # Create WebSocket connection using the host directly
+        ws_url = f"ws://{self.backend.api_host}/ws/{run_id}"
+        
         ws = websocket.WebSocketApp(
             ws_url,
+            on_open=on_open,
             on_message=on_message,
             on_error=on_error,
             on_close=on_close
@@ -169,44 +191,31 @@ class ProjectClient:
         wst.start()
         
         # Wait for logs to be received or timeout
-        received_all.wait(timeout=30)  # 30 second timeout
+        start_time = time.time()
+        while not received_all.is_set() and time.time() - start_time < timeout:
+            time.sleep(0.1)
+            
+        # If we hit the timeout without receiving "done" message
+        if not received_all.is_set():
+            raise RuntimeError(f"Timed out waiting for logs after {timeout} seconds")
+            
+        # Close the websocket connection
         ws.close()
+        return messages
         
-        # Process any errors
-        if not message_queue.empty():
-            error_message = message_queue.get()
-            raise RuntimeError(f"Error getting logs: {error_message}")
-        
-        return logs
-        
-    def wait_for_run(self, run_id, timeout=30, interval=0.5):
+    def wait_for_run(self, pipeline_id, run_id, timeout=2, interval=0.5):
         """Wait for a run to appear in the runs list
         
         In test environments, there might be a delay before a run is visible.
         This method polls until the run appears or the timeout is reached.
-        
-        Args:
-            run_id: The ID of the run to wait for
-            timeout: Maximum seconds to wait
-            interval: Polling interval in seconds
-            
-        Returns:
-            Run data if found, None if timed out
         """
         import time
         start_time = time.time()
         while time.time() - start_time < timeout:
-            # List all runs in the project
-            all_runs = []
-            for pipeline in self.list_pipelines():
-                pipeline_runs = self.list_runs(pipeline["id"])
-                all_runs.extend(pipeline_runs)
-            
-            # Check if our run is in the list
-            for run in all_runs:
-                if run["run_id"] == run_id:
-                    return run
-            
+            run = self.get_run(pipeline_id, run_id)
+            print(f"Run: {run}")
+            if run and isinstance(run["status"], dict) and "Finished" in run["status"]:
+                return run
             time.sleep(interval)
         
         return None
@@ -262,7 +271,10 @@ class BackendContainer:
         # If the specific network search fails, try all networks
         if not ip:
             raise RuntimeError(f"Could not get IP of container {self.container_id}")
-        self.api_url = f"http://{ip}:3002"
+        
+        # Store just the host and port, without the scheme
+        self.api_host = f"{ip}:3002"
+        self.api_url = f"http://{self.api_host}"
 
     def stop(self):
         """Stop the backend container"""

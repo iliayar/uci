@@ -1,6 +1,6 @@
 import pytest
 import time
-from models import Pipeline, Action, Job, Step
+from models import Pipeline, Action, Job, Script, LogMessage
 
 
 @pytest.mark.project(
@@ -15,20 +15,14 @@ from models import Pipeline, Action, Job, Step
         "action-pipeline": Pipeline(
             jobs={
                 "echo-job": Job(
-                    do="run",
-                    steps=[
-                        Step(
-                            name="echo",
-                            run="echo 'Action executed'"
-                        )
-                    ]
+                    do=[Script("echo 'Action executed'")]
                 )
             }
         )
     },
 )
 def test_call_action(backend):
-    """Test calling an action"""
+    """Test calling an action and validating logs"""
     # Access the project via the backend client
     project = backend.pipeline_test
     
@@ -44,27 +38,33 @@ def test_call_action(backend):
     run_id = run_data["run_id"]
     assert run_id, "Empty run_id returned from action call"
     
-    # In a test environment, sometimes the run might not appear immediately
-    # For tests, we'll just verify that we received a valid run_id from the call
-    # and not wait for the run to complete or appear in the listing
-    
     # Print the run ID for debugging purposes
     print(f"Action triggered successfully with run ID: {run_id}")
     
-    # You can uncomment this section if you want to wait for runs in a real environment
-    # but for tests we'll consider it successful if we get a run ID
+    # Wait for the run to appear in the runs list and complete
+    run = project.wait_for_run("action-pipeline", run_id, timeout=10)
     
-    # # Wait for the run to appear in the runs list
-    # run = project.wait_for_run(run_id, timeout=10)
-    # # Verify the run was created and found
-    # assert run is not None, f"Run with ID {run_id} did not appear within timeout"
-    # assert run["run_id"] == run_id
-    # # You can directly get run details from the project
-    # run_details = project.get_run(pipeline_id, run_id)
-    # assert run_details is not None, f"Could not find run details for {run_id}"
-    # assert run_details["run_id"] == run_id
-    # # Print some information about the run for debugging
-    # print(f"Action run successfully created: {run}")
+    # Verify the run was created and found
+    assert run is not None, f"Run with ID {run_id} did not appear within timeout"
+    assert run["run_id"] == run_id
+    assert run["status"]["Finished"] == "Success"
+    
+    # Get and verify the run logs
+    logs = project.get_run_logs("action-pipeline", run_id)
+    assert logs, "No logs were returned for the run"
+    
+    # Check that we have log messages
+    log_messages = [msg for msg in logs if isinstance(msg, LogMessage)]
+    
+    # Verify we have at least one log message
+    assert log_messages, "No log messages were found in the run logs"
+    
+    # Check that our specific expected log message appears
+    expected_message = "Action executed"
+    found_expected_message = any(
+        expected_message in msg.text for msg in log_messages
+    )
+    assert found_expected_message, f"Expected log message '{expected_message}' not found in logs"
 
 
 @pytest.mark.project(
@@ -73,13 +73,7 @@ def test_call_action(backend):
         "params-pipeline": Pipeline(
             jobs={
                 "echo-job": Job(
-                    do="run",
-                    steps=[
-                        Step(
-                            name="echo-param",
-                            run="echo 'Parameter: ${{ params.message }}'"
-                        )
-                    ]
+                    do=[Script("echo 'Parameter: ${{ params.message }}'")]
                 )
             }
         )
@@ -118,9 +112,9 @@ def test_action_with_params(backend):
 @pytest.mark.project(
     id="pipeline-list-test",
     pipelines={
-        "pipeline1": Pipeline(jobs={"job1": Job(do="run", steps=[Step(name="step1", run="echo 1")])}),
-        "pipeline2": Pipeline(jobs={"job2": Job(do="run", steps=[Step(name="step2", run="echo 2")])}),
-        "pipeline3": Pipeline(jobs={"job3": Job(do="run", steps=[Step(name="step3", run="echo 3")])})
+        "pipeline1": Pipeline(jobs={"job1": Job(do=[Script("echo 1")])}),
+        "pipeline2": Pipeline(jobs={"job2": Job(do=[Script("echo 2")])}),
+        "pipeline3": Pipeline(jobs={"job3": Job(do=[Script("echo 3")])})
     }
 )
 def test_list_pipelines(backend):
