@@ -3,7 +3,7 @@
 
   inputs = {
     flake-utils.url = "github:numtide/flake-utils";
-    nixpkgs.url = "github:nixos/nixpkgs/nixos-23.11";
+    nixpkgs.url = "github:nixos/nixpkgs/nixos-24.11";
     rust-overlay = {
       url = "github:oxalica/rust-overlay";
       inputs.nixpkgs.follows = "nixpkgs";
@@ -34,7 +34,12 @@
 
               caddy
 
-              # Other packages
+              (python3.withPackages (pypkgs: with pypkgs; [
+                pytest
+                pytest-timeout
+                requests
+                pyyaml
+              ]))
             ] ++ (if system == "x86_64-darwin" then
               [ pkgs.darwin.apple_sdk.frameworks.Security ]
             else

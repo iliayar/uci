@@ -75,10 +75,10 @@ impl Project {
         state: &State<'a>,
         pipeline_id: &str,
     ) -> Result<(), anyhow::Error> {
-	let project_params = ProjectParams(self.params.clone());
+        let project_params = ProjectParams(self.params.clone());
         let mut state = state.clone();
         state.set(&self.services);
-	state.set(&project_params);
+        state.set(&project_params);
 
         let pipeline = self.pipelines.get(&state, pipeline_id).await?;
 
@@ -193,9 +193,9 @@ impl Project {
             services,
             params,
         } = self.actions.get_matched_actions(event).await?;
-	let action_params = ActionParams(params);
-	let mut state = state.clone();
-	state.set(&action_params);
+        let action_params = ActionParams(params);
+        let mut state = state.clone();
+        state.set(&action_params);
 
         let mut pipeline_tasks = Vec::new();
 
