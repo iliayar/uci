@@ -1,0 +1,23 @@
+{
+    admin off
+}
+
+:80 {
+    # API requests to backend
+    handle /api/* {
+        reverse_proxy backend:3002
+    }
+
+    # WebSocket connections to backend
+    handle /ws/* {
+        reverse_proxy backend:3002
+    }
+
+    # All other requests to frontend
+    handle {
+        reverse_proxy frontend:80
+    }
+
+    # Enable compression
+    encode gzip
+}

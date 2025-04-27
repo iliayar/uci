@@ -1,0 +1,64 @@
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: docker/backend/Dockerfile
+    container_name: uci-backend
+    restart: unless-stopped
+    volumes:
+      - ./docker/config:/app/config:ro  # Mount your configuration files
+      - artifacts:/app/artifacts  # Persistent volume for artifacts
+      - /var/run/docker.sock:/var/run/docker.sock  # For Docker operations
+    ports:
+      - "3002:3002"
+    environment:
+      - RUST_LOG=info
+      - ARTIFACTS_DIR=/app/artifacts
+    networks:
+      - uci-network
+
+  frontend:
+    build:
+      context: .
+      dockerfile: docker/frontend/Dockerfile
+    container_name: uci-frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "3000:80"
+    environment:
+      - UCI_BASE_URL=http://localhost:3002  # Use public backend URL
+      - UCI_WS_BASE_URL=ws://localhost:3002  # WebSocket URL
+    networks:
+      - uci-network
+
+  # Optional Caddy reverse proxy
+  caddy:
+    image: caddy:2
+    container_name: uci-caddy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./docker/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    networks:
+      - uci-network
+    depends_on:
+      - backend
+      - frontend
+
+networks:
+  uci-network:
+    driver: bridge
+
+volumes:
+  artifacts:
+    driver: local
+  caddy_data:
+    driver: local
+  caddy_config:
+    driver: local
