@@ -90,6 +90,7 @@ impl CallContext {
         if let Some(run_context) = self.run_context.as_ref() {
             state.set(run_context.as_ref());
         }
+        state.set(self);
         f(state).await
     }
 

@@ -3,6 +3,8 @@ use std::{collections::HashMap, path::PathBuf, sync::Arc};
 use common::state::State;
 use dynconf::DynValue;
 use tokio::sync::Mutex;
+use chrono::Utc;
+use cron_tab::Cron;
 
 use anyhow::anyhow;
 use log::*;
@@ -303,6 +305,7 @@ pub struct ProjectInfo {
     pub tokens: config::permissions::Tokens,
     pub secrets: config::secrets::Secrets,
     pub data_path: PathBuf,
+    pub cron_engine: Cron,
 }
 
 impl ProjectInfo {
@@ -326,7 +329,12 @@ impl ProjectInfo {
             }
         }
 
-        project.ok_or_else(|| anyhow!("At least one project config must be specified"))
+        let project = project.ok_or_else(|| anyhow!("At least one project config must be specified"))?;
+        self.cron_engine.stop();
+        self.cron_engine = Cron::new(Utc);
+        project.actions.create_cron_jobs(self.cron_engine, &state);
+
+        Ok(project)
     }
 
     pub fn check_allowed<S: AsRef<str>>(

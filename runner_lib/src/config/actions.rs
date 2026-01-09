@@ -2,6 +2,7 @@ use crate::config;
 use std::collections::{HashMap, HashSet};
 
 use anyhow::anyhow;
+use cron_tab::Cron;
 use log::*;
 
 #[derive(Debug, Default)]
@@ -50,6 +51,11 @@ pub enum TriggerType {
         exclude_patterns: Vec<regex::Regex>,
         exclude_commits: Vec<regex::Regex>,
     },
+    Cron {
+        project_id: String,
+        trigger_id: String,
+        rule_pattern: String,
+    },
 }
 
 pub enum Event {
@@ -60,6 +66,10 @@ pub enum Event {
     RepoUpdate {
         repo_id: String,
         diffs: config::repo::Diff,
+    },
+    Cron {
+        project_id: String,
+        trigger_id: String,
     },
 }
 
@@ -144,11 +154,40 @@ impl Actions {
         }
         Ok(actions)
     }
+
+    pub async fn create_cron_jobs(
+        &self,
+        cron_engine: &Cron,
+        state: &State,
+    ) -> Result<Vec<T>, anyhow::Error> {
+        for (_, triggers) in self.actions.iter() {
+            for trigger in triggers.iter() {
+                if let TriggerType::Cron{project_id, trigger_id, rule} = trigger.on {
+                    cron_engine.add_fn(rule, || {
+                        let call_context: &CallContext = state.get().unwrap();
+                        call_context
+                        .call_trigger(&project_id, &trigger_id, dry_run.unwrap_or(false))
+                        .await;
+                    }).unwrap();
+                }
+            }  
+        }
+    }
 }
 
 impl TriggerType {
     async fn check_matched(&self, event: &Event) -> bool {
         match self {
+            TriggerType::Cron {
+                project_id,
+                trigger_id,
+            } => match event {
+                Event::Cron {
+                    project_id: event_project_id,
+                    trigger_id: event_trigger_id,
+                } => project_id == event_project_id && trigger_id == event_trigger_id,
+                _ => false,
+            },
             TriggerType::Call {
                 project_id,
                 trigger_id,
@@ -240,6 +279,9 @@ pub mod raw {
 
         #[serde(rename = "changed")]
         FileChanged,
+
+        #[serde(rename = "cron")]
+        Cron,
     }
 
     #[derive(Deserialize, Serialize, Clone, Debug)]
@@ -257,6 +299,7 @@ pub mod raw {
         run_pipelines: Option<Vec<String>>,
         services: Option<HashMap<String, ServiceAction>>,
         repo_id: Option<String>,
+        rule: Option<String>,
         changes: Option<Vec<String>>,
         exclude_changes: Option<Vec<String>>,
         exclude_commits: Option<Vec<String>>,
@@ -291,6 +334,17 @@ pub mod raw {
                     project_id,
                     trigger_id,
                 },
+                TriggerType::Cron => {                    
+                    let rule = self
+                        .rule
+                        .ok_or_else(|| anyhow!("'rule' field required for on: cron"))?; 
+                    
+                    super::TriggerType::Cron {
+                        project_id,
+                        trigger_id,
+                        rule,
+                    }
+                },
                 TriggerType::FileChanged => {
                     let changes: Result<Vec<_>, anyhow::Error> = self
                         .changes
@@ -312,7 +366,7 @@ pub mod raw {
                         .collect();
                     let repo_id = self
                         .repo_id
-                        .ok_or_else(|| anyhow!("'repo_id' fieled required for on: changed"))?;
+                        .ok_or_else(|| anyhow!("'repo_id' field required for on: changed"))?;
                     super::TriggerType::ReposUpdated {
                         repo_id,
                         patterns: changes?,
