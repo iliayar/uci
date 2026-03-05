@@ -1,38 +1,30 @@
-bind:
-  enabled: true
-  zones:
-    'ilyay.space':
-      cnames:
-        - 'uci'
-
-    'iliay.ar':
-      cnames:
-        - 'uci'
+# bind:
+#   enabled: true
+#   zones:
+#     'iliay.ar':
+#       cnames:
+#         - 'uci'
 caddy:
   hostnames:
-    'uci.ilyay.space': |
-      redir https://uci.iliay.ar{uri}
-
-
     'uci.iliay.ar': |
-      handle /api/* {
-          uri strip_prefix /api
-          reverse_proxy :3002
-      }
-
       handle * {
           root * ${project.data_path}/webgui
           try_files {path} /index.html
           file_server
       }
 
+#       handle /api/* {
+#           uri strip_prefix /api
+#           reverse_proxy :3002
+#       }
+
 docker:
   volumes:
     webgui-target-cache: {}
 
 pipelines:
-  deploy: ${load(./deploy_pipeline.yaml)}
+  # deploy: ${load(./deploy_pipeline.yaml)}
   deploy_web_gui: ${load(./deploy_web_gui_pipeline.yaml)}
-  nix_build: ${load(./nix_build.yaml)}
+  # nix_build: ${load(./nix_build.yaml)}
 
 actions: ${${load(./actions.yaml)}.actions}

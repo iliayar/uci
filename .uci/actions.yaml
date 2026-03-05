@@ -1,32 +1,32 @@
 actions:
-  restart:
-    - on: call
-      run_pipelines:
-        - deploy
-      params:
-        do_restart: true
-  build:
-    - on: call
-      run_pipelines:
-        - deploy
-        - nix_build
-      params:
-        do_restart: false
-    - on: changed
-      repo_id: uci
-      changes:
-        - '^dynconf.*'
-        - '^common.*'
-        - '^models.*'
-        - '^runner_lib.*'
-        - '^uci.*'
-        - '^worker_lib.*'
-        - '^Cargo.lock.*'
-      run_pipelines:
-        - deploy
-        - nix_build
-      params:
-        do_restart: false
+  # restart:
+  #   - on: call
+  #     run_pipelines:
+  #       - deploy
+  #     params:
+  #       do_restart: true
+  # build:
+  #   - on: call
+  #     run_pipelines:
+  #       - deploy
+  #       - nix_build
+  #     params:
+  #       do_restart: false
+  #   - on: changed
+  #     repo_id: uci
+  #     changes:
+  #       - '^dynconf.*'
+  #       - '^common.*'
+  #       - '^models.*'
+  #       - '^runner_lib.*'
+  #       - '^uci.*'
+  #       - '^worker_lib.*'
+  #       - '^Cargo.lock.*'
+  #     run_pipelines:
+  #       - deploy
+  #       - nix_build
+  #     params:
+  #       do_restart: false
 
   build_web_gui:
     - on: call
