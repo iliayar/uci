@@ -1,16 +1,15 @@
 jobs:
-  build-docker-image:
-    do:
-      type: build
-      image: uci-web-gui-build
-      path: ${project.repos.uci.path}/webgui
+  # build-docker-image:
+  #   do:
+  #     type: build
+  #     image: uci-web-gui-build
+  #     path: ${project.repos.uci.path}/webgui
 
   _make-dist-dir:
     do:
       type: script
       env:
         DATA_DIR: ${project.data_path}/webgui
-        DIST_DIR: ${project.repos.uci.path}/webgui/dist
       script: |
         set -e
   
@@ -23,22 +22,19 @@ jobs:
 
     do:
       type: script
-      image: uci-web-gui-build
-      volumes:
-        '/build': ${project.repos.uci.path}
-        '/dist': ${project.data_path}/webgui
-        '/target': webgui-target-cache
       env:
         UCI_BASE_URL: 'https://uci.iliay.ar/api'
         UCI_WS_BASE_URL: 'wss://uci.iliay.ar/api'
-        CARGO_TARGET_DIR: '/target'
+        CARGO_TARGET_DIR: ${project.data_path}/webgui-cache
+        SRC_DIR: ${project.repos.uci.path}
+        DIST_DIR: ${project.data_path}/webgui
       script: |
         set -e
-  
-        . /root/.cargo/env
-  
-        cd webgui
-        /trunk build -d /dist
+        . /etc/profile.d/nix.sh
+
+        cd ${SRC_DIR}/webgui
+
+        nix develop -c trunk build -d ${DIST_DIR}
 
 integrations:
   github:
